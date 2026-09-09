@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn, getEasternDate, isEasternDayOngoing } from '../lib/utils';
 import { Candidate, FollowUp, Notification, ResumeChangeRequest, InterviewSupportRequest, Application, TargetReductionRequest, FeatureAnnouncement, User } from '../types';
 import { CandidateSheet } from '../components/CandidateSheet';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { ThoughtsConfigModal, DEFAULT_QUOTES } from '../components/ThoughtsConfigModal';
 import { CelebrationBanner } from '../components/CelebrationBanner';
 import { db, firebaseConfig } from '../firebase';
@@ -854,7 +855,16 @@ export const Dashboard: React.FC = () => {
                       {candidate.full_name.split(' ').map(n => n[0]).join('')}
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors">{candidate.full_name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors">{candidate.full_name}</p>
+                        {candidate.is_free_trial && (
+                          <FreeTrialBadge 
+                            size="sm" 
+                            startDate={candidate.free_trial_start_date} 
+                            endDate={candidate.free_trial_end_date} 
+                          />
+                        )}
+                      </div>
                       <p className="text-[10px] text-text-muted uppercase font-bold">{STAGES[candidate.current_stage].label}</p>
                     </div>
                   </div>
@@ -1154,8 +1164,15 @@ export const Dashboard: React.FC = () => {
                     {candidate.full_name.split(' ').map(n => n[0]).join('')}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">{candidate.full_name}</p>
+                      {candidate.is_free_trial && (
+                        <FreeTrialBadge 
+                          size="sm" 
+                          startDate={candidate.free_trial_start_date} 
+                          endDate={candidate.free_trial_end_date} 
+                        />
+                      )}
                       <span className="text-[10px] font-mono text-text-muted">{candidate.id}</span>
                     </div>
                     <p className="text-xs text-text-muted truncate">

@@ -67,6 +67,7 @@ import { ResumeSubstitutionModal } from '../../components/ResumeSubstitutionModa
 import { SlotVisualizer } from '../../components/SlotVisualizer';
 import { findBestProxyForWindow, isProxyUser } from '../../services/interviewService';
 import { sharedSelectStyles } from '../../lib/selectStyles';
+import { FreeTrialBadge } from '../../components/FreeTrialBadge';
 
 type TabType = 'today' | 'upcoming' | 'pending_bookings' | 'booked' | 'live' | 'completed' | 'cancelled' | 'rescheduled' | 'self_attended' | 'analytics' | 'team_status';
 
@@ -624,9 +625,17 @@ export const InterviewSupportDashboard: React.FC = () => {
 
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex-1">
-                        <h3 className="text-2xl font-black text-text-primary flex items-center gap-2">
+                        <h3 className="text-2xl font-black text-text-primary flex items-center gap-2 flex-wrap">
                           <UserIcon className="w-6 h-6 text-accent-blue" />
                           {candidate?.full_name || 'Candidate Name'}
+                          {candidate?.is_free_trial && (
+                            <FreeTrialBadge 
+                              startDate={candidate.free_trial_start_date}
+                              endDate={candidate.free_trial_end_date}
+                              size="md"
+                              showDaysRemaining={true}
+                            />
+                          )}
                         </h3>
                         <div className="flex flex-wrap gap-4 mt-2">
                           <div className="flex items-center gap-2 text-sm text-text-secondary">

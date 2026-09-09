@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { doc, onSnapshot, collection, query, where, orderBy, limit, setDoc } from 'firebase/firestore';
 import { Candidate, Payment, Application, InterviewSupportRequest, ActivityLog, InterviewRound, User } from '../types';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { STAGES } from '../constants';
 import { 
   TrendingUp, 
@@ -304,9 +305,19 @@ export const CandidateDashboard: React.FC = () => {
       {/* Welcome Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-black text-text-primary tracking-tight">
-            Hello, <span className="text-accent-blue">{candidate.full_name.split(' ')[0]}!</span>
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-black text-text-primary tracking-tight">
+              Hello, <span className="text-accent-blue">{candidate.full_name.split(' ')[0]}!</span>
+            </h1>
+            {candidate.is_free_trial && (
+              <FreeTrialBadge 
+                startDate={candidate.free_trial_start_date}
+                endDate={candidate.free_trial_end_date}
+                size="md"
+                showDaysRemaining={true}
+              />
+            )}
+          </div>
           <p className="text-text-secondary mt-1">Track your progress and manage your applications.</p>
         </div>
         <div className="flex items-center gap-2 p-1 bg-bg-secondary border border-border-primary rounded-2xl">

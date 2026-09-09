@@ -23,6 +23,7 @@ import Select from 'react-select';
 import { sharedSelectStyles } from '../lib/selectStyles';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getEasternDate, formatDisplayDate } from '../lib/utils';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { useDebounce } from '../lib/hooks';
 import { db } from '../firebase';
 import { collection, doc, setDoc, query, where, getDocs, deleteDoc, onSnapshot } from 'firebase/firestore';
@@ -642,7 +643,16 @@ export const AppTracker: React.FC = () => {
                         }}
                         className="text-xs font-bold text-text-primary hover:text-accent-blue transition-colors text-left"
                       >
-                        {candidate?.full_name || 'Unknown'}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{candidate?.full_name || 'Unknown'}</span>
+                          {candidate?.is_free_trial && (
+                            <FreeTrialBadge 
+                              startDate={candidate.free_trial_start_date}
+                              endDate={candidate.free_trial_end_date}
+                              size="sm"
+                            />
+                          )}
+                        </div>
                       </button>
                     </td>
                     <td className="border border-border-primary px-3 py-2">

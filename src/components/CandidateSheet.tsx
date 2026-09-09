@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Candidate } from '../types';
 import { cn } from '../lib/utils';
+import { FreeTrialBadge } from './FreeTrialBadge';
 
 interface CandidateSheetProps {
   candidate: Candidate | null;
@@ -52,7 +53,17 @@ export const CandidateSheet: React.FC<CandidateSheetProps> = ({ candidate, isOpe
                   {candidate.full_name.charAt(0)}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-text-primary tracking-tight">{candidate.full_name}</h2>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-xl font-bold text-text-primary tracking-tight">{candidate.full_name}</h2>
+                    {candidate.is_free_trial && (
+                      <FreeTrialBadge 
+                        startDate={candidate.free_trial_start_date}
+                        endDate={candidate.free_trial_end_date}
+                        size="sm"
+                        showDaysRemaining={true}
+                      />
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="px-2 py-0.5 bg-bg-tertiary text-text-secondary text-[10px] font-bold rounded-lg uppercase tracking-wider border border-border-primary">
                       {candidate.id}

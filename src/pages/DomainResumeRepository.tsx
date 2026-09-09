@@ -35,8 +35,8 @@ import {
   FileCheck,
   Building,
   Briefcase
-} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
 interface CandidateWithVersions extends Candidate {
   all_versions: ResumeVersion[];
@@ -927,12 +927,21 @@ export const DomainResumeRepository: React.FC = () => {
                                                 )}
                                               </button>
                                               <div className="min-w-0">
-                                                <a
-                                                  href={`#candidate/${cand.id}`}
-                                                  className="font-bold text-text-primary hover:text-accent-purple transition-colors text-sm truncate block"
-                                                >
-                                                  {cand.full_name}
-                                                </a>
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                  <a
+                                                    href={`#candidate/${cand.id}`}
+                                                    className="font-bold text-text-primary hover:text-accent-purple transition-colors text-sm truncate block"
+                                                  >
+                                                    {cand.full_name}
+                                                  </a>
+                                                  {cand.is_free_trial && (
+                                                    <FreeTrialBadge 
+                                                      size="sm" 
+                                                      startDate={cand.free_trial_start_date} 
+                                                      endDate={cand.free_trial_end_date} 
+                                                    />
+                                                  )}
+                                                </div>
                                                 <div className="flex items-center gap-1.5 mt-0.5">
                                                   <span
                                                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -1082,12 +1091,21 @@ export const DomainResumeRepository: React.FC = () => {
 
                       {/* Candidate Name & Stage */}
                       <div>
-                        <a
-                          href={`#candidate/${cand.id}`}
-                          className="text-lg font-bold text-text-primary hover:text-accent-purple transition-colors block truncate"
-                        >
-                          {cand.full_name}
-                        </a>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <a
+                            href={`#candidate/${cand.id}`}
+                            className="text-lg font-bold text-text-primary hover:text-accent-purple transition-colors block truncate"
+                          >
+                            {cand.full_name}
+                          </a>
+                          {cand.is_free_trial && (
+                            <FreeTrialBadge 
+                              size="sm" 
+                              startDate={cand.free_trial_start_date} 
+                              endDate={cand.free_trial_end_date} 
+                            />
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mt-1">
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -1226,12 +1244,21 @@ export const DomainResumeRepository: React.FC = () => {
                             </button>
                           </td>
                           <td className="p-4">
-                            <a
-                              href={`#candidate/${cand.id}`}
-                              className="font-bold text-text-primary hover:text-accent-purple transition-colors block"
-                            >
-                              {cand.full_name}
-                            </a>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <a
+                                href={`#candidate/${cand.id}`}
+                                className="font-bold text-text-primary hover:text-accent-purple transition-colors block"
+                              >
+                                {cand.full_name}
+                              </a>
+                              {cand.is_free_trial && (
+                                <FreeTrialBadge 
+                                  size="sm" 
+                                  startDate={cand.free_trial_start_date} 
+                                  endDate={cand.free_trial_end_date} 
+                                />
+                              )}
+                            </div>
                             <span className="text-[11px] text-text-muted">{cand.email || cand.phone}</span>
                           </td>
                           <td className="p-4 font-bold text-accent-purple">

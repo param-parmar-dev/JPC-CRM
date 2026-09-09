@@ -29,6 +29,7 @@ import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import * as XLSX from 'xlsx';
 
 type TabType = 'resume_understanding' | 'interview_questions';
@@ -569,9 +570,16 @@ export const ResumePrepLog: React.FC = () => {
                       </div>
 
                       <div>
-                        <h3 className="text-xl font-bold text-text-primary flex items-center gap-2.5">
+                        <h3 className="text-xl font-bold text-text-primary flex items-center gap-2.5 flex-wrap">
                           <UserIcon className="w-5 h-5 text-accent-blue" />
                           {candidate?.full_name || 'Unknown Candidate'}
+                          {candidate?.is_free_trial && (
+                            <FreeTrialBadge 
+                              size="sm" 
+                              startDate={candidate.free_trial_start_date} 
+                              endDate={candidate.free_trial_end_date} 
+                            />
+                          )}
                           {candidate?.resume_url && (
                             <button 
                               onClick={() => handleViewFile(candidate.resume_url || '', candidate.resume_filename || 'resume.pdf')}
@@ -867,9 +875,20 @@ export const ResumePrepLog: React.FC = () => {
                   <h2 className="text-2xl font-bold text-text-primary tracking-tight font-heading">
                     {actionConfig.type === 'complete' ? 'Upload Analysis File' : 'Reject Evaluation Request'}
                   </h2>
-                  <p className="text-text-secondary text-sm mt-1">
-                    Candidate: <span className="font-bold text-text-primary">{actionConfig.candidateName}</span>
-                  </p>
+                  <div className="text-text-secondary text-sm mt-1 flex items-center gap-2 flex-wrap">
+                    <span>Candidate:</span> <span className="font-bold text-text-primary">{actionConfig.candidateName}</span>
+                    {(() => {
+                      const req = requests.find(r => r.id === actionConfig.requestId);
+                      const cand = candidates.find(c => c.id === req?.candidate_id);
+                      return cand?.is_free_trial ? (
+                        <FreeTrialBadge 
+                          size="sm" 
+                          startDate={cand.free_trial_start_date} 
+                          endDate={cand.free_trial_end_date} 
+                        />
+                      ) : null;
+                    })()}
+                  </div>
                 </div>
                 <button 
                   onClick={() => setIsActionModalOpen(false)}

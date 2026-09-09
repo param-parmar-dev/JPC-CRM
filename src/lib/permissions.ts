@@ -117,4 +117,18 @@ export function canUserAccessCandidate(candidate: Candidate, user: User | null, 
   return true;
 }
 
-
+/**
+ * Checks if a user has authority to enable, disable, and manage 15-day Free Trial status.
+ * Allowed roles: CS (Compliance Team Head), Manager, Sales, Admin.
+ */
+export function canManageFreeTrial(user: User | null): boolean {
+  if (!user) return false;
+  return [
+    'administrator',
+    'jpc_sysadmin',
+    'jpc_manager',
+    'jpc_sales',
+    'jpc_cs',
+    'jpc_compliance_person'
+  ].includes(user.role);
+}

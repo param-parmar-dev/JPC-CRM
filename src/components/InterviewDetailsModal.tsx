@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleViewFile } from '../services/fileService';
 import { ResumeSubstitutionModal } from './ResumeSubstitutionModal';
 import { ProxyAssignmentModal } from './ProxyAssignmentModal';
+import { FreeTrialBadge } from './FreeTrialBadge';
 
 interface InterviewDetailsModalProps {
   request: InterviewSupportRequest;
@@ -368,7 +369,16 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
                       {candidate?.full_name?.charAt(0) || <UserIcon className="w-5 h-5" />}
                     </div>
                     <div>
-                      <h4 className="text-sm font-black text-text-primary">{candidate?.full_name || 'Candidate Name'}</h4>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-black text-text-primary">{candidate?.full_name || 'Candidate Name'}</h4>
+                        {candidate?.is_free_trial && (
+                          <FreeTrialBadge 
+                            size="sm" 
+                            startDate={candidate.free_trial_start_date}
+                            endDate={candidate.free_trial_end_date}
+                          />
+                        )}
+                      </div>
                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mt-0.5">{candidate?.experience_years ? `${candidate.experience_years} Years Exp` : 'Exp level unknown'}</p>
                     </div>
                   </div>

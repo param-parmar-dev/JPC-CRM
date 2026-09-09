@@ -8,6 +8,7 @@ import { doc, setDoc, query, collection, where, onSnapshot } from 'firebase/fire
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { cn, getEasternDate, formatDisplayDate } from '../lib/utils';
+import { FreeTrialBadge } from './FreeTrialBadge';
 
 interface TrackJobSheetProps {
   candidate: Candidate | null;
@@ -153,9 +154,18 @@ export const TrackJobSheet: React.FC<TrackJobSheetProps> = ({
                 </div>
 
                 <div>
-                  <h2 className="text-lg font-bold text-text-primary tracking-tight">
-                    Track Application
-                  </h2>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-bold text-text-primary tracking-tight">
+                      Track Application
+                    </h2>
+                    {candidate.is_free_trial && (
+                      <FreeTrialBadge 
+                        size="sm" 
+                        startDate={candidate.free_trial_start_date} 
+                        endDate={candidate.free_trial_end_date} 
+                      />
+                    )}
+                  </div>
                   <p className="text-xs text-text-muted">
                     For {candidate.full_name}
                   </p>

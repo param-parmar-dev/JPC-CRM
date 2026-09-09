@@ -10,6 +10,7 @@ import { useDebounce } from '../lib/hooks';
 import { canUserAccessCandidate } from '../lib/permissions';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
 export const Pipeline: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -153,9 +154,18 @@ export const Pipeline: React.FC = () => {
                       >
                         <div className="flex items-start justify-between mb-3">
                           <div className="truncate pr-6">
-                            <h4 className="font-bold text-text-primary text-sm group-hover:text-accent-blue transition-colors truncate">
-                              {candidate.full_name}
-                            </h4>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="font-bold text-text-primary text-sm group-hover:text-accent-blue transition-colors truncate">
+                                {candidate.full_name}
+                              </h4>
+                              {candidate.is_free_trial && (
+                                <FreeTrialBadge 
+                                  startDate={candidate.free_trial_start_date}
+                                  endDate={candidate.free_trial_end_date}
+                                  size="sm"
+                                />
+                              )}
+                            </div>
                             <p className="text-[10px] font-mono text-text-muted mt-0.5">{candidate.id}</p>
                           </div>
                           <div className="absolute right-3 top-3">

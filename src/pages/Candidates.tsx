@@ -17,6 +17,7 @@ import { List } from 'react-window';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
 type CandidateRowExtraProps = {
   items: Candidate[];
@@ -54,7 +55,16 @@ const CandidateRow = React.memo(({
           {(candidate.full_name || 'Candidate').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
         </div>
         <div className="truncate">
-          <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">{candidate.full_name || 'Unnamed Candidate'}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">{candidate.full_name || 'Unnamed Candidate'}</p>
+            {candidate.is_free_trial && (
+              <FreeTrialBadge 
+                startDate={candidate.free_trial_start_date}
+                endDate={candidate.free_trial_end_date}
+                size="sm"
+              />
+            )}
+          </div>
           <p className="text-xs text-text-muted flex items-center gap-1 mt-0.5 truncate">
             <MapPin className="w-3 h-3 flex-shrink-0" /> {candidate.location || 'No location'}
           </p>

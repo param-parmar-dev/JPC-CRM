@@ -62,10 +62,13 @@ import {
   Check,
   Image,
   Trash2,
-  Lock
+  Lock,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { canManageFreeTrial } from '../lib/permissions';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { Candidate, Payment, Promise as PromiseType, QCChecklistItem, FollowUp, ActivityLog, User, Stage, ResumeChangeRequest, Application, InterviewSupportRequest, TargetReductionRequest, ResumeVersion } from '../types';
 import { query, collection, where, onSnapshot, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db, firebaseConfig } from '../firebase';
@@ -91,8 +94,12 @@ export const CandidateDetail: React.FC = () => {
   const canManageRemarks = !isCandidate && !isLeadGen;
   const canManageAgreement = user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager';
   const canDelete = user?.role === 'administrator' || user?.role === 'jpc_sysadmin';
+  const canEditFreeTrial = canManageFreeTrial(user);
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [isUpdatingTrial, setIsUpdatingTrial] = useState(false);
+  const [isEditingTrialDates, setIsEditingTrialDates] = useState(false);
+  const [trialDatesForm, setTrialDatesForm] = useState({ start_date: '', end_date: '' });
 
   const canMoveStage = (() => {
     if (!user || !user.role || !candidate) return false;
@@ -300,6 +307,10 @@ export const CandidateDetail: React.FC = () => {
       setEducationForm({ ...candidate });
       setPackageForm({ ...candidate });
       setRemarksForm(candidate.remarks || '');
+      setTrialDatesForm({
+        start_date: candidate.free_trial_start_date || '',
+        end_date: candidate.free_trial_end_date || ''
+      });
     }
   }, [candidate]);
 
@@ -509,6 +520,103 @@ export const CandidateDetail: React.FC = () => {
       showToast('An error occurred while creating access', 'error');
     } finally {
       setIsGeneratingAccess(false);
+    }
+  };
+
+  const handleEnableFreeTrial = async () => {
+    if (!id || !candidate || isUpdatingTrial) return;
+    setIsUpdatingTrial(true);
+    try {
+      const today = new Date();
+      const startStr = today.toISOString().split('T')[0];
+      const endDate = new Date(today);
+      endDate.setDate(today.getDate() + 15);
+      const endStr = endDate.toISOString().split('T')[0];
+
+      const updates: Partial<Candidate> = {
+        is_free_trial: true,
+        free_trial_start_date: startStr,
+        free_trial_end_date: endStr,
+        free_trial_managed_by: user?.id ? String(user.id) : null,
+        free_trial_updated_at: new Date().toISOString()
+      };
+
+      await updateCandidate(id, updates);
+      await logActivity(
+        candidate.id,
+        'Enabled 15-day Free Trial',
+        `15-day Free Trial enabled (${startStr} to ${endStr}) by ${user?.display_name || 'User'}`,
+        user?.id ? String(user.id) : null
+      );
+
+      setTrialDatesForm({ start_date: startStr, end_date: endStr });
+      showToast('15-Day Free Trial activated successfully!', 'success');
+    } catch (err) {
+      console.error('Failed to enable free trial:', err);
+      showToast('Failed to enable free trial', 'error');
+    } finally {
+      setIsUpdatingTrial(false);
+    }
+  };
+
+  const handleDisableFreeTrial = async () => {
+    if (!id || !candidate || isUpdatingTrial) return;
+    if (!window.confirm('Are you sure you want to disable the Free Trial for this candidate?')) return;
+    setIsUpdatingTrial(true);
+    try {
+      const updates: Partial<Candidate> = {
+        is_free_trial: false,
+        free_trial_managed_by: user?.id ? String(user.id) : null,
+        free_trial_updated_at: new Date().toISOString()
+      };
+
+      await updateCandidate(id, updates);
+      await logActivity(
+        candidate.id,
+        'Disabled Free Trial',
+        `Free Trial disabled by ${user?.display_name || 'User'}`,
+        user?.id ? String(user.id) : null
+      );
+
+      showToast('Free Trial disabled successfully', 'success');
+    } catch (err) {
+      console.error('Failed to disable free trial:', err);
+      showToast('Failed to disable free trial', 'error');
+    } finally {
+      setIsUpdatingTrial(false);
+    }
+  };
+
+  const handleSaveTrialDates = async () => {
+    if (!id || !candidate || isUpdatingTrial) return;
+    if (!trialDatesForm.start_date || !trialDatesForm.end_date) {
+      showToast('Please specify both start date and end date', 'error');
+      return;
+    }
+    setIsUpdatingTrial(true);
+    try {
+      const updates: Partial<Candidate> = {
+        free_trial_start_date: trialDatesForm.start_date,
+        free_trial_end_date: trialDatesForm.end_date,
+        free_trial_managed_by: user?.id ? String(user.id) : null,
+        free_trial_updated_at: new Date().toISOString()
+      };
+
+      await updateCandidate(id, updates);
+      await logActivity(
+        candidate.id,
+        'Updated Free Trial Dates',
+        `Free Trial dates updated to ${trialDatesForm.start_date} - ${trialDatesForm.end_date} by ${user?.display_name || 'User'}`,
+        user?.id ? String(user.id) : null
+      );
+
+      setIsEditingTrialDates(false);
+      showToast('Free Trial dates updated successfully', 'success');
+    } catch (err) {
+      console.error('Failed to update trial dates:', err);
+      showToast('Failed to update trial dates', 'error');
+    } finally {
+      setIsUpdatingTrial(false);
     }
   };
 
@@ -1386,7 +1494,17 @@ export const CandidateDetail: React.FC = () => {
             <ArrowLeft className="w-5 h-5" />
           </a>
           <div>
-            <h1 className="text-3xl font-bold text-text-primary">{candidate.full_name}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold text-text-primary">{candidate.full_name}</h1>
+              {candidate.is_free_trial && (
+                <FreeTrialBadge 
+                  startDate={candidate.free_trial_start_date}
+                  endDate={candidate.free_trial_end_date}
+                  size="lg"
+                  showDaysRemaining={true}
+                />
+              )}
+            </div>
             <div className="flex flex-col gap-2 mt-1">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1.5 text-sm text-text-secondary">
@@ -1818,6 +1936,176 @@ export const CandidateDetail: React.FC = () => {
               </div>
             </section>
           )}
+
+          {/* 15-Day Free Trial Management Section */}
+          <section className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-border-primary flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-text-primary">15-Day Free Trial</h3>
+                    {candidate.is_free_trial && (
+                      <FreeTrialBadge 
+                        startDate={candidate.free_trial_start_date}
+                        endDate={candidate.free_trial_end_date}
+                        size="sm"
+                        showDaysRemaining={true}
+                      />
+                    )}
+                  </div>
+                  <p className="text-xs text-text-muted">Managed by CS (Compliance Team Head), Manager, Sales & Admin</p>
+                </div>
+              </div>
+
+              {canEditFreeTrial && (
+                <div className="flex items-center gap-2">
+                  {candidate.is_free_trial ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingTrialDates(!isEditingTrialDates)}
+                        className="px-3 py-1.5 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        {isEditingTrialDates ? 'Cancel Edit' : 'Edit Dates'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDisableFreeTrial}
+                        disabled={isUpdatingTrial}
+                        className="px-3.5 py-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white font-bold text-xs transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        End Free Trial
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleEnableFreeTrial}
+                      disabled={isUpdatingTrial}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-amber-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Start 15-Day Free Trial
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-6">
+              {candidate.is_free_trial ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-bg-tertiary rounded-xl border border-border-primary">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Status</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span className="text-sm font-bold text-emerald-500">Active Free Trial</span>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-bg-tertiary rounded-xl border border-border-primary">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Trial Period</span>
+                      <p className="text-sm font-bold text-text-primary mt-1">
+                        {candidate.free_trial_start_date ? new Date(candidate.free_trial_start_date).toLocaleDateString() : 'Today'}
+                        {' → '}
+                        {candidate.free_trial_end_date ? new Date(candidate.free_trial_end_date).toLocaleDateString() : '15 Days'}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-bg-tertiary rounded-xl border border-border-primary">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Days Remaining</span>
+                      <p className="text-sm font-bold text-amber-500 mt-1 flex items-center gap-1">
+                        <Clock className="w-4 h-4 text-amber-500" />
+                        {(() => {
+                          if (!candidate.free_trial_end_date) return '15 Days';
+                          const end = new Date(candidate.free_trial_end_date);
+                          end.setHours(23, 59, 59, 999);
+                          const diff = end.getTime() - Date.now();
+                          const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+                          return days === 0 ? 'Expired Today' : `${days} Day${days === 1 ? '' : 's'} Left`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isEditingTrialDates && canEditFreeTrial && (
+                    <div className="p-4 bg-bg-tertiary/60 border border-amber-500/30 rounded-xl space-y-3">
+                      <p className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-accent-blue" />
+                        Adjust Free Trial Date Window
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-text-muted uppercase">Start Date</label>
+                          <input 
+                            type="date"
+                            value={trialDatesForm.start_date}
+                            onChange={e => setTrialDatesForm({ ...trialDatesForm, start_date: e.target.value })}
+                            className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-text-muted uppercase">End Date</label>
+                          <input 
+                            type="date"
+                            value={trialDatesForm.end_date}
+                            onChange={e => setTrialDatesForm({ ...trialDatesForm, end_date: e.target.value })}
+                            className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingTrialDates(false)}
+                          className="px-3 py-1.5 bg-bg-secondary border border-border-primary text-text-secondary rounded-lg text-xs font-bold cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveTrialDates}
+                          disabled={isUpdatingTrial}
+                          className="px-4 py-1.5 bg-accent-blue text-white rounded-lg text-xs font-bold hover:bg-accent-blue/90 disabled:opacity-50 cursor-pointer"
+                        >
+                          Save Dates
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-bg-tertiary/40 rounded-xl border border-dashed border-border-primary">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-text-muted">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-text-primary">Standard Enrollment</p>
+                      <p className="text-xs text-text-muted">This candidate is currently not enrolled in a 15-day Free Trial.</p>
+                    </div>
+                  </div>
+                  {canEditFreeTrial && (
+                    <button
+                      type="button"
+                      onClick={handleEnableFreeTrial}
+                      disabled={isUpdatingTrial}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Enable 15-Day Free Trial
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
 
           {/* Personal Info */}
           <section className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden shadow-sm">

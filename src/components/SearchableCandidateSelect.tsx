@@ -3,6 +3,7 @@ import { Search, ChevronDown, Check, X, User, Briefcase, Mail } from 'lucide-rea
 import { motion, AnimatePresence } from 'motion/react';
 import { Candidate } from '../types';
 import { cn } from '../lib/utils';
+import { FreeTrialBadge } from './FreeTrialBadge';
 
 interface SearchableCandidateSelectProps {
   candidates: Candidate[];
@@ -178,9 +179,18 @@ export const SearchableCandidateSelect: React.FC<SearchableCandidateSelectProps>
 
           {selectedCandidate ? (
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-text-primary truncate">
-                {selectedCandidate.full_name}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-text-primary truncate">
+                  {selectedCandidate.full_name}
+                </p>
+                {selectedCandidate.is_free_trial && (
+                  <FreeTrialBadge 
+                    size="sm" 
+                    startDate={selectedCandidate.free_trial_start_date}
+                    endDate={selectedCandidate.free_trial_end_date}
+                  />
+                )}
+              </div>
               {(selectedCandidate.email || selectedCandidate.domain_interested || selectedCandidate.job_interest) && (
                 <p className="text-xs text-text-muted truncate">
                   {selectedCandidate.email || selectedCandidate.domain_interested || selectedCandidate.job_interest}
@@ -296,6 +306,13 @@ export const SearchableCandidateSelect: React.FC<SearchableCandidateSelectProps>
                           <span className="text-sm font-bold text-text-primary truncate">
                             {candidate.full_name}
                           </span>
+                          {candidate.is_free_trial && (
+                            <FreeTrialBadge 
+                              size="sm" 
+                              startDate={candidate.free_trial_start_date}
+                              endDate={candidate.free_trial_end_date}
+                            />
+                          )}
                           {candidate.current_stage && (
                             <span className="text-[10px] px-1.5 py-0.5 bg-bg-tertiary text-text-muted rounded-md uppercase font-bold tracking-wider shrink-0">
                               {candidate.current_stage.replace(/_/g, ' ')}

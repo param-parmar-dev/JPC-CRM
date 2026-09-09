@@ -8,6 +8,7 @@ import {
   logActivity 
 } from '../services/storage';
 import { Candidate, Application, TargetReductionRequest, User, InterviewSupportRequest } from '../types';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -1067,10 +1068,17 @@ export const TargetDashboard: React.FC = () => {
                           {candidate.full_name}
                           <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </a>
-                        <div className="flex items-center gap-1.5 mt-1">
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-bg-tertiary text-text-secondary border border-border-primary">
                             {candidate.current_stage.replace('_', ' ')}
                           </span>
+                          {candidate.is_free_trial && (
+                            <FreeTrialBadge 
+                              startDate={candidate.free_trial_start_date}
+                              endDate={candidate.free_trial_end_date}
+                              size="sm"
+                            />
+                          )}
                         </div>
                       </div>
                     </div>

@@ -9,6 +9,7 @@ import { FollowUp, Candidate, Stage } from '../types';
 import { useDebounce } from '../lib/hooks';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
 export const FollowUps: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -178,7 +179,16 @@ export const FollowUps: React.FC = () => {
                     onClick={() => window.location.hash = `#candidate?id=${candidate?.id}`}
                     className="cursor-pointer"
                   >
-                    <h3 className="font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">{candidate?.full_name || 'Unknown Candidate'}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">{candidate?.full_name || 'Unknown Candidate'}</h3>
+                      {candidate?.is_free_trial && (
+                        <FreeTrialBadge 
+                          startDate={candidate.free_trial_start_date}
+                          endDate={candidate.free_trial_end_date}
+                          size="sm"
+                        />
+                      )}
+                    </div>
                     <p className="text-xs text-text-muted mt-1 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STAGES[f.stage as Stage]?.color }} />
                       {STAGES[f.stage as Stage]?.label}

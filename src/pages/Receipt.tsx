@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getCandidateById, getUserById, subscribeToCollection } from '../services/storage';
 import { Payment, Candidate, User } from '../types';
 import { Printer, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -134,7 +135,16 @@ export const Receipt: React.FC = () => {
             <div className="space-y-6">
               <div>
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Candidate Details</p>
-                <p className="text-lg font-bold text-slate-900">{candidate.full_name}</p>
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <p className="text-lg font-bold text-slate-900">{candidate.full_name}</p>
+                  {candidate.is_free_trial && (
+                    <FreeTrialBadge 
+                      size="sm" 
+                      startDate={candidate.free_trial_start_date} 
+                      endDate={candidate.free_trial_end_date} 
+                    />
+                  )}
+                </div>
                 <p className="text-slate-600">{candidate.phone}</p>
                 <p className="text-slate-600">{candidate.email || '—'}</p>
               </div>

@@ -126,6 +126,11 @@ export interface Candidate {
   remarks?: string;
   resume_phrases?: string;
   marketing_entity?: ('sivium' | 'recruiter')[];
+  is_free_trial?: boolean;
+  free_trial_start_date?: string | null;
+  free_trial_end_date?: string | null;
+  free_trial_managed_by?: string | number | null;
+  free_trial_updated_at?: string | null;
 }
 
 export interface ResumeVersion {

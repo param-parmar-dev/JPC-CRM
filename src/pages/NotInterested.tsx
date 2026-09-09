@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Candidate, Stage, User } from '../types';
 import { canUserAccessCandidate } from '../lib/permissions';
+import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
 export const NotInterested: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -123,7 +124,16 @@ export const NotInterested: React.FC = () => {
 
                 <div className="flex-1 space-y-4">
                   <div>
-                    <h3 className="font-bold text-text-primary group-hover:text-accent-blue transition-colors">{candidate.full_name}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-text-primary group-hover:text-accent-blue transition-colors">{candidate.full_name}</h3>
+                      {candidate.is_free_trial && (
+                        <FreeTrialBadge 
+                          size="sm" 
+                          startDate={candidate.free_trial_start_date} 
+                          endDate={candidate.free_trial_end_date} 
+                        />
+                      )}
+                    </div>
                     <p className="text-[10px] font-mono text-text-muted mt-0.5">{candidate.id}</p>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-xs text-text-secondary flex items-center gap-1">
