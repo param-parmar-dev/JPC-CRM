@@ -35,6 +35,7 @@ import {
   FileCheck,
   Building,
   Briefcase
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
