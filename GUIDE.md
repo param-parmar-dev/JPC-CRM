@@ -9,20 +9,19 @@ Welcome to Placify. This document provides a comprehensive guide on how roles an
 The CRM uses a Role-Based Access Control (RBAC) system. Each user is assigned a specific role that determines what they can see and do.
 
 ### Core Management Roles
-*   **Administrator (`administrator`)**: Full system access. Can manage users, view all candidate data, monitor all dashboards, and override any stage.
-*   **Manager (`manager`)**: High-level access similar to Admin. Focused on team performance and overall pipeline monitoring.
-*   **System Admin (`sysadmin`)**: Technical role focused on system flags (e.g., 2-step verification, email creation) and technical configurations.
+*   **Administrator (`administrator`, `jpc_sysadmin`)**: Full system access. Can manage users, view all candidate data, monitor all dashboards, override any pipeline stage, and manage 15-day Free Trials.
+*   **Manager (`jpc_manager`, `manager`)**: High-level operational access. Focused on team performance, pipeline monitoring, and authorized to enable, disable, and manage candidate 15-day Free Trials.
+*   **System Admin (`jpc_sysadmin`)**: Technical oversight role focused on system configurations, flags, email creation, and 2-step verification.
 
 ### Operational Roles
 *   **Lead Generation (`jpc_lead_gen`)**: Responsible for adding new leads to the system. They can only see the leads they have generated.
-*   **Sales (`jpc_sales`)**: Handles the initial conversion of leads. Assigned by Lead Gen.
-*   **Customer Service (`jpc_cs`)**: The "hub" of the onboarding process. Handles QC calls, agreements, payment tracking, and assigning recruiters. Has full authority to move candidates between any stage of the pipeline.
-*   **Recruiter (`jpc_recruiter`)**: Manages the day-to-day job applications for assigned candidates. They track targets and request resume updates.
-*   **Resume Team (`jpc_resume`)**: Specialized role for modifying and uploading resumes based on recruiter requests.
-*   **Marketing Team (`jpc_marketing`)**: Handles LinkedIn optimization and approves resume change requests (as Team Leaders).
+*   **Sales (`jpc_sales`)**: Handles lead conversion, candidate packages, and is authorized to enable, disable, and manage candidate 15-day Free Trials.
+*   **Customer Service / Compliance Team Head (`jpc_cs`, `jpc_compliance_person`)**: The compliance and onboarding hub. Handles QC calls, agreements, payment tracking, recruiter assignments, stage movement, and is authorized to enable, disable, and manage candidate 15-day Free Trials.
+*   **Recruiter (`jpc_recruiter`)**: Manages day-to-day job applications for assigned candidates. Tracks daily targets and submits resume update/RTR requests.
+*   **Resume Team (`jpc_resume`)**: Specialized role for modifying resumes, fulfilling RTR requests, and handling resume understanding analysis.
+*   **Marketing Team (`jpc_marketing`)**: Handles LinkedIn optimization, approves resume change requests (as Team Leaders), and manages recruiter clusters.
 *   **Marketing Support (`jpc_marketing_support`)**: Assists the marketing team in daily operations.
-*   **Proxy Team (`jpc_proxy`)**: Provides interview support, handles scheduling, and records interview feedback.
-*   **System Admin (`jpc_sysadmin`)**: Technical role focused on system flags, email creation, and 2-step verification configurations.
+*   **Proxy Team (`jpc_proxy`)**: Provides interview support, manages scheduling availability, and submits structured technical evaluations.
 
 ### Candidate Role
 *   **Candidate (`candidate`)**: The individual being placed. They have access to their own "Candidate Portal" to view their progress, payments, and interview schedule.
@@ -39,11 +38,15 @@ The CRM uses a Role-Based Access Control (RBAC) system. Each user is assigned a 
 | **View All Candidates** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **View Assigned Candidates** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Edit Package/Payments** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **15-Day Free Trial (Manage)** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | **QC Checklist** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **App Tracker (Write)** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **App Tracker (Delete)** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **XLSX Reporting** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Resume Log Book** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| **RTR Log Book** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| **Resume Prep Log** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| **Domain Resume Repository** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | **Interview Support (Create)**| ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Interview Support (Manage)**| ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | **Move to Stage (Full access)**| ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -66,24 +69,24 @@ To ensure high performance with thousands of records, the Candidate list uses **
 ### 3.3 Duplicate Prevention (App Tracker)
 The system automatically hashes job links to prevent recruiters from submitting the same job twice for a candidate. This preserves the integrity of the application pipeline.
 
-### 3.3 Bulk Link Import
+### 3.4 Bulk Link Import
 Recruiters can import multiple job links simultaneously. The system validates each URL and checks for duplicates against the candidate's history before saving.
 
-### 3.4 Target Management & Auto-Reporting
+### 3.5 Target Management & Auto-Reporting
 *   **Daily Targets**: Recruiters have a baseline target (e.g., 40 apps).
 *   **Target Reduction**: Recruiters can request a "Target Reduction" if they have valid reasons (e.g., specific technology stack has low volume). This can be approved by CS, Admin, or Marketing Team Leaders.
 *   **Crystalline Alerts**: At 5:00 PM EST daily, the system evaluates targets. Sub-par performance without an approved reduction triggers a "Crystalline Twinkle" alert to management.
 
-### 3.5 Resume Lifecycle
+### 3.6 Resume Lifecycle
 1.  **Request**: Submitted by recruiter in Resume Log Book.
 2.  **Marketing Approval**: Filtered by Team Leaders (Marketing) to ensure branding standards.
 3.  **CS Forwarding**: Reviewed by CS for candidate payment/agreement compliance.
 4.  **Team Fulfillment**: Resume team uploads final version and marks as completed. When completed, the candidate's master record is automatically updated.
 
-### 3.6 Interview Support System (Deep Dive)
+### 3.7 Interview Support System (Deep Dive)
 The Interview Support System is a highly secure, sophisticated module designed to manage the entire interview lifecycle from request to final decision.
 
-#### 3.6.1 Request Lifecycle & Strict Validation
+#### 3.7.1 Request Lifecycle & Strict Validation
 1.  **Creation**: A Recruiter creates an "Interview Support Request" for a candidate. They must specify the Company, Role, and can attach a **Job Description (JD)** and **Application Link**.
 2.  **Proxy Safeguard & Link Generation**:
     *   **Mandatory Assignment**: Before generating a booking link for any **Proxy Facilitated (Default)** round, a proxy assignment is strictly required. The user interface enforces this validation, blocking link generation and returning a clear notification: *"Please assign a Proxy Team member before generating a booking link."* if no proxy is selected.
@@ -110,7 +113,7 @@ The Interview Support System is a highly secure, sophisticated module designed t
         *   **System Admin (`jpc_sysadmin`)**: Full visibility for complete system and operational oversight.
         *   **Proxy (`jpc_proxy`)**: Restricted access — they can *only* view technical feedback for the specific interview rounds they were assigned to support.
 
-#### 3.6.2 Key Interaction Tools & Calendar Overhauls
+#### 3.7.2 Key Interaction Tools & Calendar Overhauls
 *   **Proxy Central Calendar (Manual Blockings & Series)**:
     *   **Work Hours Locking**: Displays and operates strictly within the allowed range of **9:30 AM to 6:30 PM EST** in 30-minute intervals. Invalid hours outside of this range are completely hidden.
     *   **Manual Blocks & Buffer Breaks**: Proxy members can click the "+" button in any day column to block off personal time as `'unavailable'`, `'break'`, or `'leave'` using an advanced configuration panel.
@@ -123,7 +126,7 @@ The Interview Support System is a highly secure, sophisticated module designed t
     *   `proxy_assigned`: Waiting for candidate to book.
     *   `next_round`: Previous round cleared, waiting for new round details.
 
-#### 3.6.3 Step-by-Step Candidate Interview Process Flow
+#### 3.7.3 Step-by-Step Candidate Interview Process Flow
 Placify organizes and automates every phase of the client interview workflow to ensure zero administrative delays, full proxy alignment, and absolute scheduling accuracy. Below is the step-by-step operational process:
 
 1.  **Request Initiation (Recruiter)**:
@@ -159,7 +162,7 @@ Placify organizes and automates every phase of the client interview workflow to 
 
 ---
 
-### 3.7 Feature Blast Alert System
+### 3.8 Feature Blast Alert System
 This is a critical communication tool allowing Administrators to broadcast updates across the entire platform.
 
 *   **Triggering an Alert**: Only users with the `administrator` role see the "New Feature" button on the Feature Alerts page.
@@ -170,7 +173,7 @@ This is a critical communication tool allowing Administrators to broadcast updat
     *   **Sticky Mode**: New alerts appear at the top of the user's main dashboard in a high-visibility blue container until the user clicks "X" to dismiss.
 *   **Historical Log**: All past alerts are stored in the "Feature Alerts" section for users to refer back to.
 
-### 3.8 Marketing Load Distribution & Cluster Management
+### 3.9 Marketing Load Distribution & Cluster Management
 To ensure a balanced workload and efficient candidate mapping across operational teams, the Team management interface provides a dynamic **Marketing Load Distribution & Cluster Management** workbook dashboard module under the Team page tabs.
 
 *   **Dual View Mode Layout**:
@@ -184,6 +187,40 @@ To ensure a balanced workload and efficient candidate mapping across operational
 *   **Independent Mappings**: A separate module automatically lists "Independent Recruiters" who function autonomously or do not have a designated Team Leader, preventing unassigned resources from being overlooked.
 *   **Profile Reassignment Trigger**: Administrators and Managers can click the inline **Reassign** action from any profile visualization to trigger an intuitive pop-up wizard to safely shift candidates or rebalance loads in a single transaction.
 *   **Proactive Action Warnings**: If unmapped active profiles are detected in the Firestore database, the dashboard alerts administrators with an intuitive warning bar and provides a direct shortcut link to target, status-filter, and distribute those pending candidates.
+
+### 3.10 15-Day Free Trial Management & Platform-Wide Badging
+Placify includes a dedicated 15-Day Free Trial workflow allowing prospective candidates to evaluate placement and interview support services.
+
+*   **Role-Based Access Control (Strict RBAC)**:
+    Only four operational role groups possess authority to enable, disable, and manage candidate Free Trials:
+    *   **Administrator & System Admin** (`administrator`, `jpc_sysadmin`)
+    *   **Manager** (`jpc_manager`, `manager`)
+    *   **Sales** (`jpc_sales`)
+    *   **Customer Service / Compliance Team Head** (`jpc_cs`, `jpc_compliance_person`)
+    *   *Read-Only Restriction*: All other team roles (Recruiters, Lead Gen, Resume, Marketing, Proxy) view candidate Free Trial statuses in read-only mode without edit or toggle capabilities.
+*   **Candidate Profile Control Panel (`CandidateDetail`)**:
+    *   **One-Click Activation**: Enabling sets `is_free_trial: true`, anchors the start date to the current date, and automatically projects an exact 15-day expiration window (`free_trial_start_date` and `free_trial_end_date`).
+    *   **Live Countdown Engine**: Automatically calculates remaining trial days dynamically (e.g., `14 Days Left`, `Expired Today`) with visual countdown indicators.
+    *   **Custom Date Window Overrides**: Authorized roles can adjust the Start Date and End Date boundaries whenever extensions or custom arrangements are approved.
+    *   **Early Termination Guard**: Authorized staff can end active trials early with confirmation prompt.
+    *   **Full Activity Audit Trail**: Every status change (`Enabled 15-day Free Trial`, `Disabled Free Trial`, `Updated Free Trial Dates`) is recorded with user attribution in `jpc_activity_logs`.
+*   **Omnipresent "Free Trial" Badging**:
+    Active Free Trial candidates are visually highlighted everywhere their profile appears across the CRM:
+    *   **Candidates Directory**: Distinct badge adjacent to candidate name in table rows.
+    *   **Pipeline (Kanban)**: High-visibility badge on pipeline cards across all recruitment stages.
+    *   **Candidate Portal**: Personalized welcome banner indicating active trial status to the candidate.
+    *   **Candidate Sheet Slideover**: Header badge in quick-access candidate dossier.
+    *   **Interview Support System**: Rendered on interview request cards and inside the Interview Details dossier modal.
+    *   **Searchable Candidate Select**: Displayed directly in both the selector trigger and dropdown option items.
+    *   **Application & Target Trackers**: Highlighted across App Tracker, Target Dashboard, and Follow-Ups.
+    *   **Operational Log Books**: Displayed on candidate entries in RTR Log Book, Resume Log Book, Resume Prep Log, and Domain Resume Repository.
+    *   **Archive & Billing**: Shown in Not Interested, Not Eligible, and Candidate Receipt/Invoice records.
+    *   **Automatic Expiration Transition**: When the 15-day window ends, the badge smoothly transitions to a distinct "Trial Expired" indicator.
+
+### 3.11 Specialized Log Books & Repository Architecture
+*   **RTR Log Book (`RTRLogBook`)**: Tracks Right-to-Represent requests submitted by recruiters, reviewed by Team Leaders and CS, and fulfilled by the Resume Team with direct document upload and audit logging.
+*   **Resume Prep Log (`ResumePrepLog`)**: Manages specialized Resume Understanding analysis and targeted Interview Question preparation requests with dual-mode operational tabs and evaluator feedback workflows.
+*   **Domain Resume Repository (`DomainResumeRepository`)**: Centralized file library categorizing resumes across Technology Domains and Target Roles. Offers multi-view modes (Tree Hierarchy, Card Grid, Dense Table) and bulk ZIP archive downloading structured by `Domain → Role → Candidate`.
 
 ---
 
@@ -225,4 +262,4 @@ Placify is built on a modern, high-performance full-stack architecture designed 
 
 ---
 
-*Last Updated: July 13, 2026*
+*Last Updated: September 10, 2026*
