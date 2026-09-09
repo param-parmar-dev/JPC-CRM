@@ -16,6 +16,7 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { clearPreviousCalendarEvents } from './calendarService';
+import { isSalesWorkingHours } from '../lib/utils';
 import { db, auth } from '../firebase';
 import { 
   Candidate, 
@@ -269,6 +270,23 @@ export const autoAssignFaizToCandidates = async () => {
 export const saveCandidate = async (candidate: Candidate, userId: string | null) => {
   try {
     let finalCandidate = { ...candidate };
+
+    // Prevent Lead Generation from overriding or modifying assigned_sales
+    const currentUid = userId || auth.currentUser?.uid;
+    if (currentUid) {
+      try {
+        const userDoc = await getDoc(doc(db, 'jpc_users', String(currentUid)));
+        if (userDoc.exists() && userDoc.data().role === 'jpc_lead_gen') {
+          const existingDoc = await getDoc(doc(db, 'jpc_candidates', finalCandidate.id));
+          if (existingDoc.exists()) {
+            finalCandidate.assigned_sales = existingDoc.data().assigned_sales ?? null;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('Could not verify user role in saveCandidate:', checkErr);
+      }
+    }
+
     if (
       (finalCandidate.current_stage === 'marketing_active' || finalCandidate.current_stage === 'interviewing') &&
       !finalCandidate.assigned_cs
@@ -288,6 +306,20 @@ export const saveCandidate = async (candidate: Candidate, userId: string | null)
 export const updateCandidate = async (id: string, updates: Partial<Candidate>) => {
   try {
     let finalUpdates = { ...updates };
+
+    // Prevent Lead Generation from altering assigned_sales
+    if (auth.currentUser?.uid) {
+      try {
+        const userDoc = await getDoc(doc(db, 'jpc_users', auth.currentUser.uid));
+        if (userDoc.exists() && userDoc.data().role === 'jpc_lead_gen') {
+          delete (finalUpdates as any).assigned_sales;
+          delete (finalUpdates as any).sales_person_id;
+        }
+      } catch (checkErr) {
+        console.warn('Could not verify user role in updateCandidate:', checkErr);
+      }
+    }
+
     let currentStage = updates.current_stage;
     let assignedCs = updates.assigned_cs;
     
@@ -850,40 +882,42 @@ export const updateLeadRoundRobinConfig = async (updates: Partial<LeadRoundRobin
 };
 
 export const getEligibleSalesUsers = (allUsers: User[], config?: LeadRoundRobinConfig): User[] => {
+  // 1. Working hours validation (Monday - Friday, 9:30 AM - 6:30 PM America/New_York)
+  if (!isSalesWorkingHours()) {
+    return [];
+  }
+
   const allSales = allUsers.filter(u => u.role === 'jpc_sales' && !u.deleted_at);
   if (allSales.length === 0) return [];
 
-  // Exclude users on leave
-  let activeSales = allSales.filter(u => !u.is_on_leave);
-  // If everyone is on leave, fall back to all sales users
-  if (activeSales.length === 0) activeSales = allSales;
+  // 2. Strict Active check: Sales Person MUST have clicked Active, and NOT be on leave
+  const activeSales = allSales.filter(u => !u.is_on_leave && u.sales_availability_status === 'Active');
+  if (activeSales.length === 0) return [];
 
-  // Exclude manually excluded user IDs if specified in settings
+  // 3. Exclude manually excluded user IDs if specified in settings
   const excludedIds = (config?.excluded_user_ids || []).map(id => String(id));
-  if (excludedIds.length > 0) {
-    const filtered = activeSales.filter(u => !excludedIds.includes(String(u.id)));
-    if (filtered.length > 0) {
-      activeSales = filtered;
-    }
-  }
+  const filtered = excludedIds.length > 0
+    ? activeSales.filter(u => !excludedIds.includes(String(u.id)))
+    : activeSales;
 
-  // Handle custom order if configured
+  if (filtered.length === 0) return [];
+
+  // 4. Handle custom order if configured
   const customOrder = (config?.custom_order_user_ids || []).map(id => String(id));
   if (customOrder.length > 0) {
     const ordered: User[] = [];
     customOrder.forEach(id => {
-      const found = activeSales.find(u => String(u.id) === id);
+      const found = filtered.find(u => String(u.id) === id);
       if (found) ordered.push(found);
     });
-    // Add any remaining sales reps not listed in custom order sorted by display name
-    const remaining = activeSales
+    const remaining = filtered
       .filter(u => !customOrder.includes(String(u.id)))
       .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
     return [...ordered, ...remaining];
   }
 
   // Default deterministic ordering: alphabetical by display_name
-  return [...activeSales].sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
+  return [...filtered].sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
 };
 
 export const getNextSalespersonPreview = async (): Promise<{
@@ -926,36 +960,64 @@ export const advanceLeadRoundRobin = async (
   candidateId: string,
   candidateName: string,
   overrideUserId?: string | number | null
-): Promise<{ assignedUser: User; assignedUserId: string | number; index: number }> => {
+): Promise<{ assignedUser: User | null; assignedUserId: string | number | null; index: number; isUnassigned?: boolean }> => {
+  // 1. Single source of truth: unified backend round-robin assignment engine
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch('/api/leads/round-robin/assign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          candidateId,
+          candidateName,
+          overrideUserId
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          assignedUser: data.assignedUser || null,
+          assignedUserId: data.assignedUserId || null,
+          index: 0,
+          isUnassigned: data.isUnassigned
+        };
+      }
+    }
+  } catch (apiErr) {
+    console.warn('Backend assignment engine call failed, using client-side Firestore fallback:', apiErr);
+  }
+
+  // 2. Client-side Firestore transaction fallback
   try {
     const docRef = doc(db, 'jpc_settings', 'lead_round_robin');
     const users = await getUsers();
-    
-    // We execute the assignment logic
     const docSnap = await getDoc(docRef);
     const config: LeadRoundRobinConfig = docSnap.exists()
       ? ({ ...DEFAULT_ROUND_ROBIN_CONFIG, ...docSnap.data() } as LeadRoundRobinConfig)
       : DEFAULT_ROUND_ROBIN_CONFIG;
 
     const eligible = getEligibleSalesUsers(users, config);
-    if (eligible.length === 0) {
-      // Fallback: any user or self
-      const fallbackUser = users.find(u => u.role === 'jpc_sales') || users[0];
-      const fallbackId = fallbackUser ? fallbackUser.id : (overrideUserId || 'unassigned');
-      return { assignedUser: fallbackUser, assignedUserId: fallbackId, index: 0 };
+
+    // If no eligible sales person is active and within working hours -> UNASSIGNED!
+    if (eligible.length === 0 && !overrideUserId) {
+      return { assignedUser: null, assignedUserId: null, index: 0, isUnassigned: true };
     }
 
-    let assignedUser: User;
-    let nextIndex: number;
+    let assignedUser: User | null = null;
+    let nextIndex: number = 0;
 
     if (overrideUserId) {
-      // If the user manually chose someone else, respect their choice
       const matched = users.find(u => String(u.id) === String(overrideUserId));
-      assignedUser = matched || eligible[0];
-      const idxInEligible = eligible.findIndex(u => String(u.id) === String(assignedUser.id));
-      nextIndex = idxInEligible !== -1 ? idxInEligible : config.last_assigned_index;
+      assignedUser = matched || null;
+      const idxInEligible = eligible.findIndex(u => String(u.id) === String(overrideUserId));
+      nextIndex = idxInEligible !== -1 ? idxInEligible : (config.last_assigned_index ?? 0);
     } else {
-      // Continuous Round-Robin Rotation
       if (config.last_assigned_user_id) {
         const lastUserIdx = eligible.findIndex(u => String(u.id) === String(config.last_assigned_user_id));
         if (lastUserIdx !== -1) {
@@ -967,6 +1029,10 @@ export const advanceLeadRoundRobin = async (
         nextIndex = 0;
       }
       assignedUser = eligible[nextIndex];
+    }
+
+    if (!assignedUser) {
+      return { assignedUser: null, assignedUserId: null, index: 0, isUnassigned: true };
     }
 
     const newAssignment: LeadRoundRobinAssignment = {
@@ -990,89 +1056,98 @@ export const advanceLeadRoundRobin = async (
 
     await setDoc(docRef, { ...config, ...updatedConfig }, { merge: true });
 
-    return { assignedUser, assignedUserId: assignedUser.id, index: nextIndex };
+    return { assignedUser, assignedUserId: assignedUser.id, index: nextIndex, isUnassigned: false };
   } catch (error) {
-    console.error('Error advancing lead round robin:', error);
-    // Safe fallback
-    const users = await getUsers();
-    const fallback = users.find(u => u.role === 'jpc_sales') || users[0];
-    return { assignedUser: fallback, assignedUserId: fallback?.id || '1', index: 0 };
+    console.error('Error in client fallback advanceLeadRoundRobin:', error);
+    return { assignedUser: null, assignedUserId: null, index: 0, isUnassigned: true };
   }
 };
 
 export const batchAdvanceLeadRoundRobin = async (
   candidates: { id: string; name: string }[]
-): Promise<Map<string, User>> => {
-  const result = new Map<string, User>();
+): Promise<Map<string, User | null>> => {
+  const result = new Map<string, User | null>();
   if (candidates.length === 0) return result;
 
-  try {
-    const docRef = doc(db, 'jpc_settings', 'lead_round_robin');
-    const users = await getUsers();
-    const docSnap = await getDoc(docRef);
-    const config: LeadRoundRobinConfig = docSnap.exists()
-      ? ({ ...DEFAULT_ROUND_ROBIN_CONFIG, ...docSnap.data() } as LeadRoundRobinConfig)
-      : DEFAULT_ROUND_ROBIN_CONFIG;
-
-    const eligible = getEligibleSalesUsers(users, config);
-    if (eligible.length === 0) {
-      const fallback = users.find(u => u.role === 'jpc_sales') || users[0];
-      candidates.forEach(c => result.set(c.id, fallback));
-      return result;
+  for (const cand of candidates) {
+    try {
+      const res = await advanceLeadRoundRobin(cand.id, cand.name);
+      result.set(cand.id, res.assignedUser);
+    } catch (err) {
+      console.error(`Error assigning candidate ${cand.id}:`, err);
+      result.set(cand.id, null);
     }
+  }
 
-    let currentIndex = 0;
-    if (config.last_assigned_user_id) {
-      const lastUserIdx = eligible.findIndex(u => String(u.id) === String(config.last_assigned_user_id));
-      if (lastUserIdx !== -1) {
-        currentIndex = (lastUserIdx + 1) % eligible.length;
-      } else {
-        currentIndex = ((config.last_assigned_index ?? -1) + 1) % eligible.length;
+  return result;
+};
+
+/**
+ * Updates a Sales Person's availability status (Active / Deactive).
+ * If a rep becomes Active during working hours, backend will process unassigned lead backlog.
+ */
+export const updateSalesAvailability = async (
+  status: 'Active' | 'Deactive',
+  targetUserId?: string | number
+): Promise<{ success: boolean; status: string; processedUnassigned?: number }> => {
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch('/api/sales/availability', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ status, userId: targetUserId ? String(targetUserId) : undefined })
+      });
+      if (response.ok) {
+        return await response.json();
       }
     }
-
-    const newAssignments: LeadRoundRobinAssignment[] = [];
-
-    for (let i = 0; i < candidates.length; i++) {
-      const cand = candidates[i];
-      const assignedUser = eligible[currentIndex];
-      result.set(cand.id, assignedUser);
-
-      newAssignments.push({
-        candidate_id: cand.id,
-        candidate_name: cand.name,
-        assigned_to_user_id: assignedUser.id,
-        assigned_to_name: assignedUser.display_name,
-        assigned_at: new Date().toISOString()
-      });
-
-      currentIndex = (currentIndex + 1) % eligible.length;
-    }
-
-    // The last assigned index was the one assigned to the last candidate
-    const finalAssignedIndex = (currentIndex - 1 + eligible.length) % eligible.length;
-    const finalAssignedUser = eligible[finalAssignedIndex];
-
-    const recent = [...newAssignments.reverse(), ...(config.recent_assignments || [])].slice(0, 40);
-
-    const updatedConfig: Partial<LeadRoundRobinConfig> = {
-      id: 'lead_round_robin',
-      last_assigned_user_id: String(finalAssignedUser.id),
-      last_assigned_index: finalAssignedIndex,
-      last_assigned_at: new Date().toISOString(),
-      total_leads_assigned: (config.total_leads_assigned || 0) + candidates.length,
-      recent_assignments: recent
-    };
-
-    await setDoc(docRef, { ...config, ...updatedConfig }, { merge: true });
-    return result;
-  } catch (error) {
-    console.error('Error in batchAdvanceLeadRoundRobin:', error);
-    const users = await getUsers();
-    const fallback = users.find(u => u.role === 'jpc_sales') || users[0];
-    candidates.forEach(c => result.set(c.id, fallback));
-    return result;
+  } catch (e) {
+    console.warn('API call failed for updateSalesAvailability, falling back to direct Firestore:', e);
   }
+
+  // Client Firestore Fallback
+  const uid = targetUserId ? String(targetUserId) : auth.currentUser?.uid;
+  if (uid) {
+    const nowIso = new Date().toISOString();
+    await setDoc(doc(db, 'jpc_users', uid), {
+      sales_availability_status: status,
+      sales_activated_at: status === 'Active' ? nowIso : null,
+      sales_deactivated_at: status === 'Deactive' ? nowIso : null,
+      updated_at: nowIso
+    }, { merge: true });
+  }
+
+  return { success: true, status };
+};
+
+/**
+ * Triggers backend processing of unassigned leads.
+ */
+export const processUnassignedLeadsBacklog = async (): Promise<{ success: boolean; processed?: number }> => {
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch('/api/leads/assign-unassigned', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    }
+  } catch (e) {
+    console.error('Failed to trigger backlog processing:', e);
+  }
+  return { success: false, processed: 0 };
 };
 
 // Utils

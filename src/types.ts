@@ -37,6 +37,9 @@ export interface User {
   google_refresh_token?: string | null;
   google_calendar_status?: 'connected' | 'attention_required' | 'disconnected' | null;
   auto_booking_enabled?: boolean;
+  sales_availability_status?: 'Active' | 'Deactive';
+  sales_activated_at?: string | null;
+  sales_deactivated_at?: string | null;
 }
 
 export type Stage = 

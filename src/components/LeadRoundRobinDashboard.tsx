@@ -5,7 +5,8 @@ import {
   subscribeToLeadRoundRobin, 
   updateLeadRoundRobinConfig, 
   getEligibleSalesUsers,
-  subscribeToCollection 
+  subscribeToCollection,
+  updateSalesAvailability
 } from '../services/storage';
 import { useToast } from '../contexts/ToastContext';
 import { 
@@ -116,6 +117,21 @@ export const LeadRoundRobinDashboard: React.FC<LeadRoundRobinDashboardProps> = (
     } catch (err) {
       console.error('Error toggling user exclusion:', err);
       showToast('Failed to update rotation settings', 'error');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const toggleSalesAvailability = async (userId: string | number, currentStatus?: string) => {
+    if (!isAdminOrManager) return;
+    setIsUpdating(true);
+    try {
+      const next = currentStatus === 'Active' ? 'Deactive' : 'Active';
+      await updateSalesAvailability(next, userId);
+      showToast(`Sales rep status updated to ${next}`, 'success');
+    } catch (err) {
+      console.error('Error toggling availability:', err);
+      showToast('Failed to update sales availability', 'error');
     } finally {
       setIsUpdating(false);
     }
@@ -412,6 +428,7 @@ export const LeadRoundRobinDashboard: React.FC<LeadRoundRobinDashboardProps> = (
             <thead>
               <tr className="border-b border-border-primary bg-bg-tertiary/40">
                 <th className="py-3.5 px-6 font-bold text-text-secondary text-xs uppercase tracking-wider">Representative</th>
+                <th className="py-3.5 px-6 font-bold text-text-secondary text-xs uppercase tracking-wider">Availability</th>
                 <th className="py-3.5 px-6 font-bold text-text-secondary text-xs uppercase tracking-wider">Rotation Status</th>
                 <th className="py-3.5 px-6 font-bold text-text-secondary text-xs uppercase tracking-wider">Leave Status</th>
                 <th className="py-3.5 px-6 font-bold text-text-secondary text-xs uppercase tracking-wider">Leads Today</th>
@@ -469,6 +486,37 @@ export const LeadRoundRobinDashboard: React.FC<LeadRoundRobinDashboardProps> = (
                           </div>
                           <span className="text-xs text-text-muted">{rep.email || rep.username}</span>
                         </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-2">
+                        <span className={cn(
+                          "w-2.5 h-2.5 rounded-full transition-all",
+                          rep.sales_availability_status === 'Active'
+                            ? "bg-accent-green shadow-[0_0_6px_rgba(34,197,94,0.6)] animate-pulse"
+                            : "bg-slate-400"
+                        )} />
+                        <span className={cn(
+                          "font-bold text-xs",
+                          rep.sales_availability_status === 'Active' ? "text-accent-green" : "text-text-muted"
+                        )}>
+                          {rep.sales_availability_status === 'Active' ? 'Active' : 'Deactive'}
+                        </span>
+                        {isAdminOrManager && (
+                          <button
+                            type="button"
+                            onClick={() => toggleSalesAvailability(rep.id, rep.sales_availability_status)}
+                            disabled={isUpdating}
+                            className={cn(
+                              "text-[10px] font-bold px-2 py-0.5 rounded border transition-colors ml-1 cursor-pointer",
+                              rep.sales_availability_status === 'Active'
+                                ? "bg-accent-red/10 text-accent-red border-accent-red/30 hover:bg-accent-red/20"
+                                : "bg-accent-green/10 text-accent-green border-accent-green/30 hover:bg-accent-green/20"
+                            )}
+                          >
+                            {rep.sales_availability_status === 'Active' ? 'Deactivate' : 'Activate'}
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="py-4 px-6">{statusBadge}</td>

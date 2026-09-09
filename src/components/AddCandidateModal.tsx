@@ -248,11 +248,11 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
       updated_at: new Date().toISOString()
     };
 
-    saveCandidate(newCandidate, user?.id ? String(user.id) : null);
-    seedQCChecklist(id);
+    await saveCandidate(newCandidate, user?.id ? String(user.id) : null);
+    await seedQCChecklist(id);
     const assignedLogText = assignedSalesDisplayName
       ? `Assigned to ${assignedSalesDisplayName} via Round-Robin rotation.`
-      : `Candidate ${formData.full_name} added to the system.`;
+      : `Candidate ${formData.full_name} created as Unassigned (no active sales rep available).`;
     logActivity(id, 'Candidate created', `Candidate ${formData.full_name} added to the system. ${assignedLogText}`, user?.id ? String(user.id) : null);
     
     if (finalAssignedSales) {

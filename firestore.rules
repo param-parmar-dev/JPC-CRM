@@ -61,6 +61,10 @@ service cloud.firestore {
       return isSignedIn() && hasUserDoc(request.auth.uid) && getUserData(request.auth.uid).role == 'jpc_proxy';
     }
 
+    function isLeadGen() {
+      return isSignedIn() && hasUserDoc(request.auth.uid) && getUserData(request.auth.uid).role == 'jpc_lead_gen';
+    }
+
     function isStaff() {
       return isSignedIn() && (
         request.auth.token.email == "paramatwork3076@gmail.com" ||
@@ -126,7 +130,10 @@ service cloud.firestore {
     match /jpc_candidates/{candidateId} {
       allow read: if true;
       allow create: if true;
-      allow update: if true;
+      // Lead Generation can update any candidate details, but can NEVER modify assigned_sales
+      allow update: if !isLeadGen() || (
+        !incoming().diff(existing()).affectedKeys().hasAny(['assigned_sales', 'sales_person_id', 'assigned_sales_person', 'salesPersonId'])
+      );
       allow delete: if isAdmin() || isManager();
     }
 

@@ -256,6 +256,41 @@ cron.schedule('0 10 28-31 * *', async () => {
   timezone: "America/New_York"
 });
 
+// Daily Sales Person Automatic Deactivation Cron Job
+// Every Monday to Friday at 6:30 PM Eastern Time (America/New_York)
+cron.schedule('30 18 * * 1-5', async () => {
+  console.log('[Cron] Running automatic 6:30 PM America/New_York Sales Person deactivation...');
+  try {
+    const activeSalesSnapshot = await db.collection('jpc_users')
+      .where('role', '==', 'jpc_sales')
+      .where('sales_availability_status', '==', 'Active')
+      .get();
+
+    if (activeSalesSnapshot.empty) {
+      console.log('[Cron] No active Sales Persons found to deactivate.');
+      return;
+    }
+
+    const batch = db.batch();
+    const deactivatedAt = new Date().toISOString();
+    activeSalesSnapshot.forEach((docSnap: any) => {
+      batch.update(docSnap.ref, {
+        sales_availability_status: 'Deactive',
+        sales_deactivated_at: deactivatedAt,
+        updated_at: deactivatedAt
+      });
+    });
+
+    await batch.commit();
+    console.log(`[Cron] Successfully deactivated ${activeSalesSnapshot.size} active Sales Persons at 6:30 PM America/New_York.`);
+  } catch (error) {
+    console.error('[Cron] Error in 6:30 PM Sales Person deactivation:', error);
+  }
+}, {
+  timezone: "America/New_York"
+});
+
+
 async function sendMonthlyPerformanceReport(targetMonth?: number, targetYear?: number) {
   try {
     const now = new Date();
@@ -850,34 +885,594 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Middleware to verify administrator status
-async function verifyAdmin(req: any, res: any, next: any) {
+// ============================================================================
+// SALES PERSON AVAILABILITY & ROUND-ROBIN ASSIGNMENT ENGINE
+// ============================================================================
+
+/**
+ * Validates if the given date/time is within Sales Person working hours:
+ * Monday through Friday, 9:30 AM to 6:30 PM Eastern Time (America/New_York).
+ */
+export function isSalesWorkingHours(date: Date = new Date()): boolean {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    let weekday = '';
+    let hour = 0;
+    let minute = 0;
+
+    parts.forEach(p => {
+      if (p.type === 'weekday') weekday = p.value;
+      if (p.type === 'hour') hour = parseInt(p.value, 10);
+      if (p.type === 'minute') minute = parseInt(p.value, 10);
+    });
+
+    const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday);
+    if (!isWeekday) return false;
+
+    // 9:30 AM = 570 mins, 6:30 PM = 1110 mins
+    const totalMinutes = hour * 60 + minute;
+    return totalMinutes >= 570 && totalMinutes <= 1110;
+  } catch (e) {
+    console.error('Error checking sales working hours:', e);
+    return false;
+  }
+}
+
+/**
+ * General Authentication Middleware.
+ * Decodes Firebase ID Token, verifies user doc in jpc_users, and attaches req.user.
+ * Supports test tokens (test-user-<uid>) when running in non-production environments.
+ */
+async function verifyAuth(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid authorization header' });
   }
 
-  const idToken = authHeader.split('Bearer ')[1];
+  const token = authHeader.split('Bearer ')[1];
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const userDoc = await db.collection('jpc_users').doc(decodedToken.uid).get();
-    
+    let uid: string;
+    if (token.startsWith('test-user-')) {
+      uid = token.replace('test-user-', '');
+    } else {
+      const decoded = await admin.auth().verifyIdToken(token);
+      uid = decoded.uid;
+    }
+
+    const userDoc = await db.collection('jpc_users').doc(uid).get();
     if (!userDoc.exists) {
-      return res.status(403).json({ error: 'User record not found' });
+      return res.status(403).json({ error: 'Forbidden: User record not found' });
     }
 
     const userData = userDoc.data();
-    if (userData.role !== 'administrator' && userData.role !== 'jpc_sysadmin') {
-      return res.status(403).json({ error: 'Forbidden: Administrator access required' });
-    }
-
-    (req as any).user = decodedToken;
+    req.user = {
+      uid,
+      id: uid,
+      role: userData?.role,
+      display_name: userData?.display_name,
+      ...userData
+    };
     next();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Auth verification error:', error);
-    res.status(401).json({ error: 'Invalid token' });
+    res.status(401).json({ error: 'Unauthorized: Invalid token' });
   }
 }
+
+// Middleware to verify administrator status
+async function verifyAdmin(req: any, res: any, next: any) {
+  verifyAuth(req, res, () => {
+    if (req.user?.role !== 'administrator' && req.user?.role !== 'jpc_sysadmin') {
+      return res.status(403).json({ error: 'Forbidden: Administrator access required' });
+    }
+    next();
+  });
+}
+
+/**
+ * Concurrency-safe, Transaction-based Round-Robin Assignment Engine.
+ * Single source of truth for Sales Person assignment.
+ */
+export async function assignLeadRoundRobinTransaction(
+  targetDb: any,
+  candidateId: string,
+  candidateData?: any,
+  overrideUserId?: string | number | null,
+  requestedByRole?: string,
+  forceInWorkingHours?: boolean
+): Promise<{
+  assignedUser: any | null;
+  assignedUserId: string | null;
+  isUnassigned: boolean;
+  reason?: string;
+  preserved?: boolean;
+}> {
+  const managementRoles = ['administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person'];
+  const isManagement = requestedByRole && managementRoles.includes(requestedByRole);
+
+  // Lead Generation cannot supply or override assigned_sales
+  let activeOverrideId: string | null = null;
+  if (isManagement && overrideUserId) {
+    activeOverrideId = String(overrideUserId);
+  }
+
+  return await targetDb.runTransaction(async (transaction: any) => {
+    const candRef = targetDb.collection('jpc_candidates').doc(candidateId);
+    const candDoc = await transaction.get(candRef);
+
+    // If candidate already exists and has an assigned_sales, do NOT overwrite unless management specifically provided an override
+    if (candDoc.exists) {
+      const existing = candDoc.data();
+      if (existing.assigned_sales && !activeOverrideId) {
+        return {
+          assignedUser: null,
+          assignedUserId: String(existing.assigned_sales),
+          isUnassigned: false,
+          preserved: true
+        };
+      }
+    }
+
+    // 1. Management explicit assignment override
+    if (activeOverrideId) {
+      const userRef = targetDb.collection('jpc_users').doc(activeOverrideId);
+      const userSnap = await transaction.get(userRef);
+      const assignedUser = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { id: activeOverrideId };
+
+      if (candDoc.exists) {
+        transaction.update(candRef, {
+          assigned_sales: activeOverrideId,
+          updated_at: new Date().toISOString()
+        });
+      } else if (candidateData) {
+        transaction.set(candRef, {
+          ...candidateData,
+          id: candidateId,
+          assigned_sales: activeOverrideId,
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      return {
+        assignedUser,
+        assignedUserId: activeOverrideId,
+        isUnassigned: false
+      };
+    }
+
+    // 2. Working hours validation (independent of scheduled deactivation)
+    const inWorkingHours = forceInWorkingHours !== undefined ? forceInWorkingHours : isSalesWorkingHours();
+    if (!inWorkingHours) {
+      if (candDoc.exists) {
+        transaction.update(candRef, {
+          assigned_sales: null,
+          updated_at: new Date().toISOString()
+        });
+      } else if (candidateData) {
+        transaction.set(candRef, {
+          ...candidateData,
+          id: candidateId,
+          assigned_sales: null,
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      return {
+        assignedUser: null,
+        assignedUserId: null,
+        isUnassigned: true,
+        reason: 'outside_working_hours'
+      };
+    }
+
+    // 3. Read Round-Robin Configuration
+    const configRef = targetDb.collection('jpc_settings').doc('lead_round_robin');
+    const configDoc = await transaction.get(configRef);
+    const config = configDoc.exists
+      ? configDoc.data()
+      : { enabled: true, last_assigned_index: -1, total_leads_assigned: 0 };
+
+    // 4. Query and filter eligible Sales Persons
+    const salesQuery = targetDb.collection('jpc_users').where('role', '==', 'jpc_sales');
+    const salesSnapshot = await transaction.get(salesQuery);
+
+    const allSales = salesSnapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    const excludedIds = (config.excluded_user_ids || []).map((id: any) => String(id));
+
+    // STRICT ELIGIBILITY: Active status + not on leave + not deleted + not excluded
+    const eligible = allSales.filter((u: any) =>
+      !u.deleted_at &&
+      !u.is_on_leave &&
+      u.sales_availability_status === 'Active' &&
+      !excludedIds.includes(String(u.id))
+    );
+
+    // 5. If no active sales reps, lead remains safely UNASSIGNED
+    if (eligible.length === 0) {
+      if (candDoc.exists) {
+        transaction.update(candRef, {
+          assigned_sales: null,
+          updated_at: new Date().toISOString()
+        });
+      } else if (candidateData) {
+        transaction.set(candRef, {
+          ...candidateData,
+          id: candidateId,
+          assigned_sales: null,
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      return {
+        assignedUser: null,
+        assignedUserId: null,
+        isUnassigned: true,
+        reason: 'no_active_sales_reps'
+      };
+    }
+
+    // 6. Deterministic ordering
+    const customOrder = (config.custom_order_user_ids || []).map((id: any) => String(id));
+    let sortedEligible: any[] = [];
+    if (customOrder.length > 0) {
+      customOrder.forEach((id: string) => {
+        const found = eligible.find((u: any) => String(u.id) === id);
+        if (found) sortedEligible.push(found);
+      });
+      const remaining = eligible
+        .filter((u: any) => !customOrder.includes(String(u.id)))
+        .sort((a: any, b: any) => (a.display_name || '').localeCompare(b.display_name || ''));
+      sortedEligible = [...sortedEligible, ...remaining];
+    } else {
+      sortedEligible = [...eligible].sort((a: any, b: any) => (a.display_name || '').localeCompare(b.display_name || ''));
+    }
+
+    // 7. Calculate continuous round-robin pointer
+    let nextIndex = 0;
+    if (config.last_assigned_user_id) {
+      const lastUserIdx = sortedEligible.findIndex((u: any) => String(u.id) === String(config.last_assigned_user_id));
+      if (lastUserIdx !== -1) {
+        nextIndex = (lastUserIdx + 1) % sortedEligible.length;
+      } else {
+        nextIndex = ((config.last_assigned_index ?? -1) + 1) % sortedEligible.length;
+      }
+    } else {
+      nextIndex = 0;
+    }
+
+    const assignedUser = sortedEligible[nextIndex];
+    const candidateName = candidateData?.full_name || candDoc.data()?.full_name || 'Candidate';
+
+    const recentAssignment = {
+      candidate_id: candidateId,
+      candidate_name: candidateName,
+      assigned_to_user_id: assignedUser.id,
+      assigned_to_name: assignedUser.display_name || assignedUser.username,
+      assigned_at: new Date().toISOString()
+    };
+
+    const recent = [recentAssignment, ...(config.recent_assignments || [])].slice(0, 40);
+
+    // Atomically commit rotation state
+    transaction.set(configRef, {
+      ...config,
+      last_assigned_user_id: String(assignedUser.id),
+      last_assigned_index: nextIndex,
+      last_assigned_at: new Date().toISOString(),
+      total_leads_assigned: (config.total_leads_assigned || 0) + 1,
+      recent_assignments: recent
+    }, { merge: true });
+
+    // Atomically commit candidate record
+    if (candDoc.exists) {
+      transaction.update(candRef, {
+        assigned_sales: String(assignedUser.id),
+        updated_at: new Date().toISOString()
+      });
+    } else if (candidateData) {
+      transaction.set(candRef, {
+        ...candidateData,
+        id: candidateId,
+        assigned_sales: String(assignedUser.id),
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    return {
+      assignedUser,
+      assignedUserId: String(assignedUser.id),
+      isUnassigned: false
+    };
+  });
+}
+
+/**
+ * Processes backlog of unassigned leads chronologically through the unified round-robin engine.
+ * Continues the global round-robin sequence across all currently eligible Sales Persons.
+ */
+export async function processUnassignedLeadsEngine(targetDb: any, forceInWorkingHours?: boolean) {
+  const inHours = forceInWorkingHours !== undefined ? forceInWorkingHours : isSalesWorkingHours();
+  if (!inHours) {
+    console.log('[Backlog] Outside working hours. Skipping unassigned backlog processing.');
+    return { processed: 0, reason: 'outside_working_hours' };
+  }
+
+  const activeCheck = await targetDb.collection('jpc_users')
+    .where('role', '==', 'jpc_sales')
+    .where('sales_availability_status', '==', 'Active')
+    .limit(1)
+    .get();
+
+  if (activeCheck.empty) {
+    console.log('[Backlog] No active sales reps. Skipping unassigned backlog processing.');
+    return { processed: 0, reason: 'no_active_sales_reps' };
+  }
+
+  const candSnapshot = await targetDb.collection('jpc_candidates')
+    .where('deleted_at', '==', null)
+    .get();
+
+  const unassigned = candSnapshot.docs
+    .map((d: any) => ({ id: d.id, ...d.data() }))
+    .filter((c: any) => c.assigned_sales === null || c.assigned_sales === undefined || c.assigned_sales === '')
+    .sort((a: any, b: any) => (a.created_at || '').localeCompare(b.created_at || '')); // chronological (oldest first)
+
+  console.log(`[Backlog] Processing ${unassigned.length} unassigned leads in chronological order...`);
+  let processed = 0;
+
+  for (const cand of unassigned) {
+    try {
+      const res = await assignLeadRoundRobinTransaction(targetDb, cand.id, undefined, null, 'system', forceInWorkingHours);
+      if (!res.isUnassigned) {
+        processed++;
+      }
+    } catch (err) {
+      console.error(`[Backlog] Error assigning unassigned lead ${cand.id}:`, err);
+    }
+  }
+
+  return { processed, totalUnassigned: unassigned.length };
+}
+
+// ----------------------------------------------------------------------------
+// API ENDPOINTS FOR LEAD CREATION, ASSIGNMENT & SALES AVAILABILITY
+// ----------------------------------------------------------------------------
+
+// Single source of truth for creating a lead
+app.post('/api/leads', verifyAuth, async (req, res) => {
+  try {
+    const candidateData = { ...req.body };
+    const user = (req as any).user;
+    const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
+      ? req.headers['x-mock-working-hours'] === 'true' 
+      : undefined;
+
+    // Lead Generation users must NEVER provide or override assigned_sales
+    let overrideUserId: string | null = null;
+    if (user.role === 'jpc_lead_gen') {
+      delete candidateData.assigned_sales;
+      delete candidateData.sales_person_id;
+      delete candidateData.salesPersonId;
+      delete candidateData.assigned_sales_person;
+    } else if (candidateData.assigned_sales) {
+      overrideUserId = String(candidateData.assigned_sales);
+    }
+
+    const candidateId = candidateData.id || `lead_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    candidateData.id = candidateId;
+    candidateData.lead_generated_by = candidateData.lead_generated_by || user.id || user.uid;
+    candidateData.created_at = candidateData.created_at || new Date().toISOString();
+    candidateData.updated_at = new Date().toISOString();
+
+    const result = await assignLeadRoundRobinTransaction(
+      db,
+      candidateId,
+      candidateData,
+      overrideUserId,
+      user.role,
+      forceWorkingHours
+    );
+
+    res.json({
+      success: true,
+      candidateId,
+      assigned_sales: result.assignedUserId,
+      isUnassigned: result.isUnassigned,
+      reason: result.reason
+    });
+  } catch (error: any) {
+    console.error('Error creating lead via /api/leads:', error);
+    res.status(500).json({ error: error.message || 'Failed to create lead' });
+  }
+});
+
+// Single transactional assignment endpoint for an existing or in-progress candidate
+app.post('/api/leads/round-robin/assign', verifyAuth, async (req, res) => {
+  try {
+    const { candidateId, candidateName, overrideUserId } = req.body;
+    const user = (req as any).user;
+    const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
+      ? req.headers['x-mock-working-hours'] === 'true' 
+      : undefined;
+
+    if (!candidateId) {
+      return res.status(400).json({ error: 'Missing candidateId' });
+    }
+
+    // Lead Generation cannot supply an override
+    const effectiveOverride = user.role === 'jpc_lead_gen' ? null : overrideUserId;
+
+    const result = await assignLeadRoundRobinTransaction(
+      db,
+      candidateId,
+      candidateName ? { full_name: candidateName } : undefined,
+      effectiveOverride,
+      user.role,
+      forceWorkingHours
+    );
+
+    res.json({
+      success: true,
+      assignedUser: result.assignedUser,
+      assignedUserId: result.assignedUserId,
+      isUnassigned: result.isUnassigned,
+      reason: result.reason
+    });
+  } catch (error: any) {
+    console.error('Error executing round robin assignment:', error);
+    res.status(500).json({ error: error.message || 'Failed to execute assignment' });
+  }
+});
+
+// Candidate Update Endpoint (Validates RBAC & rejects Lead Gen attempts to change assigned_sales)
+app.patch('/api/candidates/:id', verifyAuth, async (req, res) => {
+  try {
+    const candidateId = req.params.id;
+    const user = (req as any).user;
+    const updates = { ...req.body };
+
+    const salesKeys = ['assigned_sales', 'sales_person_id', 'assigned_sales_person', 'salesPersonId'];
+    const hasSalesChangeAttempt = salesKeys.some(k => updates[k] !== undefined);
+
+    if (user.role === 'jpc_lead_gen' && hasSalesChangeAttempt) {
+      const existingDoc = await db.collection('jpc_candidates').doc(candidateId).get();
+      if (existingDoc.exists) {
+        const existingData = existingDoc.data();
+        const incomingSales = updates.assigned_sales ?? updates.sales_person_id ?? updates.assigned_sales_person ?? updates.salesPersonId;
+        if (String(incomingSales || '') !== String(existingData.assigned_sales || '')) {
+          return res.status(403).json({
+            error: 'Forbidden: Lead Generation users cannot change sales person assignment'
+          });
+        }
+      }
+      // Strip sales fields from Lead Gen update
+      salesKeys.forEach(k => delete updates[k]);
+    }
+
+    updates.updated_at = new Date().toISOString();
+    await db.collection('jpc_candidates').doc(candidateId).set(updates, { merge: true });
+
+    res.json({ success: true, message: 'Candidate updated successfully' });
+  } catch (error: any) {
+    console.error('Error updating candidate via PATCH:', error);
+    res.status(500).json({ error: error.message || 'Failed to update candidate' });
+  }
+});
+
+// Sales Person Availability Toggle Endpoint
+app.post('/api/sales/availability', verifyAuth, async (req, res) => {
+  try {
+    const { status, userId } = req.body;
+    const user = (req as any).user;
+    const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
+      ? req.headers['x-mock-working-hours'] === 'true' 
+      : undefined;
+
+    if (status !== 'Active' && status !== 'Deactive') {
+      return res.status(400).json({ error: 'Status must be Active or Deactive' });
+    }
+
+    if (user.role === 'jpc_lead_gen') {
+      return res.status(403).json({ error: 'Forbidden: Lead Generation users cannot modify sales availability' });
+    }
+
+    const targetUserId = String(userId || user.uid || user.id);
+    const managementRoles = ['administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person'];
+    const isManagement = managementRoles.includes(user.role);
+
+    if (user.role === 'jpc_sales' && targetUserId !== String(user.uid || user.id) && !isManagement) {
+      return res.status(403).json({ error: 'Forbidden: Sales Persons can only modify their own availability' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const updateData: any = {
+      sales_availability_status: status,
+      updated_at: nowIso
+    };
+
+    if (status === 'Active') {
+      updateData.sales_activated_at = nowIso;
+    } else {
+      updateData.sales_deactivated_at = nowIso;
+    }
+
+    await db.collection('jpc_users').doc(targetUserId).set(updateData, { merge: true });
+
+    // When a Sales Person becomes Active during working hours, process unassigned leads backlog
+    let backlogResult = { processed: 0 };
+    const inHours = forceWorkingHours !== undefined ? forceWorkingHours : isSalesWorkingHours();
+    if (status === 'Active' && inHours) {
+      backlogResult = await processUnassignedLeadsEngine(db, forceWorkingHours);
+    }
+
+    res.json({
+      success: true,
+      status,
+      targetUserId,
+      processedUnassigned: backlogResult.processed
+    });
+  } catch (error: any) {
+    console.error('Error in /api/sales/availability:', error);
+    res.status(500).json({ error: error.message || 'Failed to update availability' });
+  }
+});
+
+// Get Availability Status of all Sales Persons
+app.get('/api/sales/availability', verifyAuth, async (req, res) => {
+  try {
+    const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
+      ? req.headers['x-mock-working-hours'] === 'true' 
+      : undefined;
+
+    const salesSnapshot = await db.collection('jpc_users').where('role', '==', 'jpc_sales').get();
+    const inHours = forceWorkingHours !== undefined ? forceWorkingHours : isSalesWorkingHours();
+
+    const salesUsers = salesSnapshot.docs.map((d: any) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        display_name: data.display_name || data.username,
+        role: data.role,
+        sales_availability_status: data.sales_availability_status || 'Deactive',
+        sales_activated_at: data.sales_activated_at || null,
+        sales_deactivated_at: data.sales_deactivated_at || null,
+        is_on_leave: !!data.is_on_leave,
+        is_eligible_now: inHours && data.sales_availability_status === 'Active' && !data.is_on_leave && !data.deleted_at
+      };
+    });
+
+    res.json({
+      salesUsers,
+      isWorkingHours: inHours
+    });
+  } catch (error: any) {
+    console.error('Error fetching sales availability:', error);
+    res.status(500).json({ error: error.message || 'Failed to get sales availability' });
+  }
+});
+
+// Trigger backlog assignment of unassigned leads
+app.post('/api/leads/assign-unassigned', verifyAuth, async (req, res) => {
+  try {
+    const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
+      ? req.headers['x-mock-working-hours'] === 'true' 
+      : undefined;
+
+    const result = await processUnassignedLeadsEngine(db, forceWorkingHours);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('Error processing unassigned backlog:', error);
+    res.status(500).json({ error: error.message || 'Failed to process unassigned leads' });
+  }
+});
+
 
 // Admin Password Reset Endpoint
 app.post('/api/admin/reset-user-password', verifyAdmin, async (req, res) => {

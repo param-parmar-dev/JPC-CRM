@@ -77,6 +77,56 @@ export const isEasternDayOngoing = (checkDateStr: string): boolean => {
   return timeVal < 1815; // 18:15 is 6:15 PM
 };
 
+/**
+ * Validates if the given date/time is within Sales Person working hours:
+ * Monday through Friday, 9:30 AM to 6:30 PM Eastern Time (America/New_York).
+ */
+export const isSalesWorkingHours = (date: Date = new Date()): boolean => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: EASTERN_TIME_ZONE,
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    let weekday = '';
+    let hour = 0;
+    let minute = 0;
+
+    parts.forEach(p => {
+      if (p.type === 'weekday') weekday = p.value;
+      if (p.type === 'hour') hour = parseInt(p.value, 10);
+      if (p.type === 'minute') minute = parseInt(p.value, 10);
+    });
+
+    const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday);
+    if (!isWeekday) return false;
+
+    // 9:30 AM = 570 mins, 6:30 PM = 1110 mins
+    const totalMinutes = hour * 60 + minute;
+    return totalMinutes >= 570 && totalMinutes <= 1110;
+  } catch (e) {
+    console.error('Error checking sales working hours:', e);
+    return false;
+  }
+};
+
+export const getEasternTimeString = (date: Date = new Date()): string => {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: EASTERN_TIME_ZONE,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).format(date);
+  } catch (e) {
+    return date.toLocaleTimeString();
+  }
+};
+
+
 export const getLocalYYYYMMDD = (date: Date): string => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');

@@ -22,8 +22,9 @@ import {
   TrendingUp,
   FolderTree
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { subscribeToCollection } from '../services/storage';
+import { cn, isSalesWorkingHours } from '../lib/utils';
+import { subscribeToCollection, updateSalesAvailability } from '../services/storage';
+import { useToast } from '../contexts/ToastContext';
 import { isProxyUser } from '../services/interviewService';
 import { FollowUp, Candidate, User } from '../types';
 import { canUserAccessCandidate } from '../lib/permissions';
@@ -37,10 +38,43 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen }) => {
   const { user, logout, isAuthReady } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { showToast } = useToast();
 
   const [allFollowUps, setAllFollowUps] = useState<FollowUp[]>([]);
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [salesStatus, setSalesStatus] = useState<'Active' | 'Deactive'>(user?.sales_availability_status || 'Deactive');
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+
+  useEffect(() => {
+    if (user?.sales_availability_status) {
+      setSalesStatus(user.sales_availability_status);
+    }
+  }, [user?.sales_availability_status]);
+
+  const handleToggleSalesAvailability = async () => {
+    if (!user || user.role !== 'jpc_sales') return;
+    setIsTogglingStatus(true);
+    const nextStatus = salesStatus === 'Active' ? 'Deactive' : 'Active';
+    try {
+      const result = await updateSalesAvailability(nextStatus, user.id);
+      setSalesStatus(nextStatus);
+      if (nextStatus === 'Active') {
+        showToast('You are now Active. Eligible for automatic leads.', 'success');
+        if (result.processedUnassigned && result.processedUnassigned > 0) {
+          showToast(`Assigned ${result.processedUnassigned} unassigned backlog leads.`, 'info');
+        }
+      } else {
+        showToast('You are now Deactive. Automatic assignments paused.', 'info');
+      }
+    } catch (err) {
+      console.error('Error updating availability:', err);
+      showToast('Failed to update availability status', 'error');
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
+
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -264,6 +298,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
 
         {/* Footer */}
         <div className="p-5 border-t border-border-primary bg-bg-secondary/50 backdrop-blur-sm space-y-4">
+          {/* Sales Person Availability Toggle */}
+          {user?.role === 'jpc_sales' && (
+            <div className="bg-bg-tertiary/70 border border-border-primary/80 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "w-2.5 h-2.5 rounded-full transition-all",
+                    salesStatus === 'Active' 
+                      ? "bg-accent-green shadow-[0_0_8px_rgba(34,197,94,0.7)] animate-pulse" 
+                      : "bg-slate-400"
+                  )} />
+                  <span className="text-xs font-bold text-text-primary">
+                    {salesStatus === 'Active' ? 'Active' : 'Deactive'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={isTogglingStatus}
+                  onClick={handleToggleSalesAvailability}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer",
+                    salesStatus === 'Active'
+                      ? "bg-accent-red/20 text-accent-red hover:bg-accent-red/30 border border-accent-red/30"
+                      : "bg-accent-green text-white hover:bg-accent-green/90 shadow-accent-green/20"
+                  )}
+                >
+                  {isTogglingStatus ? (
+                    <span className="text-[10px]">Updating...</span>
+                  ) : salesStatus === 'Active' ? (
+                    'Go Deactive'
+                  ) : (
+                    'Go Active'
+                  )}
+                </button>
+              </div>
+              <div className="text-[9px] text-text-muted flex items-center justify-between pt-1 border-t border-border-primary/40 font-medium">
+                <span>EST 9:30 AM – 6:30 PM</span>
+                <span className={cn("font-bold", isSalesWorkingHours() ? "text-accent-green" : "text-text-muted")}>
+                  {isSalesWorkingHours() ? 'In Hours' : 'After Hours'}
+                </span>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={toggleTheme}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-text-secondary bg-bg-tertiary hover:bg-border-primary hover:text-text-primary transition-all font-semibold text-sm shadow-sm"

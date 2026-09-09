@@ -132,3 +132,42 @@ export function canManageFreeTrial(user: User | null): boolean {
     'jpc_compliance_person'
   ].includes(user.role);
 }
+
+/**
+ * Checks if a user has authority to manually assign, reassign, or override
+ * the Sales Person on a lead.
+ * Allowed roles: Admin, Sysadmin, Manager, Compliance Head, Compliance Person.
+ * Lead Generation and others are strictly disallowed.
+ */
+export function canManageSalesAssignment(user: User | null): boolean {
+  if (!user) return false;
+  return [
+    'administrator',
+    'jpc_sysadmin',
+    'jpc_manager',
+    'jpc_cs',
+    'jpc_compliance_person'
+  ].includes(user.role);
+}
+
+/**
+ * Checks if a user can toggle sales availability (Active / Deactive).
+ * - Management (Admin, Sysadmin, Manager, Compliance Head) can toggle ANY sales person.
+ * - Sales Persons can toggle THEMSELVES.
+ * - Lead Generation and all other roles cannot toggle sales availability.
+ */
+export function canToggleSalesAvailability(user: User | null, targetUserId?: string | number): boolean {
+  if (!user) return false;
+  
+  if (canManageSalesAssignment(user)) {
+    return true;
+  }
+  
+  if (user.role === 'jpc_sales') {
+    if (!targetUserId) return true; // self toggle
+    return String(user.id) === String(targetUserId);
+  }
+  
+  return false;
+}
+

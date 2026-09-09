@@ -666,7 +666,12 @@ export const CandidateDetail: React.FC = () => {
   };
 
   const handleSavePackage = async () => {
-    await saveCandidate({ ...candidate, ...packageForm } as Candidate, user?.id ? String(user.id) : null);
+    // Lead Generation users must never be able to modify assigned_sales
+    const payload = isLeadGen
+      ? { ...packageForm, assigned_sales: candidate.assigned_sales }
+      : packageForm;
+
+    await saveCandidate({ ...candidate, ...payload } as Candidate, user?.id ? String(user.id) : null);
     
     // Check for assignments
     const assignmentFields = ['assigned_cs', 'assigned_resume', 'assigned_marketing_leader', 'assigned_recruiter', 'assigned_marketing', 'assigned_sales'];
@@ -2419,10 +2424,19 @@ export const CandidateDetail: React.FC = () => {
                   )}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-text-muted uppercase">Assigned Sales</label>
-                    <select value={packageForm.assigned_sales || ''} onChange={e => setPackageForm({...packageForm, assigned_sales: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm">
-                      <option value="">Select Sales</option>
-                      {salesUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
-                    </select>
+                    {isLeadGen ? (
+                      <div className="w-full bg-bg-tertiary/50 border border-border-primary/50 rounded-lg px-3 py-2 text-sm text-text-secondary cursor-not-allowed select-none flex items-center justify-between">
+                        <span className="font-medium text-text-primary">
+                          {allUsers.find(u => String(u.id) === String(candidate.assigned_sales))?.display_name || 'Unassigned'}
+                        </span>
+                        <span className="text-[9px] uppercase font-bold text-text-muted bg-bg-secondary px-2 py-0.5 rounded border border-border-primary/40">Read-Only</span>
+                      </div>
+                    ) : (
+                      <select value={packageForm.assigned_sales || ''} onChange={e => setPackageForm({...packageForm, assigned_sales: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm">
+                        <option value="">Select Sales (or Unassigned)</option>
+                        {salesUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+                      </select>
+                    )}
                   </div>
                   {(!isLeadGen || isSalesperson) && (
                     <div className="space-y-1">
