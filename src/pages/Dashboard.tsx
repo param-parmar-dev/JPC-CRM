@@ -672,7 +672,7 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6 sm:space-y-10">
       {/* Feature Blast Alerts */}
       <AnimatePresence>
         {activeAnnouncements.length > 0 && (
@@ -683,30 +683,30 @@ export const Dashboard: React.FC = () => {
                 initial={{ opacity: 0, height: 0, scale: 0.95 }}
                 animate={{ opacity: 1, height: 'auto', scale: 1 }}
                 exit={{ opacity: 0, height: 0, scale: 0.95 }}
-                className="bg-accent-blue/10 border border-accent-blue/20 rounded-[32px] p-8 relative overflow-hidden group shadow-xl shadow-accent-blue/5"
+                className="bg-accent-blue/10 border border-accent-blue/20 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 relative overflow-hidden group shadow-xl shadow-accent-blue/5"
               >
                 <div className="absolute -right-20 -top-20 w-64 h-64 bg-accent-blue/10 rounded-full blur-[80px]" />
                 
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-8 relative z-10">
-                  <div className="w-16 h-16 bg-accent-blue rounded-3xl flex items-center justify-center text-white shadow-xl shadow-accent-blue/30 shrink-0">
-                    <Zap className="w-8 h-8" />
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-8 relative z-10">
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 bg-accent-blue rounded-2xl sm:rounded-3xl flex items-center justify-center text-white shadow-xl shadow-accent-blue/30 shrink-0">
+                    <Zap className="w-6 h-6 sm:w-8 sm:h-8" />
                   </div>
                   
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <span className="px-3 py-1 bg-accent-blue text-white text-[10px] font-black uppercase tracking-widest rounded-full">New Feature Blast</span>
-                      <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Released {new Date(announcement.created_at).toLocaleDateString()}</span>
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 bg-accent-blue text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-full">New Feature Blast</span>
+                      <span className="text-[9px] sm:text-[10px] font-black text-text-muted uppercase tracking-widest">Released {new Date(announcement.created_at).toLocaleDateString()}</span>
                     </div>
-                    <h2 className="text-2xl font-black text-text-primary tracking-tight">{announcement.title}</h2>
-                    <p className="text-sm font-medium text-text-secondary leading-relaxed max-w-3xl">{announcement.summary}</p>
+                    <h2 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight">{announcement.title}</h2>
+                    <p className="text-xs sm:text-sm font-medium text-text-secondary leading-relaxed max-w-3xl">{announcement.summary}</p>
                     
-                    <div className="flex flex-wrap gap-4 mt-6">
+                    <div className="flex flex-wrap gap-2 sm:gap-4 mt-4 sm:mt-6">
                       {announcement.image_url && (
                         <a 
                           href={announcement.image_url} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="flex items-center gap-2 px-4 py-2 bg-white/10 dark:bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-black text-text-primary hover:bg-white hover:text-accent-blue transition-all uppercase tracking-widest shadow-sm"
+                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-white/10 dark:bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-black text-text-primary hover:bg-white hover:text-accent-blue transition-all uppercase tracking-widest shadow-sm"
                         >
                           <ImageIcon className="w-3.5 h-3.5" />
                           View Image
@@ -717,7 +717,7 @@ export const Dashboard: React.FC = () => {
                           href={announcement.pdf_url} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="flex items-center gap-2 px-4 py-2 bg-white/10 dark:bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-black text-text-primary hover:bg-white hover:text-accent-red transition-all uppercase tracking-widest shadow-sm"
+                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-white/10 dark:bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-black text-text-primary hover:bg-white hover:text-accent-red transition-all uppercase tracking-widest shadow-sm"
                         >
                           <FileText className="w-3.5 h-3.5" />
                           Documentation
@@ -725,7 +725,7 @@ export const Dashboard: React.FC = () => {
                       )}
                       <a 
                         href="#feature-alerts"
-                        className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white rounded-xl text-[10px] font-black hover:bg-accent-blue/90 transition-all uppercase tracking-widest shadow-lg shadow-accent-blue/20"
+                        className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-accent-blue text-white rounded-xl text-[10px] font-black hover:bg-accent-blue/90 transition-all uppercase tracking-widest shadow-lg shadow-accent-blue/20"
                       >
                         All Announcements
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -737,7 +737,7 @@ export const Dashboard: React.FC = () => {
                     onClick={() => handleDismissAnnouncement(announcement.id)}
                     className="absolute top-0 right-0 p-2 text-text-muted hover:text-accent-red transition-colors"
                   >
-                    <X className="w-6 h-6" />
+                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
               </motion.div>
@@ -747,11 +747,11 @@ export const Dashboard: React.FC = () => {
       </AnimatePresence>
 
       {/* Welcome Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Welcome back, {user?.display_name}!</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Welcome back, {user?.display_name}!</h1>
           <div className="flex items-center gap-2 mt-1 group">
-            <p className="text-text-secondary italic">"{motivationalQuote}"</p>
+            <p className="text-xs sm:text-sm text-text-secondary italic">"{motivationalQuote}"</p>
             <button
               onClick={() => setIsThoughtsModalOpen(true)}
               className="p-1 rounded-md text-text-muted hover:text-accent-blue hover:bg-bg-secondary/40 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -762,9 +762,9 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="px-4 py-2 bg-bg-secondary border border-border-primary rounded-xl flex items-center gap-2">
+          <div className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-bg-secondary border border-border-primary rounded-xl flex items-center gap-2">
             <span className="w-2 h-2 bg-accent-green rounded-full animate-pulse" />
-            <span className="text-sm font-bold text-text-primary uppercase tracking-wider">System Live</span>
+            <span className="text-xs sm:text-sm font-bold text-text-primary uppercase tracking-wider">System Live</span>
           </div>
         </div>
       </div>
@@ -775,75 +775,76 @@ export const Dashboard: React.FC = () => {
       <CelebrationBanner candidates={candidates} allUsers={allUsers} />
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6">
         {stats.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-bg-secondary p-6 rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all group"
+            className="bg-bg-secondary p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all group"
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110", stat.bg, stat.color)}>
-                <stat.icon className="w-6 h-6" />
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <div className={cn("w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110", stat.bg, stat.color)}>
+                <stat.icon className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <ArrowUpRight className="w-5 h-5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <p className="text-sm font-bold text-text-muted uppercase tracking-widest">{stat.label}</p>
-            <h3 className="text-3xl font-bold text-text-primary mt-1">{stat.value}</h3>
+            <p className="text-xs sm:text-sm font-bold text-text-muted uppercase tracking-wider sm:tracking-widest">{stat.label}</p>
+            <h3 className="text-2xl sm:text-3xl font-bold text-text-primary mt-1">{stat.value}</h3>
           </motion.div>
         ))}
       </div>
 
       {/* Application Performance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-bg-secondary border border-border-primary rounded-[32px] p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+        <div className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-5 sm:p-8 shadow-sm">
+          <div className="flex items-center justify-between mb-6 sm:mb-8">
             <div>
-              <h2 className="text-2xl font-bold text-text-primary tracking-tight">Application Performance</h2>
-              <p className="text-text-secondary mt-1">Real-time tracking of job applications across the team.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">Application Performance</h2>
+              <p className="text-xs sm:text-sm text-text-secondary mt-1">Real-time tracking of job applications across the team.</p>
             </div>
-            <div className="w-12 h-12 bg-accent-blue/10 rounded-2xl flex items-center justify-center text-accent-blue">
-              <TrendingUp className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent-blue/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-accent-blue shrink-0">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-8">
+          <div className="grid grid-cols-2 gap-4 sm:gap-8">
             <div className="space-y-1">
-              <p className="text-xs font-bold text-text-muted uppercase tracking-widest">Today</p>
-              <p className="text-4xl font-bold text-text-primary">{appStats.day}</p>
-              <div className="h-1 w-12 bg-accent-blue rounded-full mt-2" />
+              <p className="text-[10px] sm:text-xs font-bold text-text-muted uppercase tracking-wider sm:tracking-widest">Today</p>
+              <p className="text-2xl sm:text-4xl font-bold text-text-primary">{appStats.day}</p>
+              <div className="h-1 w-8 sm:w-12 bg-accent-blue rounded-full mt-2" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-bold text-text-muted uppercase tracking-widest">This Week</p>
-              <p className="text-4xl font-bold text-text-primary">{appStats.week}</p>
-              <div className="h-1 w-12 bg-accent-purple rounded-full mt-2" />
+              <p className="text-[10px] sm:text-xs font-bold text-text-muted uppercase tracking-wider sm:tracking-widest">This Week</p>
+              <p className="text-2xl sm:text-4xl font-bold text-text-primary">{appStats.week}</p>
+              <div className="h-1 w-8 sm:w-12 bg-accent-purple rounded-full mt-2" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-bold text-text-muted uppercase tracking-widest">This Month</p>
-              <p className="text-4xl font-bold text-text-primary">{appStats.month}</p>
-              <div className="h-1 w-12 bg-accent-teal rounded-full mt-2" />
+              <p className="text-[10px] sm:text-xs font-bold text-text-muted uppercase tracking-wider sm:tracking-widest">This Month</p>
+              <p className="text-2xl sm:text-4xl font-bold text-text-primary">{appStats.month}</p>
+              <div className="h-1 w-8 sm:w-12 bg-accent-teal rounded-full mt-2" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-bold text-text-muted uppercase tracking-widest">Lifetime</p>
-              <p className="text-4xl font-bold text-text-primary">{appStats.lifetime}</p>
-              <div className="h-1 w-12 bg-accent-green rounded-full mt-2" />
+              <p className="text-[10px] sm:text-xs font-bold text-text-muted uppercase tracking-wider sm:tracking-widest">Lifetime</p>
+              <p className="text-2xl sm:text-4xl font-bold text-text-primary">{appStats.lifetime}</p>
+              <div className="h-1 w-8 sm:w-12 bg-accent-green rounded-full mt-2" />
             </div>
           </div>
         </div>
 
         {targetAlerts.length > 0 && (
-          <div className="bg-bg-secondary border border-border-primary rounded-[32px] p-8 shadow-sm">
-            <div className="flex items-center justify-between mb-8">
+          <div className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-5 sm:p-8 shadow-sm">
+            <div className="flex items-center justify-between mb-6 sm:mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-text-primary tracking-tight">Target Not Met</h2>
-                <p className="text-text-secondary mt-1">Candidates below daily application target.</p>
+                <h2 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">Target Not Met</h2>
+                <p className="text-xs sm:text-sm text-text-secondary mt-1">Candidates below daily application target.</p>
               </div>
-              <div className="w-12 h-12 bg-accent-red/10 rounded-2xl flex items-center justify-center text-accent-red">
-                <AlertCircle className="w-6 h-6" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent-red/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-accent-red shrink-0">
+                <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
             </div>
+
             
             <div className="space-y-4 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
               {targetAlerts.map(({ candidate, count, target }) => (

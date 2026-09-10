@@ -232,7 +232,7 @@ export const TrackJobSheet: React.FC<TrackJobSheetProps> = ({
 
             <form
               onSubmit={handleSubmit}
-              className="flex-1 p-6 space-y-8 overflow-y-auto no-scrollbar"
+              className="flex-1 p-6 space-y-8 overflow-y-auto touch-scroll pb-safe"
             >
               <div className="space-y-6">
                 <div className="bg-accent-blue/5 border border-accent-blue/20 rounded-2xl p-4 flex items-start gap-4">

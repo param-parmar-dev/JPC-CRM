@@ -88,20 +88,20 @@ export const Receipt: React.FC = () => {
 
         <div className="bg-white text-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
           {/* Header */}
-          <div className="bg-slate-900 text-white p-8 md:p-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="bg-slate-900 text-white p-6 sm:p-8 md:p-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <img 
                   src="https://auriic.co/wp-content/uploads/2026/04/Auriic-logo-Header.webp" 
                   alt="Auriic Logo" 
-                  className="h-16 w-auto mb-2"
+                  className="h-14 sm:h-16 w-auto mb-2"
                   referrerPolicy="no-referrer"
                 />
                 <h1 className="text-2xl font-bold font-heading tracking-tight hidden">Auriic</h1>
               </div>
               <p className="text-slate-400 text-sm">Job Placement Customer Relationship Management</p>
             </div>
-            <div className="text-right">
+            <div className="text-left md:text-right">
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-accent-green/20 text-accent-green rounded-full text-xs font-bold uppercase tracking-wider mb-2">
                 <CheckCircle2 className="w-4 h-4" />
                 Payment Successful
@@ -111,27 +111,27 @@ export const Receipt: React.FC = () => {
           </div>
 
           {/* Amount Section */}
-          <div className="p-8 md:p-12 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex flex-col md:flex-row justify-between gap-8">
+          <div className="p-6 sm:p-8 md:p-12 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex flex-col md:flex-row justify-between gap-6 sm:gap-8">
               <div>
                 <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Amount Paid</p>
-                <h2 className="text-5xl font-bold text-slate-900">${payment.amount.toLocaleString()}</h2>
+                <h2 className="text-4xl sm:text-5xl font-bold text-slate-900">${payment.amount.toLocaleString()}</h2>
               </div>
-              <div className="flex gap-4">
-                <div className="text-right">
+              <div className="flex flex-wrap gap-4">
+                <div className="text-left sm:text-right">
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Part Number</p>
-                  <span className="inline-block px-4 py-1 bg-slate-900 text-white rounded-lg font-bold">Part {payment.part_number}</span>
+                  <span className="inline-block px-4 py-1 bg-slate-900 text-white rounded-lg font-bold text-sm">Part {payment.part_number}</span>
                 </div>
-                <div className="text-right">
+                <div className="text-left sm:text-right">
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Method</p>
-                  <span className="inline-block px-4 py-1 bg-slate-200 text-slate-700 rounded-lg font-bold">{payment.payment_method}</span>
+                  <span className="inline-block px-4 py-1 bg-slate-200 text-slate-700 rounded-lg font-bold text-sm">{payment.payment_method}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Details Grid */}
-          <div className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+          <div className="p-6 sm:p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
             <div className="space-y-6">
               <div>
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Candidate Details</p>
@@ -179,8 +179,8 @@ export const Receipt: React.FC = () => {
           </div>
 
           {/* Footer */}
-          <div className="p-8 md:p-12 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-slate-400 text-xs font-medium">This is a computer-generated receipt and does not require a physical signature.</p>
+          <div className="p-6 sm:p-8 md:p-12 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-slate-400 text-xs font-medium text-center md:text-left">This is a computer-generated receipt and does not require a physical signature.</p>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-accent-green rounded-full"></div>
               <p className="text-slate-900 font-bold text-sm">Auriic Official Receipt</p>

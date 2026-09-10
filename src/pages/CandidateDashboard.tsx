@@ -225,12 +225,12 @@ export const CandidateDashboard: React.FC = () => {
       {/* Support Request Modal */}
       <AnimatePresence>
         {isSupportModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-bg-secondary border border-border-primary rounded-3xl p-8 max-w-lg w-full shadow-2xl"
+              className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-3xl p-5 sm:p-8 max-w-lg w-full max-h-[94vh] overflow-y-auto touch-scroll shadow-2xl"
             >
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -273,12 +273,12 @@ export const CandidateDashboard: React.FC = () => {
       {/* JD Modal */}
       <AnimatePresence>
         {selectedJD && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-bg-secondary border border-border-primary rounded-3xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto custom-scrollbar shadow-2xl"
+              className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-3xl p-5 sm:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto touch-scroll custom-scrollbar shadow-2xl"
             >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-text-primary">Job Description</h3>
@@ -287,12 +287,12 @@ export const CandidateDashboard: React.FC = () => {
                 </button>
               </div>
               <div className="prose prose-invert max-w-none">
-                <p className="text-text-secondary whitespace-pre-wrap leading-relaxed">{selectedJD}</p>
+                <p className="text-text-secondary whitespace-pre-wrap leading-relaxed text-sm">{selectedJD}</p>
               </div>
               <div className="mt-8 flex justify-end">
                 <button 
                   onClick={() => setSelectedJD(null)}
-                  className="px-6 py-2 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 transition-colors"
+                  className="w-full sm:w-auto px-6 py-2.5 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 transition-colors"
                 >
                   Close
                 </button>
@@ -303,10 +303,10 @@ export const CandidateDashboard: React.FC = () => {
       </AnimatePresence>
 
       {/* Welcome Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-black text-text-primary tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight">
               Hello, <span className="text-accent-blue">{candidate.full_name.split(' ')[0]}!</span>
             </h1>
             {candidate.is_free_trial && (
@@ -318,13 +318,13 @@ export const CandidateDashboard: React.FC = () => {
               />
             )}
           </div>
-          <p className="text-text-secondary mt-1">Track your progress and manage your applications.</p>
+          <p className="text-text-secondary text-sm sm:text-base mt-1">Track your progress and manage your applications.</p>
         </div>
-        <div className="flex items-center gap-2 p-1 bg-bg-secondary border border-border-primary rounded-2xl">
+        <div className="flex items-center gap-1.5 sm:gap-2 p-1 bg-bg-secondary border border-border-primary rounded-2xl overflow-x-auto touch-scroll scrollbar-hide w-full sm:w-auto">
           <button 
             onClick={() => setActiveTab('dashboard')}
             className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              "flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap",
               activeTab === 'dashboard' ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20" : "text-text-muted hover:text-text-primary hover:bg-bg-tertiary"
             )}
           >
@@ -334,7 +334,7 @@ export const CandidateDashboard: React.FC = () => {
           <button 
             onClick={() => setActiveTab('applications')}
             className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              "flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap",
               activeTab === 'applications' ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20" : "text-text-muted hover:text-text-primary hover:bg-bg-tertiary"
             )}
           >
@@ -344,7 +344,7 @@ export const CandidateDashboard: React.FC = () => {
           <button 
             onClick={() => setActiveTab('interviews')}
             className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              "flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap",
               activeTab === 'interviews' ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20" : "text-text-muted hover:text-text-primary hover:bg-bg-tertiary"
             )}
           >
@@ -391,7 +391,7 @@ export const CandidateDashboard: React.FC = () => {
               </div>
 
               {/* Hiring Journey */}
-              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
+              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-5 sm:p-8 shadow-sm">
                 <h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-accent-teal" />
                   Your Hiring Journey
@@ -415,11 +415,11 @@ export const CandidateDashboard: React.FC = () => {
 
               {/* Upcoming Interview Highlight */}
               {upcomingInterviews.length > 0 && (
-                <div className="bg-accent-blue/5 border border-accent-blue/20 rounded-3xl p-8 shadow-sm relative overflow-hidden">
+                <div className="bg-accent-blue/5 border border-accent-blue/20 rounded-3xl p-5 sm:p-8 shadow-sm relative overflow-hidden">
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
                       <span className="px-2 py-0.5 bg-accent-blue text-white text-[10px] font-bold rounded uppercase tracking-wider mb-3 inline-block">Upcoming Interview</span>
-                      <h4 className="text-2xl font-black text-text-primary">{upcomingInterviews[0].interview_company_name || upcomingInterviews[0].company_name}</h4>
+                      <h4 className="text-xl sm:text-2xl font-black text-text-primary">{upcomingInterviews[0].interview_company_name || upcomingInterviews[0].company_name}</h4>
                       <p className="text-accent-blue font-bold mt-1">{upcomingInterviews[0].job_title}</p>
                     </div>
                     <div className="flex flex-wrap gap-4">
@@ -448,7 +448,7 @@ export const CandidateDashboard: React.FC = () => {
 
             <div className="space-y-8">
               {/* Quick Actions */}
-              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
+              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-5 sm:p-8 shadow-sm">
                 <h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
                   <Zap className="w-5 h-5 text-accent-amber" />
                   Quick Actions
@@ -479,7 +479,7 @@ export const CandidateDashboard: React.FC = () => {
               </div>
 
               {/* Resume Download */}
-              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
+              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-5 sm:p-8 shadow-sm">
                 <h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-accent-blue" />
                   My Resume
@@ -501,7 +501,7 @@ export const CandidateDashboard: React.FC = () => {
         )}
 
         {activeTab === 'applications' && (
-          <div className="bg-bg-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
+          <div className="bg-bg-secondary border border-border-primary rounded-3xl p-5 sm:p-8 shadow-sm">
             <h3 className="text-2xl font-black text-text-primary mb-8">Applied Links Portfolio</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginatedApps.map((app) => (
@@ -549,7 +549,7 @@ export const CandidateDashboard: React.FC = () => {
         )}
 
         {activeTab === 'interviews' && (
-          <div className="bg-bg-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
+          <div className="bg-bg-secondary border border-border-primary rounded-3xl p-5 sm:p-8 shadow-sm">
             <h3 className="text-2xl font-black text-text-primary mb-8">Interview Schedule</h3>
             <div className="space-y-6">
               {interviews.map((interview) => {
@@ -558,7 +558,7 @@ export const CandidateDashboard: React.FC = () => {
                 
                 return (
                   <div key={interview.id} className={cn(
-                    "p-8 rounded-3xl border transition-all",
+                    "p-5 sm:p-8 rounded-3xl border transition-all",
                     isUpcoming ? "border-accent-blue bg-accent-blue/5" : "border-border-primary bg-bg-tertiary/30"
                   )}>
                     <div className="flex flex-col lg:flex-row justify-between gap-8">

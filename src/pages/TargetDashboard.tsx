@@ -813,14 +813,14 @@ export const TargetDashboard: React.FC = () => {
   return (
     <div className="space-y-8 pb-12">
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-3xl font-black text-text-primary tracking-tight">Recruiter Compliance Central</h1>
-          <p className="text-text-secondary mt-1">
+          <h1 className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight">Recruiter Compliance Central</h1>
+          <p className="text-text-secondary text-sm sm:text-base mt-1">
             Analyze, monitor, and audit target application metrics against active candidate counts dynamically.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 self-start md:self-auto">
           {activeTab === 'candidates' && (
             <>
               <div className="flex bg-bg-secondary p-1 rounded-2xl border border-border-primary shadow-sm">
@@ -829,7 +829,7 @@ export const TargetDashboard: React.FC = () => {
                     key={p}
                     onClick={() => setPeriod(p)}
                     className={cn(
-                      "px-5 py-2 rounded-xl text-xs font-bold transition-all capitalize cursor-pointer",
+                      "px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all capitalize cursor-pointer",
                       period === p 
                         ? "bg-accent-blue text-white shadow-md shadow-accent-blue/10" 
                         : "text-text-secondary hover:text-text-primary"
@@ -842,14 +842,14 @@ export const TargetDashboard: React.FC = () => {
 
               <button
                 onClick={exportReport}
-                className="flex items-center gap-2 px-5 py-3.5 bg-accent-blue hover:bg-accent-blue/90 text-white rounded-2xl text-xs font-black shadow-md shadow-accent-blue/10 hover:shadow-lg transition-all cursor-pointer"
+                className="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3.5 bg-accent-blue hover:bg-accent-blue/90 text-white rounded-2xl text-xs font-black shadow-md shadow-accent-blue/10 hover:shadow-lg transition-all cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 Export Report
               </button>
 
               {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs') && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center bg-bg-secondary p-1 rounded-2xl border border-border-primary shadow-sm gap-1">
                     <select
                       value={triggerMonth}
@@ -877,7 +877,7 @@ export const TargetDashboard: React.FC = () => {
                   <button
                     onClick={handleTriggerMonthlyReport}
                     disabled={isLoadingTrigger}
-                    className="flex items-center gap-2 px-5 py-3.5 bg-bg-secondary border border-border-primary hover:bg-bg-tertiary text-text-primary rounded-2xl text-xs font-black shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3.5 bg-bg-secondary border border-border-primary hover:bg-bg-tertiary text-text-primary rounded-2xl text-xs font-black shadow-sm transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Sparkles className={cn("w-3.5 h-3.5 text-accent-blue", isLoadingTrigger && "animate-spin")} />
                     {isLoadingTrigger ? 'Generating...' : 'Trigger Monthly Report'}
@@ -890,11 +890,11 @@ export const TargetDashboard: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-border-primary gap-6">
+      <div className="flex border-b border-border-primary gap-4 sm:gap-6 overflow-x-auto touch-scroll scrollbar-hide">
         <button
           onClick={() => setActiveTab('candidates')}
           className={cn(
-            "pb-4 text-xs sm:text-sm font-black border-b-2 px-1 transition-all cursor-pointer flex items-center gap-2",
+            "pb-4 text-xs sm:text-sm font-black border-b-2 px-1 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap",
             activeTab === 'candidates'
               ? "border-accent-blue text-accent-blue"
               : "border-transparent text-text-secondary hover:text-text-primary"

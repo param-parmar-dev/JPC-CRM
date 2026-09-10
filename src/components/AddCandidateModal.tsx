@@ -315,8 +315,8 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
       onClose={onClose}
       title={isParsing ? "AI Parsing in Progress" : "Add New Candidate"}
       footer={!isParsing ? (
-        <>
-          <div className="mr-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
+          <div className="flex items-center">
             <input
               type="file"
               ref={fileInputRef}
@@ -327,26 +327,29 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isParsing}
-              className="flex items-center gap-2 px-4 py-2 bg-bg-tertiary text-text-primary font-medium rounded-xl hover:bg-bg-tertiary/80 transition-all disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-bg-tertiary text-text-primary font-medium rounded-xl hover:bg-bg-tertiary/80 transition-all disabled:opacity-50 text-xs sm:text-sm cursor-pointer"
             >
               <Upload className="w-4 h-4" />
               Upload Resume
             </button>
           </div>
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 text-text-secondary font-medium hover:text-text-primary transition-colors"
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleSubmit}
-            className="px-6 py-2 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
-          >
-            Save Candidate
-          </button>
-        </>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onClose}
+              className="flex-1 sm:flex-none px-4 py-2.5 text-text-secondary font-medium hover:text-text-primary transition-colors text-xs sm:text-sm text-center cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleSubmit}
+              className="flex-1 sm:flex-none px-6 py-2.5 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20 text-xs sm:text-sm text-center cursor-pointer"
+            >
+              Save Candidate
+            </button>
+          </div>
+        </div>
       ) : null}
+
     >
       <div className="relative min-h-[400px] flex items-center justify-center">
         <AnimatePresence mode="wait">

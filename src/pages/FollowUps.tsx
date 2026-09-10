@@ -103,16 +103,16 @@ export const FollowUps: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Follow-Ups</h1>
-          <p className="text-text-secondary mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Follow-Ups</h1>
+          <p className="text-text-secondary text-sm sm:text-base mt-1">
             {user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' 
               ? 'Manage all team follow-ups and reminders.' 
               : 'Track your personal follow-ups and reminders.'}
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
             <input 
@@ -123,13 +123,13 @@ export const FollowUps: React.FC = () => {
               className="w-full bg-bg-secondary border border-border-primary rounded-2xl pl-12 pr-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors shadow-sm"
             />
           </div>
-          <div className="flex bg-bg-secondary border border-border-primary rounded-2xl p-1">
+          <div className="flex bg-bg-secondary border border-border-primary rounded-2xl p-1 w-full sm:w-auto justify-center">
             {(['all', 'pending', 'done'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all",
+                  "flex-1 sm:flex-initial px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all text-center",
                   filter === f ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20" : "text-text-muted hover:text-text-primary"
                 )}
               >

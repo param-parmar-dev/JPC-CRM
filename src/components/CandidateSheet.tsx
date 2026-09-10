@@ -44,7 +44,7 @@ export const CandidateSheet: React.FC<CandidateSheetProps> = ({ candidate, isOpe
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 h-full w-full max-w-xl bg-bg-secondary border-l border-border-primary shadow-2xl z-[101] overflow-y-auto"
+            className="fixed right-0 top-0 h-full w-full max-w-xl bg-bg-secondary border-l border-border-primary shadow-2xl z-[101] overflow-y-auto touch-scroll pb-safe"
           >
             {/* Header */}
             <div className="sticky top-0 bg-bg-secondary/80 backdrop-blur-md z-10 p-6 border-b border-border-primary flex items-center justify-between">

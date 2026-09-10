@@ -385,9 +385,9 @@ export const InterviewSupportDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-text-primary tracking-tight">Interview Support System</h1>
-          <p className="text-text-secondary mt-2 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-accent-blue" />
+          <h1 className="text-3xl sm:text-4xl font-black text-text-primary tracking-tight">Interview Support System</h1>
+          <p className="text-text-secondary mt-2 flex items-center gap-2 text-sm sm:text-base">
+            <Calendar className="w-4 h-4 text-accent-blue shrink-0" />
             Coordinating multi-round interviews and proxy scheduling
           </p>
         </div>
@@ -395,7 +395,7 @@ export const InterviewSupportDashboard: React.FC = () => {
           {canCreateRequest && (
             <button 
               onClick={() => { setProxyAssignmentConfig(null); setIsRequestModalOpen(true); }}
-              className="px-8 py-4 bg-accent-blue text-white font-bold rounded-[20px] hover:bg-accent-blue/90 transition-all shadow-xl shadow-accent-blue/20 flex items-center gap-2"
+              className="w-full sm:w-auto justify-center px-6 sm:px-8 py-3.5 sm:py-4 bg-accent-blue text-white font-bold rounded-2xl sm:rounded-[20px] hover:bg-accent-blue/90 transition-all shadow-xl shadow-accent-blue/20 flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
               Create Request
@@ -405,7 +405,7 @@ export const InterviewSupportDashboard: React.FC = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
         {[
           { label: 'Today', value: stats.today, icon: Calendar, color: 'text-accent-blue', bg: 'bg-accent-blue/10' },
           { label: 'Pending', value: stats.pending, icon: Clock, color: 'text-accent-amber', bg: 'bg-accent-amber/10' },
@@ -418,12 +418,12 @@ export const InterviewSupportDashboard: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-bg-secondary p-6 rounded-[32px] border border-border-primary/50"
+            className="bg-bg-secondary p-4 sm:p-6 rounded-2xl sm:rounded-[32px] border border-border-primary/50"
           >
             <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center mb-4", stat.bg)}>
               <stat.icon className={cn("w-5 h-5", stat.color)} />
             </div>
-            <p className="text-3xl font-black text-text-primary tracking-tight">{stat.value}</p>
+            <p className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight">{stat.value}</p>
             <p className="text-xs font-bold text-text-muted uppercase tracking-widest mt-1">{stat.label}</p>
           </motion.div>
         ))}
@@ -435,7 +435,7 @@ export const InterviewSupportDashboard: React.FC = () => {
         <motion.div 
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-accent-blue/10 to-accent-blue/5 border border-accent-blue/30 p-8 rounded-[40px] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative overflow-hidden shadow-sm"
+          className="bg-gradient-to-r from-accent-blue/10 to-accent-blue/5 border border-accent-blue/30 p-5 sm:p-8 rounded-3xl sm:rounded-[40px] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative overflow-hidden shadow-sm"
         >
           <div className="space-y-2 relative z-10 select-none">
             <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ export const InterviewSupportDashboard: React.FC = () => {
               </span>
               <span className="text-[10px] font-black text-accent-blue uppercase tracking-widest">Self-Service Onboarding</span>
             </div>
-            <h2 className="text-xl font-black text-text-primary tracking-tight">Direct "Interview Support Only" Form Link</h2>
+            <h2 className="text-lg sm:text-xl font-black text-text-primary tracking-tight">Direct "Interview Support Only" Form Link</h2>
             <p className="text-sm font-medium text-text-secondary max-w-2xl leading-relaxed">
               If only **Interview Support** is selected as the plan, copy this link to send to the candidate. They can fill in all candidate and job details themselves, pick a slot, lock it instantly to prevent double-booking conflicts, and the system automatically assigns the request to the Proxy Team of experts.
             </p>
@@ -470,9 +470,9 @@ export const InterviewSupportDashboard: React.FC = () => {
       )}
 
       {/* Tabs & Search */}
-      <div className="bg-bg-secondary p-2 rounded-[32px] border border-border-primary/50">
+      <div className="bg-bg-secondary p-2 rounded-2xl sm:rounded-[32px] border border-border-primary/50">
         <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 flex overflow-x-auto no-scrollbar p-1">
+          <div className="flex-1 flex overflow-x-auto touch-scroll scrollbar-hide p-1 gap-1">
             {(['analytics', 'team_status', 'today', 'upcoming', 'pending_bookings', 'booked', 'live', 'self_attended', 'completed', 'cancelled', 'rescheduled'] as TabType[]).map((tab) => {
               if (tab === 'analytics' && !canCreateRequest) return null;
               
@@ -481,7 +481,7 @@ export const InterviewSupportDashboard: React.FC = () => {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={cn(
-                    "px-6 py-3 rounded-2xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2",
+                    "px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2",
                     activeTab === tab 
                       ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20" 
                       : "text-text-secondary hover:bg-bg-tertiary"
@@ -597,7 +597,7 @@ export const InterviewSupportDashboard: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-bg-secondary border border-border-primary rounded-[40px] p-8 hover:shadow-2xl hover:shadow-accent-blue/5 transition-all group relative overflow-hidden"
+                className="bg-bg-secondary border border-border-primary rounded-3xl sm:rounded-[40px] p-5 sm:p-8 hover:shadow-2xl hover:shadow-accent-blue/5 transition-all group relative overflow-hidden"
               >
                 <div className="flex flex-col lg:flex-row gap-8">
                   {/* Left: Info */}
@@ -698,8 +698,8 @@ export const InterviewSupportDashboard: React.FC = () => {
                         )}
                       </div>
                       
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <div className="flex gap-2">
+                      <div className="flex flex-col items-start md:items-end gap-1 shrink-0">
+                        <div className="flex flex-wrap gap-2">
                           {recruiter && (
                             <div className="flex items-center gap-1.5 px-3 py-1 bg-bg-tertiary rounded-xl border border-border-primary">
                               <div className="w-2 h-2 bg-accent-blue rounded-full" />
@@ -812,7 +812,7 @@ export const InterviewSupportDashboard: React.FC = () => {
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex flex-col gap-3 min-w-[220px] justify-center p-6 bg-bg-tertiary/50 rounded-[32px] border border-border-primary/50">
+                  <div className="flex flex-col gap-3 w-full lg:w-[220px] lg:min-w-[220px] justify-center p-4 sm:p-6 bg-bg-tertiary/50 rounded-2xl sm:rounded-[32px] border border-border-primary/50">
                     <button 
                       onClick={() => setSelectedDetailRequest(req)}
                       className="w-full py-4 bg-bg-tertiary text-text-primary text-xs font-bold rounded-2xl border border-border-primary hover:bg-bg-tertiary/80 transition-all flex items-center justify-center gap-2"

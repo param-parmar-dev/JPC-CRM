@@ -481,21 +481,21 @@ export const ProxyDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-text-primary tracking-tight">Proxy Central</h1>
-          <p className="text-text-secondary mt-2 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-accent-blue" />
+          <h1 className="text-3xl sm:text-4xl font-black text-text-primary tracking-tight">Proxy Central</h1>
+          <p className="text-text-secondary mt-2 flex items-center gap-2 text-sm sm:text-base">
+            <Clock className="w-4 h-4 text-accent-blue shrink-0" />
             {isHigherAuthority ? "View and manage proxy expert schedules and assignments" : "Manage your availability and upcoming interview support"}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
           {isHigherAuthority && (
-            <div className="flex items-center gap-3 bg-bg-secondary p-3 rounded-2xl border border-border-primary">
-              <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Proxy Member:</span>
+            <div className="flex items-center gap-3 bg-bg-secondary p-3 rounded-2xl border border-border-primary w-full sm:w-auto">
+              <span className="text-[10px] font-black text-text-muted uppercase tracking-widest shrink-0">Proxy Member:</span>
               <select
                 value={selectedProxyId || activeProxyId}
                 onChange={(e) => setSelectedProxyId(e.target.value)}
-                className="px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary focus:outline-none focus:border-accent-blue min-w-[200px]"
+                className="flex-1 sm:flex-initial px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary focus:outline-none focus:border-accent-blue min-w-0 sm:min-w-[200px]"
               >
                 {proxyList.length === 0 ? (
                   <option value="">No Active Proxy Members</option>
@@ -515,7 +515,7 @@ export const ProxyDashboard: React.FC = () => {
 
       {/* Google Calendar Integration Settings Panel */}
       {activeProxyUser && (
-        <div className="bg-bg-secondary p-8 rounded-[32px] border border-border-primary/50 shadow-xl relative overflow-hidden font-sans">
+        <div className="bg-bg-secondary p-5 sm:p-8 rounded-2xl sm:rounded-[32px] border border-border-primary/50 shadow-xl relative overflow-hidden font-sans">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -690,8 +690,8 @@ export const ProxyDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
             <div>
               <h2 className="text-xl font-black text-text-primary">Support Assignments</h2>
               <p className="text-xs font-bold text-text-muted uppercase tracking-widest mt-1">Interviews needing your support</p>
@@ -701,7 +701,7 @@ export const ProxyDashboard: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('active')}
                   className={cn(
-                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                    "px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                     activeTab === 'active' ? "bg-accent-blue text-white shadow-lg" : "text-text-muted hover:text-text-primary"
                   )}
                 >
@@ -710,7 +710,7 @@ export const ProxyDashboard: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('today')}
                   className={cn(
-                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                    "px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                     activeTab === 'today' ? "bg-accent-blue text-white shadow-lg" : "text-text-muted hover:text-text-primary"
                   )}
                 >
@@ -719,7 +719,7 @@ export const ProxyDashboard: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('history')}
                   className={cn(
-                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                    "px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                     activeTab === 'history' ? "bg-accent-blue text-white shadow-lg" : "text-text-muted hover:text-text-primary"
                   )}
                 >
@@ -730,20 +730,20 @@ export const ProxyDashboard: React.FC = () => {
               <div className="flex items-center gap-2 bg-bg-tertiary p-1 rounded-2xl border border-border-primary">
                 <button 
                   onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-accent-blue"
+                  className="px-2 sm:px-3 py-2 text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-accent-blue"
                 >
-                  {sortDirection === 'asc' ? 'Sorted by Oldest' : 'Sorted by Newest'}
+                  {sortDirection === 'asc' ? 'Oldest' : 'Newest'}
                 </button>
                 <input
                   type="date"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  className="bg-transparent text-[10px] font-bold text-text-primary focus:outline-none px-2"
+                  className="bg-transparent text-[10px] font-bold text-text-primary focus:outline-none px-1 sm:px-2"
                 />
               </div>
             </div>
           </div>
-          <span className="px-4 py-1 bg-accent-blue/10 text-accent-blue text-[10px] font-black rounded-full border border-accent-blue/20">
+          <span className="self-start sm:self-auto px-4 py-1 bg-accent-blue/10 text-accent-blue text-[10px] font-black rounded-full border border-accent-blue/20">
             {assignments.filter(a => a.round.status !== 'completed').length} PENDING
           </span>
         </div>

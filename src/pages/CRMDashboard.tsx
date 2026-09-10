@@ -363,20 +363,20 @@ export const CRMDashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6 sm:space-y-10">
       {/* Title block */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-bg-secondary via-bg-tertiary to-bg-secondary border border-border-primary rounded-[32px] p-8 md:p-10 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+      <div className="relative overflow-hidden bg-gradient-to-r from-bg-secondary via-bg-tertiary to-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-5 sm:p-8 md:p-10 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-accent-blue/10 text-accent-blue text-[10px] font-black uppercase tracking-widest rounded-full">CRM Interactive Module</span>
-            <span className="text-[10px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1">
+            <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 bg-accent-blue/10 text-accent-blue text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-full">CRM Interactive Module</span>
+            <span className="text-[9px] sm:text-[10px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1">
               <Activity className="w-3 h-3 text-accent-teal" /> Realtime Sync Active
             </span>
           </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-text-primary tracking-tight font-heading">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-primary tracking-tight font-heading">
             CRM Dedicated Leads & Sales Dashboard
           </h1>
-          <p className="text-text-secondary max-w-2xl text-sm md:text-base">
+          <p className="text-text-secondary max-w-2xl text-xs sm:text-sm md:text-base">
             Complete high-fidelity analytics and structural performance tracking. Filter customer funnel, trajectories, representative performance, and download structured Lead and Sales sheet directly.
           </p>
         </div>
@@ -384,12 +384,12 @@ export const CRMDashboard: React.FC = () => {
         <button
           onClick={handleExportLeadsAndSales}
           disabled={isExporting}
-          className="shrink-0 flex items-center gap-2.5 px-6 py-3 bg-accent-blue text-white font-bold rounded-2xl hover:bg-accent-blue/90 hover:-translate-y-0.5 disabled:opacity-50 transition-all shadow-[0_4px_16px_rgba(0,173,140,0.25)] ring-1 ring-white/10"
+          className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2.5 px-5 sm:px-6 py-2.5 sm:py-3 bg-accent-blue text-white font-bold rounded-xl sm:rounded-2xl hover:bg-accent-blue/90 hover:-translate-y-0.5 disabled:opacity-50 transition-all shadow-[0_4px_16px_rgba(0,173,140,0.25)] ring-1 ring-white/10 text-xs sm:text-sm cursor-pointer"
         >
           {isExporting ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : (
-            <Download className="w-5 h-5" />
+            <Download className="w-4 h-4 sm:w-5 sm:h-5" />
           )}
           <span>Download All Lead & Sales Data</span>
         </button>
@@ -398,15 +398,15 @@ export const CRMDashboard: React.FC = () => {
       <TimeZoneClocks />
 
       {/* Analytical Filtering Controls bar */}
-      <div className="p-6 bg-bg-secondary border border-border-primary rounded-[24px] shadow-sm flex flex-wrap items-center justify-between gap-6">
+      <div className="p-4 sm:p-6 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[24px] shadow-sm flex flex-col lg:flex-row flex-wrap items-stretch lg:items-center justify-between gap-4 sm:gap-6">
         <div className="flex items-center gap-3">
-          <Filter className="w-5 h-5 text-accent-blue" />
-          <h3 className="font-bold text-text-primary text-sm uppercase tracking-wider">Interactive Query Filters</h3>
+          <Filter className="w-5 h-5 text-accent-blue shrink-0" />
+          <h3 className="font-bold text-text-primary text-xs sm:text-sm uppercase tracking-wider">Interactive Query Filters</h3>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
           {/* Search bar */}
-          <div className="relative w-full sm:w-64 max-w-xs">
+          <div className="relative w-full sm:w-64">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
               <Search className="w-4 h-4" />
             </span>

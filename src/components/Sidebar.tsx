@@ -224,43 +224,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed top-0 left-0 h-full w-[260px] bg-bg-secondary border-r border-border-primary z-50 transition-transform duration-300 md:translate-x-0 flex flex-col",
+        "fixed top-0 left-0 h-full w-[280px] max-w-[85vw] md:w-[260px] bg-bg-secondary border-r border-border-primary z-50 transition-transform duration-300 md:translate-x-0 flex flex-col shadow-2xl md:shadow-none",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* Brand Area */}
-        <div className="p-6 flex items-center gap-3">
+        <div className="p-4 sm:p-6 flex items-center gap-3">
           <img 
             src={theme === 'dark' 
               ? "https://auriic.co/wp-content/uploads/2026/04/Auriic-logo-Header.webp" 
               : "https://auriic.co/wp-content/uploads/2026/05/Auriic_dark_Logo.webp"
             } 
             alt="Auriic Logo" 
-            className="h-12 w-auto scale-110 origin-left"
+            className="h-10 sm:h-12 w-auto scale-105 origin-left"
             referrerPolicy="no-referrer"
           />
-          <div className="hidden">
-            <h1 className="font-heading font-bold text-lg leading-none">Auriic</h1>
-            <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold mt-1 block">
-              {user?.role.replace('jpc_', '').replace('_', ' ')}
-            </span>
-          </div>
           <button 
-            className="md:hidden ml-auto p-1 text-text-secondary"
+            className="md:hidden ml-auto p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all"
             onClick={() => setIsOpen(false)}
+            aria-label="Close sidebar menu"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-6 space-y-1.5 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 sm:py-6 space-y-1.5 overflow-y-auto touch-scroll">
           {navItems.filter(item => item.visible).map(item => (
             <a
               key={item.hash}
@@ -297,7 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
         </nav>
 
         {/* Footer */}
-        <div className="p-5 border-t border-border-primary bg-bg-secondary/50 backdrop-blur-sm space-y-4">
+        <div className="p-4 sm:p-5 pb-safe border-t border-border-primary bg-bg-secondary/50 backdrop-blur-sm space-y-3 sm:space-y-4">
           {/* Sales Person Availability Toggle */}
           {user?.role === 'jpc_sales' && (
             <div className="bg-bg-tertiary/70 border border-border-primary/80 rounded-xl p-3 space-y-2">

@@ -179,28 +179,28 @@ export const AddSlotModal: React.FC<AddSlotModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-bg-secondary w-full max-w-lg rounded-[40px] border border-border-primary overflow-hidden shadow-2xl flex flex-col"
+        className="bg-bg-secondary w-full max-w-lg rounded-2xl sm:rounded-[32px] border border-border-primary overflow-hidden shadow-2xl flex flex-col max-h-[94vh]"
       >
         {/* Header */}
-        <div className="px-8 py-6 border-b border-border-primary flex items-center justify-between bg-bg-tertiary">
+        <div className="px-5 sm:px-8 py-4 sm:py-6 border-b border-border-primary flex items-center justify-between bg-bg-tertiary shrink-0">
           <div>
             <span className="text-[10px] font-black text-accent-blue uppercase tracking-widest">Calendar Management</span>
-            <h3 className="text-xl font-black text-text-primary mt-1">Configure Availability</h3>
+            <h3 className="text-lg sm:text-xl font-black text-text-primary mt-1">Configure Availability</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-2.5 hover:bg-bg-primary rounded-full transition-all border border-border-primary text-text-secondary"
+            className="p-2 sm:p-2.5 hover:bg-bg-primary rounded-full transition-all border border-border-primary text-text-secondary"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-8 space-y-6">
+        <div className="p-5 sm:p-8 space-y-6 flex-1 overflow-y-auto touch-scroll">
           <div className="bg-bg-tertiary/50 border border-border-primary rounded-2xl p-4 flex items-start gap-3">
             <Calendar className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
             <div>
@@ -230,7 +230,7 @@ export const AddSlotModal: React.FC<AddSlotModalProps> = ({
 
             <div>
               <label className="text-[10px] font-black text-text-muted uppercase tracking-widest block mb-2">Choose Status / Block Type</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   { value: 'available', label: 'Available', desc: 'Candidates can book', color: 'border-accent-green text-accent-green hover:bg-accent-green/5' },
                   { value: 'unavailable', label: 'Blocked / Out', desc: 'Mark as unavailable', color: 'border-accent-gray text-text-primary hover:bg-accent-gray/5' },
@@ -242,7 +242,7 @@ export const AddSlotModal: React.FC<AddSlotModalProps> = ({
                     type="button"
                     onClick={() => setSlotStatus(item.value as any)}
                     className={cn(
-                      "p-4 border rounded-2xl text-left transition-all flex flex-col justify-between text-xs font-bold",
+                      "p-3.5 sm:p-4 border rounded-2xl text-left transition-all flex flex-col justify-between text-xs font-bold",
                       slotStatus === item.value 
                         ? `${item.color} bg-bg-tertiary ring-2 ring-offset-2 ring-offset-bg-secondary ring-accent-blue`
                         : "border-border-primary hover:border-text-secondary/20 text-text-muted"
@@ -271,17 +271,17 @@ export const AddSlotModal: React.FC<AddSlotModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-5 border-t border-border-primary flex items-center justify-end gap-3 bg-bg-tertiary shrink-0">
+        <div className="px-5 sm:px-8 py-4 sm:py-5 border-t border-border-primary flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 bg-bg-tertiary shrink-0">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 border border-border-primary hover:bg-bg-secondary text-xs font-bold text-text-secondary rounded-xl transition-all"
+            className="w-full sm:w-auto px-5 py-2.5 border border-border-primary hover:bg-bg-secondary text-xs font-bold text-text-secondary rounded-xl transition-all text-center"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isSubmitting}
-            className="px-6 py-2.5 bg-accent-blue hover:bg-accent-blue/90 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-accent-blue/20"
+            className="w-full sm:w-auto px-6 py-2.5 bg-accent-blue hover:bg-accent-blue/90 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-blue/20"
           >
             {isSubmitting ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />

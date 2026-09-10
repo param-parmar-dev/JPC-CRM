@@ -221,21 +221,21 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[70] flex items-center justify-center p-2 sm:p-4">
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 40 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-bg-secondary w-full max-w-md rounded-[48px] shadow-2xl overflow-hidden border border-border-primary"
+        className="bg-bg-secondary w-full max-w-md rounded-2xl sm:rounded-[36px] shadow-2xl overflow-hidden border border-border-primary flex flex-col max-h-[94vh]"
       >
-        <div className="p-10">
-          <div className="flex items-center justify-between mb-8">
+        <div className="p-5 sm:p-8 flex-1 overflow-y-auto touch-scroll">
+          <div className="flex items-center justify-between mb-6 sm:mb-8">
             <div>
               <span className="text-[10px] font-black text-accent-blue uppercase tracking-[0.3em]">Coordination</span>
-              <h2 className="text-3xl font-black text-text-primary tracking-tight mt-1">Reassign Proxy</h2>
-              <p className="text-xs font-bold text-text-muted mt-2">Round: {round.round_label}</p>
+              <h2 className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight mt-1">Reassign Proxy</h2>
+              <p className="text-xs font-bold text-text-muted mt-1 sm:mt-2">Round: {round.round_label}</p>
             </div>
-            <button onClick={onClose} className="p-3 hover:bg-bg-tertiary rounded-2xl transition-colors">
-              <X className="w-6 h-6 text-text-muted" />
+            <button onClick={onClose} className="p-2 sm:p-3 hover:bg-bg-tertiary rounded-2xl transition-colors">
+              <X className="w-5 sm:w-6 h-5 sm:h-6 text-text-muted" />
             </button>
           </div>
 
@@ -398,18 +398,18 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
               )}
             </div>
 
-            <div className="flex gap-4 pt-4">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">
               <button 
                 type="button" 
                 onClick={onClose}
-                className="flex-1 py-4 bg-bg-tertiary text-text-primary font-bold rounded-[20px] hover:bg-bg-tertiary/80 transition-all text-sm"
+                className="w-full sm:flex-1 py-3.5 sm:py-4 bg-bg-tertiary text-text-primary font-bold rounded-[20px] hover:bg-bg-tertiary/80 transition-all text-sm text-center"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleAssign}
                 disabled={!selectedProxyId || isSubmitting || isCheckingCalendar || !isSelectedProxyAvailable || !isTimeRangeValid}
-                className="flex-1 py-4 bg-accent-blue text-white font-bold rounded-[20px] hover:bg-accent-blue/90 shadow-xl shadow-accent-blue/20 transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full sm:flex-1 py-3.5 sm:py-4 bg-accent-blue text-white font-bold rounded-[20px] hover:bg-accent-blue/90 shadow-xl shadow-accent-blue/20 transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 Commit Assignment

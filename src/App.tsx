@@ -10,6 +10,7 @@ import { SLAMonitor } from './components/SLAMonitor';
 import { MigrationExecutor } from './MigrationExecutor';
 import { migrateAllChecklists, testConnection, autoAssignFaizToCandidates } from './services/storage';
 import { Plus, Menu } from 'lucide-react';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -177,6 +178,32 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const getMobileTitle = (hash: string) => {
+    const base = hash.split('?')[0];
+    switch (base) {
+      case '#dashboard': return 'Dashboard';
+      case '#crm-dashboard': return 'CRM Leads & Sales';
+      case '#pipeline': return 'Pipeline Board';
+      case '#candidates': return 'Candidates';
+      case '#candidate': return 'Candidate Profile';
+      case '#followups': return 'Follow-Ups';
+      case '#applications': return 'App Tracker';
+      case '#resume-log': return 'Resume Log';
+      case '#resume-prep-log': return 'Resume Prep';
+      case '#rtr-log': return 'RTR Log';
+      case '#target-dashboard': return 'Target Compliance';
+      case '#cv-repository': return 'CV Repository';
+      case '#domain-resumes': return 'Domain Resumes';
+      case '#feature-alerts': return 'Feature Alerts';
+      case '#interviews': return 'Interview Support';
+      case '#interviews-proxy': return 'Proxy Support';
+      case '#not-interested': return 'Not Interested';
+      case '#not-eligible': return 'Not Eligible';
+      case '#team': return 'Team';
+      default: return 'Auriic CRM';
+    }
+  };
+
   const isReceiptPage = currentHash.startsWith('#receipt');
   // isBookingPage is already declared above
 
@@ -192,28 +219,35 @@ const AppContent: React.FC = () => {
       
       <main className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${(!isReceiptPage && !isBookingPage) ? 'md:ml-[260px]' : ''}`}>
         {!isReceiptPage && !isBookingPage && (
-          <header className="h-20 border-b border-border-primary bg-bg-primary/80 backdrop-blur-xl sticky top-0 z-30 px-6 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-4">
+          <header className="h-16 md:h-20 border-b border-border-primary bg-bg-primary/90 backdrop-blur-xl sticky top-0 z-30 px-3 sm:px-6 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
               <button 
-                className="md:hidden p-2.5 text-text-secondary bg-bg-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all shadow-sm ring-1 ring-border-primary"
+                className="md:hidden p-2 text-text-secondary bg-bg-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all shadow-sm ring-1 ring-border-primary shrink-0"
                 onClick={() => setIsSidebarOpen(true)}
+                aria-label="Open sidebar menu"
               >
                 <Menu className="w-5 h-5" />
               </button>
+              <div className="md:hidden min-w-0">
+                <h1 className="text-base font-bold font-heading text-text-primary tracking-tight truncate">
+                  {getMobileTitle(currentHash)}
+                </h1>
+              </div>
               <div className="hidden md:block">
                 <h2 className="text-xl font-bold font-heading text-text-primary tracking-tight">Welcome back!</h2>
                 <p className="text-xs text-text-secondary font-medium">Ready to place some great candidates?</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-4 ml-auto">
+            <div className="flex items-center gap-2 sm:gap-4 ml-auto shrink-0">
               <NotificationList />
               {user?.role !== 'candidate' && (
                 <button 
                   onClick={() => setIsAddModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 hover:-translate-y-0.5 transition-all shadow-[0_4px_12px_rgba(0,173,140,0.3)] ring-1 ring-white/10"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 hover:-translate-y-0.5 transition-all shadow-[0_4px_12px_rgba(0,173,140,0.3)] ring-1 ring-white/10 text-xs sm:text-sm"
+                  aria-label="Add Candidate"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="hidden sm:inline">Add Candidate</span>
                 </button>
               )}
@@ -221,12 +255,20 @@ const AppContent: React.FC = () => {
           </header>
         )}
 
-        <div className={`p-6 md:p-10 max-w-7xl mx-auto w-full flex-1 ${isReceiptPage ? 'p-0 md:p-0 max-w-none' : ''}`}>
+        <div className={`p-3 sm:p-6 md:p-10 pb-24 md:pb-10 max-w-7xl mx-auto w-full flex-1 min-w-0 overflow-x-hidden ${isReceiptPage ? 'p-0 md:p-0 max-w-none pb-0 md:pb-0' : ''}`}>
           <Suspense fallback={<PageLoader />}>
             {renderPage()}
           </Suspense>
         </div>
       </main>
+
+      {!isReceiptPage && !isBookingPage && (
+        <MobileBottomNav 
+          currentHash={currentHash} 
+          onOpenMenu={() => setIsSidebarOpen(true)} 
+          user={user} 
+        />
+      )}
 
       <SLAMonitor />
       <MigrationExecutor />

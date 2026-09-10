@@ -342,27 +342,27 @@ export const AppTracker: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <h1 className="text-3xl font-bold text-text-primary tracking-tight">Application Tracker</h1>
-            <p className="text-text-secondary mt-1">Select a candidate to track their daily job applications.</p>
-          </div>
-          <button 
-            onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-bg-tertiary border border-border-primary rounded-2xl text-sm font-bold text-text-primary hover:bg-bg-tertiary/80 transition-all shadow-sm"
-          >
-            <Download className="w-4 h-4 text-accent-blue" />
-            Export XLSX
-          </button>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Application Tracker</h1>
+          <p className="text-text-secondary text-sm sm:text-base mt-1">Select a candidate to track their daily job applications.</p>
         </div>
+        <button 
+          onClick={() => setIsExportModalOpen(true)}
+          className="flex items-center justify-center gap-2 px-6 py-3 bg-bg-tertiary border border-border-primary rounded-2xl text-sm font-bold text-text-primary hover:bg-bg-tertiary/80 transition-all shadow-sm w-full sm:w-auto"
+        >
+          <Download className="w-4 h-4 text-accent-blue" />
+          Export XLSX
+        </button>
+      </div>
 
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-xs font-bold text-text-muted uppercase tracking-[0.2em] flex items-center gap-2">
             <UserIcon className="w-4 h-4" />
             My Assigned Candidates
           </h2>
-          <div className="w-64">
+          <div className="w-full sm:w-64">
             <Select
               options={myCandidates.map(c => ({ value: c.id, label: c.full_name }))}
               onChange={(opt: any) => setFilterCandidateId(opt?.value || null)}
@@ -372,7 +372,7 @@ export const AppTracker: React.FC = () => {
             />
           </div>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+        <div className="flex gap-4 overflow-x-auto pb-4 touch-scroll scrollbar-hide">
           {myCandidates.map(candidate => (
             <motion.button
               key={candidate.id}
@@ -513,7 +513,7 @@ export const AppTracker: React.FC = () => {
               className="w-full bg-bg-tertiary border border-border-primary rounded-2xl pl-12 pr-4 py-3 text-text-primary focus:outline-none focus:border-accent-blue transition-colors"
             />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {filterCandidateId && (
               <>
                 <button 
@@ -545,7 +545,7 @@ export const AppTracker: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto touch-scroll">
           <table className="w-full text-left border-collapse table-fixed min-w-[800px]">
             <thead>
               <tr className="bg-bg-tertiary/80">

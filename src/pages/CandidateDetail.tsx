@@ -1493,14 +1493,14 @@ export const CandidateDetail: React.FC = () => {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <a href="#candidates" className="p-2 bg-bg-secondary border border-border-primary rounded-xl text-text-secondary hover:text-text-primary transition-all">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <a href="#candidates" className="p-2 bg-bg-secondary border border-border-primary rounded-xl text-text-secondary hover:text-text-primary transition-all shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </a>
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-3xl font-bold text-text-primary">{candidate.full_name}</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight truncate">{candidate.full_name}</h1>
               {candidate.is_free_trial && (
                 <FreeTrialBadge 
                   startDate={candidate.free_trial_start_date}
@@ -1510,26 +1510,26 @@ export const CandidateDetail: React.FC = () => {
                 />
               )}
             </div>
-            <div className="flex flex-col gap-2 mt-1">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5 text-sm text-text-secondary">
-                  <Phone className="w-4 h-4" /> {candidate.phone}
+            <div className="flex flex-col gap-1.5 mt-1">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap text-xs sm:text-sm text-text-secondary">
+                <span className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5" /> {candidate.phone}
                 </span>
-                <span className="w-1 h-1 bg-text-muted rounded-full" />
-                <span className="flex items-center gap-1.5 text-sm text-text-secondary">
-                  <Mail className="w-4 h-4" /> {candidate.email || 'No email'}
+                <span className="w-1 h-1 bg-text-muted rounded-full hidden sm:block" />
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5" /> {candidate.email || 'No email'}
                 </span>
               </div>
               {followUps.filter(f => !f.done).sort((a, b) => new Date(a.followup_date).getTime() - new Date(b.followup_date).getTime()).slice(0, 1).map(upcomingCall => (
-                <span key={upcomingCall.id} className="flex items-center gap-1.5 text-sm font-bold text-accent-amber bg-accent-amber/10 px-3 py-1 rounded-lg w-max">
-                  <Calendar className="w-4 h-4" /> 
+                <span key={upcomingCall.id} className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-accent-amber bg-accent-amber/10 px-2.5 sm:px-3 py-1 rounded-lg w-max">
+                  <Calendar className="w-3.5 h-3.5" /> 
                   Upcoming Call: {new Date(upcomingCall.followup_date).toLocaleDateString()} - {upcomingCall.note}
                 </span>
               ))}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {canDelete && (
             <button 
               onClick={async () => {
@@ -1578,18 +1578,18 @@ export const CandidateDetail: React.FC = () => {
             </div>
           ) : (
             !isCandidate && !isLeadGen && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button 
                   onClick={handleGenerateAccess}
                   disabled={isGeneratingAccess}
-                  className="px-4 py-2 rounded-xl border border-accent-amber/20 bg-accent-amber/5 flex items-center gap-2 text-accent-amber hover:bg-accent-amber/10 transition-all disabled:opacity-50"
+                  className="px-3.5 sm:px-4 py-2 rounded-xl border border-accent-amber/20 bg-accent-amber/5 flex items-center gap-2 text-accent-amber hover:bg-accent-amber/10 transition-all disabled:opacity-50 text-xs font-bold uppercase tracking-wider"
                 >
                   {isGeneratingAccess ? (
                     <div className="w-4 h-4 border-2 border-accent-amber/30 border-t-accent-amber rounded-full animate-spin" />
                   ) : (
                     <Key className="w-4 h-4" />
                   )}
-                  <span className="text-xs font-bold uppercase tracking-wider">Generate Access</span>
+                  <span>Generate Access</span>
                 </button>
                 {(user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin') && (
                   <button 
@@ -1614,10 +1614,10 @@ export const CandidateDetail: React.FC = () => {
                         showToast('Failed to send request', 'error');
                       }
                     }}
-                    className="px-4 py-2 rounded-xl border border-accent-amber/20 bg-accent-amber/5 flex items-center gap-2 text-accent-amber hover:bg-accent-amber/10 transition-all"
+                    className="px-3.5 sm:px-4 py-2 rounded-xl border border-accent-amber/20 bg-accent-amber/5 flex items-center gap-2 text-accent-amber hover:bg-accent-amber/10 transition-all text-xs font-bold uppercase tracking-wider"
                   >
                     <Lock className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Request Access</span>
+                    <span>Request Access</span>
                   </button>
                 )}
                 <button 
@@ -1627,17 +1627,17 @@ export const CandidateDetail: React.FC = () => {
                     navigator.clipboard.writeText(message);
                     showToast('Invite message copied to clipboard!', 'success');
                   }}
-                  className="px-4 py-2 rounded-xl border border-border-primary bg-bg-secondary flex items-center gap-2 text-text-secondary hover:text-accent-blue hover:border-accent-blue transition-all"
+                  className="px-3.5 sm:px-4 py-2 rounded-xl border border-border-primary bg-bg-secondary flex items-center gap-2 text-text-secondary hover:text-accent-blue hover:border-accent-blue transition-all text-xs font-bold uppercase tracking-wider"
                 >
                   <Share2 className="w-4 h-4" />
-                  <span className="text-xs font-bold uppercase tracking-wider">Invite</span>
+                  <span>Invite</span>
                 </button>
               </div>
             )
           )}
-          <div className="px-4 py-2 rounded-xl border border-border-primary bg-bg-secondary flex items-center gap-2">
+          <div className="px-3.5 sm:px-4 py-2 rounded-xl border border-border-primary bg-bg-secondary flex items-center gap-2">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STAGES[candidate.current_stage].color }} />
-            <span className="text-sm font-bold text-text-primary uppercase tracking-wider">
+            <span className="text-xs sm:text-sm font-bold text-text-primary uppercase tracking-wider">
               {STAGES[candidate.current_stage].label}
             </span>
           </div>
@@ -1647,7 +1647,7 @@ export const CandidateDetail: React.FC = () => {
       {/* Next Payment Alert */}
       {nextPayment && (
         <div className="bg-accent-amber/10 border border-accent-amber/20 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 bg-accent-amber/20 rounded-full flex items-center justify-center text-accent-amber">
+          <div className="w-10 h-10 bg-accent-amber/20 rounded-full flex items-center justify-center text-accent-amber shrink-0">
             <CreditCard className="w-5 h-5" />
           </div>
           <div>
@@ -1661,9 +1661,9 @@ export const CandidateDetail: React.FC = () => {
 
       {/* Stage Move Bar */}
       {canMoveStage && (
-        <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs font-bold text-text-muted uppercase tracking-widest mr-2">Move to Stage:</span>
+        <div className="bg-bg-secondary border border-border-primary rounded-2xl p-3.5 sm:p-4 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="text-xs font-bold text-text-muted uppercase tracking-widest mr-1 sm:mr-2">Move to Stage:</span>
             {PREVIOUS_STAGES[candidate.current_stage] && (
               <button
                 onClick={async () => {
@@ -1675,7 +1675,7 @@ export const CandidateDetail: React.FC = () => {
                     showToast('Failed to revert', 'error');
                   }
                 }}
-                className="px-3 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-sm font-bold text-text-muted hover:border-text-primary hover:text-text-primary transition-all flex items-center gap-2"
+                className="px-3 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs sm:text-sm font-bold text-text-muted hover:border-text-primary hover:text-text-primary transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer"
                 title="Revert to previous stage"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -1691,7 +1691,7 @@ export const CandidateDetail: React.FC = () => {
                   onClick={() => handleStageMove(stageKey as Stage)}
                   disabled={isDisabled}
                   className={cn(
-                    "px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                    "px-3 sm:px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer",
                     isDisabled ? "opacity-50 cursor-not-allowed text-text-muted" : "text-text-primary hover:border-accent-blue hover:text-accent-blue"
                   )}
                 >
@@ -1703,7 +1703,7 @@ export const CandidateDetail: React.FC = () => {
             {candidate.current_stage !== 'not_interested' && (
               <button
                 onClick={() => handleStageMove('not_interested')}
-                className="px-4 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-sm font-bold text-rose-500 hover:bg-rose-500 hover:text-white transition-all ml-auto"
+                className="px-3 sm:px-4 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs sm:text-sm font-bold text-rose-500 hover:bg-rose-500 hover:text-white transition-all ml-auto cursor-pointer"
               >
                 Not Interested
               </button>
@@ -1711,7 +1711,7 @@ export const CandidateDetail: React.FC = () => {
             {candidate.current_stage !== 'not_eligible' && (
               <button
                 onClick={() => handleStageMove('not_eligible')}
-                className="px-4 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-sm font-bold text-rose-500 hover:bg-rose-500 hover:text-white transition-all ml-2"
+                className="px-3 sm:px-4 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs sm:text-sm font-bold text-rose-500 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
               >
                 Not Eligible
               </button>
@@ -1721,7 +1721,8 @@ export const CandidateDetail: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+
         {/* LEFT COLUMN */}
         <div className="lg:col-span-7 space-y-8">
           {/* Resume Section */}

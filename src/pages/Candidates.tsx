@@ -350,6 +350,8 @@ export const Candidates: React.FC = () => {
     }
   };
 
+  const [mobileDisplayCount, setMobileDisplayCount] = useState(50);
+
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center p-20">
@@ -359,55 +361,55 @@ export const Candidates: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Candidates</h1>
-          <p className="text-text-secondary mt-1">Manage and search through your candidate database.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Candidates</h1>
+          <p className="text-xs sm:text-sm text-text-secondary mt-1">Manage and search through your candidate database.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <button 
               onClick={handleExportLeadsAndSales}
               disabled={isExporting}
-              className="flex items-center gap-2 px-4 py-3 bg-bg-secondary border border-border-primary rounded-2xl text-sm font-bold text-text-primary hover:bg-bg-tertiary transition-all cursor-pointer disabled:opacity-50"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 sm:px-4 sm:py-3 bg-bg-secondary border border-border-primary rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold text-text-primary hover:bg-bg-tertiary transition-all cursor-pointer disabled:opacity-50"
             >
-              <Download className="w-5 h-5 text-accent-green" />
-              <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export Report'}</span>
+              <Download className="w-4 h-4 sm:w-5 sm:h-5 text-accent-green" />
+              <span>{isExporting ? 'Exporting...' : 'Export'}</span>
             </button>
             <button 
               onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-3 bg-bg-secondary border border-border-primary rounded-2xl text-sm font-bold text-text-primary hover:bg-bg-tertiary transition-all"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 sm:px-4 sm:py-3 bg-bg-secondary border border-border-primary rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold text-text-primary hover:bg-bg-tertiary transition-all"
             >
-              <Table className="w-5 h-5 text-accent-blue" />
-              <span className="hidden sm:inline">Import</span>
+              <Table className="w-4 h-4 sm:w-5 sm:h-5 text-accent-blue" />
+              <span>Import</span>
             </button>
             <button 
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-blue text-white font-bold rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 bg-accent-blue text-white font-bold rounded-xl sm:rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20 text-xs sm:text-sm"
             >
-              <Plus className="w-5 h-5" />
-              <span className="hidden sm:inline">Add Candidate</span>
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>Add Candidate</span>
             </button>
           </div>
-          <div className="flex items-center gap-4 flex-1 sm:flex-none">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <input 
                 type="text" 
                 placeholder="Search candidates..." 
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full bg-bg-secondary border border-border-primary rounded-2xl pl-12 pr-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors shadow-sm"
+                className="w-full bg-bg-secondary border border-border-primary rounded-xl sm:rounded-2xl pl-10 pr-4 py-2.5 sm:py-3 text-xs sm:text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors shadow-sm"
               />
             </div>
-            <div className="relative w-40 sm:w-48">
-              <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+            <div className="relative w-full sm:w-48">
+              <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <select 
                 value={stageFilter}
                 onChange={e => setStageFilter(e.target.value)}
-                className="w-full bg-bg-secondary border border-border-primary rounded-2xl pl-12 pr-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors shadow-sm appearance-none"
+                className="w-full bg-bg-secondary border border-border-primary rounded-xl sm:rounded-2xl pl-10 pr-4 py-2.5 sm:py-3 text-xs sm:text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors shadow-sm appearance-none cursor-pointer"
               >
                 <option value="">All Stages</option>
                 {Object.entries(STAGES).filter(([key]) => key !== 'not_interested').map(([key, stage]) => (
@@ -419,23 +421,146 @@ export const Candidates: React.FC = () => {
         </div>
       </div>
 
-      {/* List */}
-      <div className="bg-bg-secondary rounded-3xl border border-border-primary overflow-hidden shadow-sm flex flex-col">
-        {/* Table Header (Static) */}
-        <div className="bg-bg-tertiary/50 border-b border-border-primary flex items-center min-w-[800px]">
-          <div className="flex-1 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest min-w-[250px]">Candidate</div>
-          <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">ID</div>
-          <div className="w-56 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden lg:block">Contact</div>
-          <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden md:block text-center">Portal</div>
-          <div className="w-48 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">Stage</div>
-          <div className="w-40 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden sm:block">Package</div>
-          <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden xl:block">Last Update</div>
-          <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest"></div>
-        </div>
+      {/* Mobile Card View (block md:hidden) */}
+      <div className="block md:hidden space-y-3">
+        {filteredCandidates.slice(0, mobileDisplayCount).map((candidate) => {
+          const stage = STAGES[candidate.current_stage];
+          return (
+            <div 
+              key={candidate.id}
+              className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-3 shadow-sm hover:border-accent-blue/50 transition-all"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div 
+                  className="flex items-center gap-3 min-w-0 cursor-pointer" 
+                  onClick={() => handleSelect(candidate)}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-accent-blue/10 flex items-center justify-center text-accent-blue font-bold text-xs ring-1 ring-accent-blue/20 shrink-0">
+                    {(candidate.full_name || 'Candidate').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="text-sm font-bold text-text-primary hover:text-accent-blue transition-colors truncate">
+                        {candidate.full_name || 'Unnamed Candidate'}
+                      </h4>
+                      {candidate.is_free_trial && (
+                        <FreeTrialBadge 
+                          startDate={candidate.free_trial_start_date}
+                          endDate={candidate.free_trial_end_date}
+                          size="sm"
+                        />
+                      )}
+                    </div>
+                    <p className="text-[11px] font-mono text-text-muted mt-0.5">
+                      {candidate.id}
+                    </p>
+                  </div>
+                </div>
 
-        {/* Virtualized List Body */}
-        <div className="overflow-x-auto">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-full shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage?.color || '#94a3b8' }} />
+                  <span className="text-[9px] font-bold text-text-primary uppercase tracking-wider">
+                    {stage?.label?.split('. ')[1] || stage?.label || candidate.current_stage}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs text-text-muted bg-bg-tertiary/40 rounded-xl p-2.5">
+                <div className="truncate">
+                  <span className="text-[10px] font-bold uppercase tracking-wider block text-text-muted">Location</span>
+                  <span className="text-text-primary font-medium truncate block">{candidate.location || '—'}</span>
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold uppercase tracking-wider block text-text-muted">Package</span>
+                  <span className="text-text-primary font-medium truncate block">
+                    {candidate.package_name || '—'} {candidate.package_amount ? `($${candidate.package_amount.toLocaleString()})` : ''}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-border-primary/50">
+                <div className="flex items-center gap-2">
+                  {candidate.phone && (
+                    <a 
+                      href={`tel:${candidate.phone}`}
+                      className="p-2 bg-bg-tertiary hover:bg-accent-blue/10 hover:text-accent-blue rounded-xl text-text-secondary transition-all"
+                      title="Call candidate"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                  {candidate.email && (
+                    <a 
+                      href={`mailto:${candidate.email}`}
+                      className="p-2 bg-bg-tertiary hover:bg-accent-blue/10 hover:text-accent-blue rounded-xl text-text-secondary transition-all"
+                      title="Email candidate"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {user?.role !== 'candidate' && user?.role !== 'jpc_candidate' && (
+                    <button 
+                      onClick={() => handleTrack(candidate)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Track</span>
+                    </button>
+                  )}
+                  <a
+                    href={`#candidate?id=${candidate.id}`}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-bg-tertiary hover:bg-bg-tertiary/80 text-text-primary text-xs font-bold rounded-xl transition-all"
+                  >
+                    <span>Profile</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {filteredCandidates.length === 0 && (
+          <div className="p-12 text-center bg-bg-secondary rounded-2xl border border-border-primary">
+            <Users className="w-10 h-10 text-text-muted mx-auto mb-3" />
+            <h3 className="text-base font-bold text-text-primary">No candidates found</h3>
+            <p className="text-xs text-text-secondary mt-1">Try adjusting your search or filters.</p>
+          </div>
+        )}
+
+        {filteredCandidates.length > mobileDisplayCount && (
+          <div className="pt-2 text-center">
+            <button
+              onClick={() => setMobileDisplayCount(prev => prev + 50)}
+              className="w-full py-3 bg-bg-secondary border border-border-primary hover:bg-bg-tertiary text-text-primary rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              Load More ({filteredCandidates.length - mobileDisplayCount} remaining)
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Virtualized Table (hidden md:flex) */}
+      <div className="hidden md:flex bg-bg-secondary rounded-3xl border border-border-primary overflow-hidden shadow-sm flex-col">
+        {/* Unified Scroll Container for Header and Rows */}
+        <div className="overflow-x-auto touch-scroll">
           <div className="min-w-[800px]">
+            {/* Table Header */}
+            <div className="bg-bg-tertiary/50 border-b border-border-primary flex items-center">
+              <div className="flex-1 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest min-w-[250px]">Candidate</div>
+              <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">ID</div>
+              <div className="w-56 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden lg:block">Contact</div>
+              <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden md:block text-center">Portal</div>
+              <div className="w-48 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">Stage</div>
+              <div className="w-40 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden sm:block">Package</div>
+              <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden xl:block">Last Update</div>
+              <div className="w-32 px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest"></div>
+            </div>
+
+            {/* Virtualized List Body */}
             {filteredCandidates.length > 0 ? (
               <List<CandidateRowExtraProps>
                 rowCount={filteredCandidates.length}
@@ -462,6 +587,7 @@ export const Candidates: React.FC = () => {
           </p>
         </div>
       </div>
+
 
       <CandidateSheet 
         candidate={selectedCandidate}

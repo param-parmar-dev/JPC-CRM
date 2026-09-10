@@ -597,49 +597,50 @@ export const ResumeLogBook: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Resume Log Book</h1>
-          <p className="text-text-secondary mt-1">Track and manage resume modification requests.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Resume Log Book</h1>
+          <p className="text-xs sm:text-sm text-text-secondary mt-1">Track and manage resume modification requests.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-2 px-5 py-3 border border-border-primary hover:border-text-secondary/35 text-text-primary rounded-2xl text-sm font-bold bg-bg-secondary hover:shadow transition-all cursor-pointer"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 border border-border-primary hover:border-text-secondary/35 text-text-primary rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold bg-bg-secondary hover:shadow transition-all cursor-pointer"
           >
             <Download className="w-4 h-4 text-accent-blue" />
-            <span>Export Report</span>
+            <span>Export</span>
           </button>
           {canCreateRequest && (
             <button 
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-blue text-white font-bold rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 bg-accent-blue text-white font-bold rounded-xl sm:rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20 text-xs sm:text-sm cursor-pointer"
             >
-              <Plus className="w-5 h-5" />
-              Request Change
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>Request Change</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input 
             type="text"
             placeholder="Search requests..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-bg-secondary border border-border-primary rounded-2xl focus:outline-none focus:ring-2 focus:ring-accent-blue/20 transition-all"
+            className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-bg-secondary border border-border-primary rounded-xl sm:rounded-2xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/20 transition-all"
           />
         </div>
-        <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-2xl px-4 py-2">
+        <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-xl sm:rounded-2xl px-3.5 py-2">
           <Filter className="w-4 h-4 text-text-muted" />
           <select 
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium text-text-primary cursor-pointer"
+            className="bg-transparent border-none focus:ring-0 text-xs sm:text-sm font-medium text-text-primary cursor-pointer w-full sm:w-auto"
           >
             <option value="all">All Status</option>
             <option value="pending_tl">Pending TL</option>
@@ -794,7 +795,7 @@ export const ResumeLogBook: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-2 min-w-[180px]">
+                  <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[180px] shrink-0">
                     {/* TL Actions */}
                     {(() => {
                       const isCSHeadUser = isCSHead(user);

@@ -549,14 +549,14 @@ export const DomainResumeRepository: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-accent-purple/10 flex items-center justify-center text-accent-purple">
-              <FolderTree className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-accent-purple/10 flex items-center justify-center text-accent-purple shrink-0">
+              <FolderTree className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <h1 className="text-3xl font-black text-text-primary tracking-tight font-heading">
+              <h1 className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight font-heading">
                 Domain & Role Resumes
               </h1>
-              <p className="text-text-secondary text-sm mt-0.5">
+              <p className="text-text-secondary text-xs sm:text-sm mt-0.5">
                 Centralized Domain → Role → Candidate resume repository with version preservation and bulk structured download.
               </p>
             </div>
@@ -1345,12 +1345,12 @@ export const DomainResumeRepository: React.FC = () => {
       {/* UPLOAD NEW VERSION MODAL */}
       <AnimatePresence>
         {uploadModalCandidate && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-bg-secondary w-full max-w-lg rounded-3xl border border-border-primary p-6 shadow-2xl space-y-6"
+              className="bg-bg-secondary w-full max-w-lg rounded-2xl sm:rounded-3xl border border-border-primary p-4 sm:p-6 shadow-2xl space-y-6 max-h-[94vh] flex flex-col overflow-y-auto touch-scroll"
             >
               <div className="flex items-center justify-between border-b border-border-primary pb-4">
                 <div>
@@ -1462,12 +1462,12 @@ export const DomainResumeRepository: React.FC = () => {
       {/* VERSION HISTORY DRAWER / MODAL */}
       <AnimatePresence>
         {historyModalCandidate && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-bg-secondary w-full max-w-2xl rounded-3xl border border-border-primary p-6 shadow-2xl space-y-6 max-h-[85vh] flex flex-col"
+              className="bg-bg-secondary w-full max-w-2xl rounded-2xl sm:rounded-3xl border border-border-primary p-4 sm:p-6 shadow-2xl space-y-6 max-h-[94vh] sm:max-h-[85vh] flex flex-col"
             >
               <div className="flex items-center justify-between border-b border-border-primary pb-4">
                 <div className="flex items-center gap-3">
@@ -1608,12 +1608,12 @@ export const DomainResumeRepository: React.FC = () => {
       {/* ZIP PROGRESS OVERLAY MODAL */}
       <AnimatePresence>
         {isZipping && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-bg-secondary w-full max-w-md rounded-3xl border border-border-primary p-8 shadow-2xl text-center space-y-6"
+              className="bg-bg-secondary w-full max-w-md rounded-2xl sm:rounded-3xl border border-border-primary p-5 sm:p-8 shadow-2xl text-center space-y-6"
             >
               <div className="w-16 h-16 rounded-3xl bg-accent-purple/10 flex items-center justify-center text-accent-purple mx-auto">
                 <Download className="w-8 h-8 animate-bounce" />

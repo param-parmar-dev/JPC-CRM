@@ -697,12 +697,12 @@ export const BookingPage: React.FC = () => {
   if (error === 'ALREADY_BOOKED' || isSuccess || isAcknowledgeSuccess) {
     const isSupportOnly = token === 'interview-support-only';
     return (
-      <div className="min-h-screen bg-bg-primary flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-bg-secondary p-12 rounded-[60px] border border-border-primary shadow-2xl text-center animate-fade-in">
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-md w-full bg-bg-secondary p-6 sm:p-12 rounded-3xl sm:rounded-[40px] md:rounded-[60px] border border-border-primary shadow-2xl text-center animate-fade-in">
           <div className="w-24 h-24 bg-accent-green/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-accent-green/20">
             <CheckCircle2 className="w-12 h-12 text-accent-green" />
           </div>
-          <h1 className="text-4xl font-black text-text-primary tracking-tight mb-4">
+          <h1 className="text-3xl sm:text-4xl font-black text-text-primary tracking-tight mb-4">
             {isAcknowledgeSuccess ? 'Acknowledged!' : 'Confirmed!'}
           </h1>
           <p className="text-text-secondary font-medium leading-relaxed">
@@ -729,12 +729,12 @@ export const BookingPage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-bg-primary flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-bg-secondary p-12 rounded-[60px] border border-border-primary shadow-2xl text-center">
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-md w-full bg-bg-secondary p-6 sm:p-12 rounded-3xl sm:rounded-[40px] md:rounded-[60px] border border-border-primary shadow-2xl text-center">
           <div className="w-20 h-20 bg-accent-red/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-accent-red/20">
             <AlertCircle className="w-10 h-10 text-accent-red" />
           </div>
-          <h1 className="text-3xl font-black text-text-primary tracking-tight mb-4">Invalid Link</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight mb-4">Invalid Link</h1>
           <p className="text-text-secondary font-medium leading-relaxed">{error}</p>
           <button 
             onClick={() => navigate()}
@@ -749,10 +749,10 @@ export const BookingPage: React.FC = () => {
 
   if (token === 'interview-support-only') {
     return (
-      <div className="min-h-screen bg-bg-primary py-12 px-6">
-        <div className="max-w-5xl mx-auto space-y-12 animate-fade-in">
+      <div className="min-h-screen bg-bg-primary py-6 sm:py-12 px-3 sm:px-6">
+        <div className="max-w-5xl mx-auto space-y-8 sm:space-y-12 animate-fade-in">
           {/* Top Branding/Header */}
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 bg-bg-secondary p-10 rounded-[60px] border border-border-primary shadow-xl">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 sm:gap-8 bg-bg-secondary p-6 sm:p-10 rounded-3xl sm:rounded-[40px] md:rounded-[60px] border border-border-primary shadow-xl">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-xl bg-accent-blue flex items-center justify-center">
@@ -760,7 +760,7 @@ export const BookingPage: React.FC = () => {
                 </span>
                 <span className="text-[10px] font-black text-text-muted uppercase tracking-[0.4em]">Interview Support System</span>
               </div>
-              <h1 className="text-5xl font-black text-text-primary tracking-tight leading-[1.1]">
+              <h1 className="text-3xl sm:text-5xl font-black text-text-primary tracking-tight leading-[1.1]">
                 Book <span className="text-accent-blue">Interview Support</span>
               </h1>
               <p className="text-sm text-text-secondary max-w-2xl font-medium leading-relaxed">
@@ -771,7 +771,7 @@ export const BookingPage: React.FC = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Form Section */}
-            <div className="lg:col-span-7 bg-bg-secondary rounded-[60px] p-10 border border-border-primary shadow-xl space-y-8">
+            <div className="lg:col-span-7 bg-bg-secondary rounded-3xl sm:rounded-[40px] md:rounded-[60px] p-6 sm:p-10 border border-border-primary shadow-xl space-y-8">
               <h2 className="text-2xl font-black text-text-primary tracking-tight">1. Candidate & Job Information</h2>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -1013,7 +1013,7 @@ export const BookingPage: React.FC = () => {
 
             {/* Review and Booking confirmation Sticky card */}
             <div className="lg:col-span-5 lg:sticky lg:top-8 font-sans">
-              <div className="bg-bg-secondary rounded-[60px] p-10 border border-border-primary shadow-2xl space-y-8 overflow-hidden relative">
+              <div className="bg-bg-secondary rounded-3xl sm:rounded-[40px] md:rounded-[60px] p-6 sm:p-10 border border-border-primary shadow-2xl space-y-8 overflow-hidden relative">
                 <div className="relative z-10 space-y-8">
                   <h2 className="text-2xl font-black text-text-primary tracking-tight">Review Support Details</h2>
                   
@@ -1116,10 +1116,10 @@ export const BookingPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary py-12 px-6">
-      <div className="max-w-4xl mx-auto space-y-10">
+    <div className="min-h-screen bg-bg-primary py-6 sm:py-12 px-3 sm:px-6">
+      <div className="max-w-4xl mx-auto space-y-8 sm:space-y-10">
         {/* Top Branding/Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 bg-bg-secondary p-10 rounded-[60px] border border-border-primary shadow-xl animate-fade-in animate-duration-300">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 sm:gap-8 bg-bg-secondary p-6 sm:p-10 rounded-3xl sm:rounded-[40px] md:rounded-[60px] border border-border-primary shadow-xl animate-fade-in animate-duration-300">
           <div className="space-y-4 font-sans">
             <div className="flex items-center gap-2">
               <span className="w-8 h-8 rounded-xl bg-accent-blue flex items-center justify-center">
@@ -1127,10 +1127,10 @@ export const BookingPage: React.FC = () => {
               </span>
               <span className="text-[10px] font-black text-text-muted uppercase tracking-[0.4em]">Interview Support System</span>
             </div>
-            <h1 className="text-4xl sm:text-5xl font-black text-text-primary tracking-tight leading-[1.1]">
+            <h1 className="text-3xl sm:text-5xl font-black text-text-primary tracking-tight leading-[1.1]">
               Confirm your rounds at <span className="text-accent-blue">{request?.interview_company_name}</span>
             </h1>
-            <div className="flex flex-wrap gap-6 text-sm">
+            <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
               <div className="flex items-center gap-2 text-text-secondary">
                 <Briefcase className="w-5 h-5 text-accent-blue" />
                 <span className="font-bold">{request?.job_title}</span>
@@ -1142,10 +1142,10 @@ export const BookingPage: React.FC = () => {
             </div>
           </div>
           <div className="hidden lg:block w-px h-24 bg-border-primary mx-4" />
-          <div className="flex flex-col items-end gap-2 bg-bg-tertiary/50 p-6 rounded-[32px] border border-border-primary/50 shrink-0 font-sans">
+          <div className="flex flex-col items-start sm:items-end gap-2 bg-bg-tertiary/50 p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-border-primary/50 shrink-0 font-sans w-full sm:w-auto">
             <p className="text-[10px] font-black text-text-muted uppercase tracking-widest leading-none">Coordinated by</p>
             <div className="flex items-center gap-3">
-              <div className="text-right">
+              <div className="text-left sm:text-right">
                 <p className="text-base font-black text-text-primary">{recruiter?.display_name || 'System'}</p>
                 <p className="text-xs font-bold text-text-muted">Placify Recruiter</p>
               </div>
@@ -1156,7 +1156,7 @@ export const BookingPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-bg-secondary rounded-[60px] p-12 border border-border-primary shadow-2xl space-y-10">
+        <div className="bg-bg-secondary rounded-3xl sm:rounded-[40px] md:rounded-[60px] p-6 sm:p-12 border border-border-primary shadow-2xl space-y-8 sm:space-y-10">
           <div className="flex flex-col md:flex-row gap-12">
             <div className="flex-1 space-y-8 font-sans">
               <h2 className="text-3xl font-black text-text-primary tracking-tight">Scheduled Interview Timeline</h2>

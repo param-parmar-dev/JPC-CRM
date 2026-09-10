@@ -193,20 +193,17 @@ export const InterviewAnalytics: React.FC<AnalyticsProps> = ({ requests, rounds,
 
       {/* Visual Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-bg-secondary border border-border-primary rounded-[40px] p-8">
+        <div className="lg:col-span-2 bg-bg-secondary border border-border-primary rounded-3xl sm:rounded-[40px] p-5 sm:p-8">
           <h3 className="text-xl font-black text-text-primary mb-8 flex items-center gap-2">
             Support Breakdown: Screening vs Interview
           </h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-primary)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'var(--text-muted)', fontSize: 12, fontWeight: 700}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: 'var(--text-muted)', fontSize: 12, fontWeight: 700}} />
-                <Tooltip 
-                  cursor={{fill: 'var(--bg-tertiary)'}}
-                  contentStyle={{backgroundColor: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-primary)', boxShadow: '0 10px 30px rgba(0,0,0,0.1)'}}
-                />
+                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                <XAxis dataKey="name" stroke="#64748B" fontSize={12} />
+                <YAxis stroke="#64748B" fontSize={12} />
+                <Tooltip contentStyle={{backgroundColor: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-primary)'}} />
                 <Legend iconType="circle" />
                 <Bar dataKey="Proxy Support" fill="#00AD8C" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="No Proxy" fill="#EF4444" radius={[6, 6, 0, 0]} />
@@ -215,7 +212,7 @@ export const InterviewAnalytics: React.FC<AnalyticsProps> = ({ requests, rounds,
           </div>
         </div>
 
-        <div className="bg-bg-secondary border border-border-primary rounded-[40px] p-8">
+        <div className="bg-bg-secondary border border-border-primary rounded-3xl sm:rounded-[40px] p-5 sm:p-8">
           <h3 className="text-xl font-black text-text-primary mb-8">Overall Split</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -242,28 +239,28 @@ export const InterviewAnalytics: React.FC<AnalyticsProps> = ({ requests, rounds,
       </div>
 
       {/* Candidate Journey Table */}
-      <div className="bg-bg-secondary border border-border-primary rounded-[40px] overflow-hidden">
-        <div className="p-8 border-b border-border-primary bg-bg-tertiary/30">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-bg-secondary border border-border-primary rounded-3xl sm:rounded-[40px] overflow-hidden">
+        <div className="p-5 sm:p-8 border-b border-border-primary bg-bg-tertiary/30">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <h3 className="text-xl font-black text-text-primary">Candidate Journey History</h3>
-            <div className="flex items-center gap-4">
-              <div className="relative">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
+              <div className="relative flex-1 sm:flex-initial">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                 <input 
                   type="text"
                   placeholder="Filter journeys..."
                   value={journeySearch}
                   onChange={(e) => setJourneySearch(e.target.value)}
-                  className="bg-bg-tertiary border border-border-primary rounded-2xl pl-10 pr-4 py-2.5 text-xs text-text-primary focus:ring-2 focus:ring-accent-blue/20 outline-none w-64"
+                  className="w-full sm:w-64 bg-bg-tertiary border border-border-primary rounded-2xl pl-10 pr-4 py-2.5 text-xs text-text-primary focus:ring-2 focus:ring-accent-blue/20 outline-none"
                 />
               </div>
-              <div className="flex items-center gap-1 bg-bg-tertiary p-1 rounded-2xl border border-border-primary">
+              <div className="flex items-center gap-1 bg-bg-tertiary p-1 rounded-2xl border border-border-primary overflow-x-auto">
                 {(['all', 'proxy', 'no_proxy'] as const).map(f => (
                   <button
                     key={f}
                     onClick={() => setProxyFilter(f)}
                     className={cn(
-                      "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                      "px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
                       proxyFilter === f ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20" : "text-text-muted hover:text-text-primary"
                     )}
                   >
@@ -275,7 +272,7 @@ export const InterviewAnalytics: React.FC<AnalyticsProps> = ({ requests, rounds,
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto touch-scroll">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border-primary">

@@ -550,14 +550,14 @@ export const Team: React.FC = () => {
       {/* Password Modal */}
       <AnimatePresence>
         {generatedPassword && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-bg-secondary border border-border-primary rounded-3xl shadow-2xl max-w-md w-full overflow-hidden"
+              className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-3xl shadow-2xl max-w-md w-full max-h-[94vh] overflow-y-auto touch-scroll"
             >
-              <div className="p-8 text-center">
+              <div className="p-5 sm:p-8 text-center">
                 <div className="w-16 h-16 bg-accent-green/10 rounded-full flex items-center justify-center mx-auto mb-6">
                   <ShieldCheck className="w-8 h-8 text-accent-green" />
                 </div>
@@ -614,34 +614,34 @@ export const Team: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Team Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Team Management</h1>
           <p className="text-text-secondary mt-1">Manage your team members and their access levels.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin') && (
             <button 
               onClick={() => setIsSMTPModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-amber/10 text-accent-amber border border-accent-amber/20 font-bold rounded-2xl hover:bg-accent-amber/20 transition-all"
+              className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-accent-amber/10 text-accent-amber border border-accent-amber/20 text-sm sm:text-base font-bold rounded-2xl hover:bg-accent-amber/20 transition-all"
             >
-              <Mail className="w-5 h-5" />
+              <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
               SMTP Settings
             </button>
           )}
           {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin') && (
             <button 
               onClick={seedAllUsers}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-green/10 text-accent-green border border-accent-green/20 font-bold rounded-2xl hover:bg-accent-green/20 transition-all"
+              className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-accent-green/10 text-accent-green border border-accent-green/20 text-sm sm:text-base font-bold rounded-2xl hover:bg-accent-green/20 transition-all"
             >
-              <Users className="w-5 h-5" />
+              <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               Sync CRM Users
             </button>
           )}
           {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin') && (
             <button 
               onClick={() => setIsResetModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-red/10 text-accent-red border border-accent-red/20 font-bold rounded-2xl hover:bg-accent-red/20 transition-all"
+              className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-accent-red/10 text-accent-red border border-accent-red/20 text-sm sm:text-base font-bold rounded-2xl hover:bg-accent-red/20 transition-all"
             >
-              <Trash2 className="w-5 h-5" />
+              <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
               Reset Database
             </button>
           )}
@@ -652,9 +652,9 @@ export const Team: React.FC = () => {
                 setFormData({ username: '', display_name: '', role: 'jpc_sales', password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
                 setIsModalOpen(true);
               }}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-blue text-white font-bold rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
+              className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-accent-blue text-white text-sm sm:text-base font-bold rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
             >
-              <UserPlus className="w-5 h-5" />
+              <UserPlus className="w-4 h-4 sm:w-5 sm:h-5" />
               Add Team Member
             </button>
           )}
@@ -662,7 +662,7 @@ export const Team: React.FC = () => {
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex border-b border-border-primary mb-8 gap-6 overflow-x-auto">
+      <div className="flex border-b border-border-primary mb-8 gap-6 overflow-x-auto touch-scroll scrollbar-hide">
         <button
           onClick={() => setActiveTab('members')}
           className={cn(

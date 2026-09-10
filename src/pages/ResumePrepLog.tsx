@@ -443,24 +443,24 @@ export const ResumePrepLog: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight font-heading">
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight font-heading">
             Resume Understanding & IQ Log
           </h1>
-          <p className="text-text-secondary mt-1">
+          <p className="text-xs sm:text-sm text-text-secondary mt-1">
             Manage expert resume evaluations and interview prep deliverables.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-2 px-5 py-3 border border-border-primary hover:border-text-secondary/35 text-text-primary rounded-2xl text-sm font-bold bg-bg-secondary hover:shadow transition-all cursor-pointer"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 border border-border-primary hover:border-text-secondary/35 text-text-primary rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold bg-bg-secondary hover:shadow transition-all cursor-pointer"
           >
             <Download className="w-4 h-4 text-accent-blue" />
-            <span>Export Report</span>
+            <span>Export</span>
           </button>
           {(user?.role === 'jpc_recruiter' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_marketing') && (
             <button 
@@ -468,17 +468,17 @@ export const ResumePrepLog: React.FC = () => {
                 setFormData({ candidate_id: '', details: '', type: activeTab });
                 setIsAddModalOpen(true);
               }}
-              className="flex items-center gap-2 px-6 py-3 bg-accent-blue text-white font-bold rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20 cursor-pointer"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 bg-accent-blue text-white font-bold rounded-xl sm:rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20 text-xs sm:text-sm cursor-pointer"
             >
-              <Plus className="w-5 h-5 animate-pulse" />
-              Generate Request
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" />
+              <span>Generate Request</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-border-primary flex gap-6">
+      <div className="border-b border-border-primary flex gap-4 sm:gap-6 overflow-x-auto touch-scroll scrollbar-hide">
         <button
           onClick={() => setActiveTab('resume_understanding')}
           className={cn(
@@ -670,7 +670,7 @@ export const ResumePrepLog: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex flex-col gap-2 min-w-[200px]">
+                    <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[200px] shrink-0">
                       {/* Actions for Resume Team role or higher */}
                       {(user?.role === 'jpc_resume' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && req.status === 'pending_resume_team' && (
                         <>

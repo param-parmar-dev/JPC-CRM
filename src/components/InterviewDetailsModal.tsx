@@ -81,15 +81,15 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="bg-bg-secondary w-full max-w-5xl rounded-[40px] shadow-2xl border border-border-primary overflow-hidden flex flex-col my-8 max-h-[90vh]"
+        className="bg-bg-secondary w-full max-w-5xl rounded-2xl sm:rounded-[36px] shadow-2xl border border-border-primary overflow-hidden flex flex-col my-4 sm:my-8 max-h-[94vh] sm:max-h-[90vh]"
       >
         {/* Header */}
-        <div className="px-10 py-8 border-b border-border-primary shrink-0 flex items-center justify-between bg-bg-tertiary">
+        <div className="px-5 sm:px-10 py-4 sm:py-8 border-b border-border-primary shrink-0 flex items-center justify-between bg-bg-tertiary">
           <div>
             <span className={cn(
               "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
@@ -99,23 +99,23 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
             )}>
               {request.overall_status.replace('_', ' ')}
             </span>
-            <h2 className="text-2xl font-black text-text-primary tracking-tight mt-3">
+            <h2 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight mt-2 sm:mt-3">
               {isEditing ? 'Edit Interview Details' : `${candidate?.full_name || 'Candidate'}'s Application`}
             </h2>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {canEdit && !isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="px-5 py-2.5 bg-bg-secondary border border-border-primary hover:border-accent-blue text-xs font-bold text-text-primary rounded-xl transition-all flex items-center gap-2"
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-bg-secondary border border-border-primary hover:border-accent-blue text-xs font-bold text-text-primary rounded-xl transition-all flex items-center gap-1.5 sm:gap-2"
               >
                 <Edit3 className="w-3.5 h-3.5 text-accent-blue" />
-                Edit Info
+                <span className="hidden sm:inline">Edit Info</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-3 hover:bg-bg-primary rounded-full transition-all border border-border-primary hover:border-text-secondary/20"
+              className="p-2 sm:p-3 hover:bg-bg-primary rounded-full transition-all border border-border-primary hover:border-text-secondary/20"
             >
               <X className="w-5 h-5 text-text-secondary" />
             </button>
@@ -123,7 +123,7 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-10 space-y-8">
+        <div className="flex-1 overflow-y-auto touch-scroll p-5 sm:p-10 space-y-6 sm:space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Col: Info Brief */}
             <div className="lg:col-span-2 space-y-8">
