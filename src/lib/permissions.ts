@@ -171,3 +171,37 @@ export function canToggleSalesAvailability(user: User | null, targetUserId?: str
   return false;
 }
 
+/**
+ * Checks if a user is the CS Head or in the Customer Service / Compliance leadership team.
+ */
+export function isCSHead(user: User | null): boolean {
+  if (!user) return false;
+  return (
+    user.role === 'jpc_cs' ||
+    user.role === 'jpc_compliance_person' ||
+    user.username === 'care' ||
+    String(user.display_name).toLowerCase().includes('faiz')
+  );
+}
+
+/**
+ * Checks if a user has management authority (Admin, Sysadmin, Manager).
+ */
+export function isManagementUser(user: User | null): boolean {
+  if (!user) return false;
+  return ['administrator', 'jpc_sysadmin', 'jpc_manager'].includes(user.role);
+}
+
+/**
+ * Checks if a user can act as Team Leader (TL) to move forward or reject
+ * requests in 'pending_tl' status across Resume Log and RTR Log.
+ * - Marketing TLs (jpc_marketing)
+ * - Customer Service Head (jpc_cs, jpc_compliance_person, Faiz / care)
+ * - Management (administrator, jpc_sysadmin, jpc_manager)
+ */
+export function canActAsTLForRequest(user: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'jpc_marketing' || isCSHead(user) || isManagementUser(user);
+}
+
+

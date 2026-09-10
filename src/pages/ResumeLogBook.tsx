@@ -29,6 +29,7 @@ import { useToast } from '../contexts/ToastContext';
 import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
+import { isCSHead, canActAsTLForRequest, isManagementUser } from '../lib/permissions';
 import * as XLSX from 'xlsx';
 
 export const ResumeLogBook: React.FC = () => {
@@ -271,7 +272,7 @@ export const ResumeLogBook: React.FC = () => {
       const activeCompletedByName = completedByName.trim() || user?.display_name || user?.username || 'Resume Team';
       const activeCompletedById = completedById || user?.id || null;
 
-      await handleUpdateStatus(requestId, newStatus, actionNotes, finalResumeUrl, resumeBase64, resumeFilename, activeCompletedById, activeCompletedByName);
+      await handleUpdateStatus(requestId, newStatus, actionNotes, finalResumeUrl, resumeBase64, resumeFilename, activeCompletedById, activeCompletedByName, type);
       
       // Update candidate record if completed
       if (newStatus === 'completed' && finalResumeUrl) {
@@ -407,7 +408,8 @@ export const ResumeLogBook: React.FC = () => {
     resumeBase64?: string, 
     resumeFilename?: string,
     completedBy?: string | number | null,
-    completedByNameParam?: string | null
+    completedByNameParam?: string | null,
+    actionType?: string
   ) => {
     try {
       const updateData: any = { 
@@ -421,13 +423,35 @@ export const ResumeLogBook: React.FC = () => {
         updateData.completed_at = new Date().toISOString();
       }
       
-      if ((user?.role === 'jpc_marketing' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && notes && newStatus !== 'pending_resume_team') updateData.tl_notes = notes;
-      if ((user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && notes) updateData.cs_notes = notes;
-      if (user?.role === 'jpc_resume' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') {
+      const isCSHeadUser = isCSHead(user);
+      const isManagement = isManagementUser(user);
+
+      if (actionType === 'tl_forward' || actionType === 'tl_reject') {
+        if (notes) updateData.tl_notes = notes;
+      } else if (actionType === 'cs_forward' && newStatus === 'pending_resume_team') {
+        const req = requests.find(r => r.id === requestId);
+        if (req?.status === 'pending_tl') {
+          updateData.tl_notes = notes || 'Forwarded directly to Resume Team by CS Head';
+          updateData.cs_notes = notes || 'Forwarded directly to Resume Team by CS Head';
+        } else {
+          if (notes) updateData.cs_notes = notes;
+        }
+      } else if (actionType === 'cs_back') {
+        if (notes) updateData.cs_notes = notes;
+      } else if (actionType === 'resume_complete' || actionType === 'resume_back' || actionType === 'resume_reject') {
         if (notes) updateData.resume_team_notes = notes;
         if (resumeUrl) updateData.new_resume_url = resumeUrl;
         if (resumeBase64) updateData.resume_base64 = resumeBase64;
         if (resumeFilename) updateData.resume_filename = resumeFilename;
+      } else {
+        if ((user?.role === 'jpc_marketing' || isCSHeadUser || isManagement) && notes && newStatus !== 'pending_resume_team') updateData.tl_notes = notes;
+        if ((user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || isManagement) && notes) updateData.cs_notes = notes;
+        if (user?.role === 'jpc_resume' || isManagement) {
+          if (notes) updateData.resume_team_notes = notes;
+          if (resumeUrl) updateData.new_resume_url = resumeUrl;
+          if (resumeBase64) updateData.resume_base64 = resumeBase64;
+          if (resumeFilename) updateData.resume_filename = resumeFilename;
+        }
       }
 
       await updateDoc(doc(db, 'jpc_resume_requests', requestId), updateData);
@@ -450,6 +474,15 @@ export const ResumeLogBook: React.FC = () => {
           type: 'resume_request',
           message: `Resume request for candidate ${candidates.find(c => c.id === request.candidate_id)?.full_name || 'Unknown'} has been updated to ${newStatus.replace('_', ' ')}`
         });
+
+        if (recipientId !== request.recruiter_id && String(request.recruiter_id) !== String(user?.id)) {
+          await addNotification({
+            recipient_id: request.recruiter_id,
+            sender_id: user?.id || null,
+            type: 'resume_request',
+            message: `Your resume request for candidate ${candidates.find(c => c.id === request.candidate_id)?.full_name || 'Unknown'} was moved forward to ${newStatus.replace('_', ' ')}`
+          });
+        }
       }
 
       showToast(`Request updated to ${newStatus.replace('_', ' ')}`, 'success');
@@ -764,17 +797,9 @@ export const ResumeLogBook: React.FC = () => {
                   <div className="flex flex-col gap-2 min-w-[180px]">
                     {/* TL Actions */}
                     {(() => {
-                      const mohitUser = team.find(u => u.username === 'mohit.panchal' || u.email === 'mohit.panchal@auriic.co');
-                      const isFaiz = user?.role === 'jpc_cs' && (user.username === 'care' || String(user.display_name).toLowerCase().includes('faiz'));
-                      const isMohitTeamReq = (() => {
-                        const cand = candidates.find(c => c.id === req.candidate_id);
-                        const rec = team.find(u => u.id === req.recruiter_id);
-                        const faizUser = team.find(u => u.username === 'care' || String(u.display_name).toLowerCase().includes('faiz'));
-                        return (cand && (String(cand.assigned_marketing_leader) === String(mohitUser?.id) || String(cand.assigned_marketing_leader) === String(faizUser?.id))) || 
-                               (rec && (String(rec.leader_id) === String(mohitUser?.id) || String(rec.leader_id) === String(faizUser?.id)));
-                      })();
-                      
-                      const canActAsTL = user?.role === 'jpc_marketing' || (isFaiz && mohitUser && isMohitTeamReq);
+                      const isCSHeadUser = isCSHead(user);
+                      const isManagement = isManagementUser(user);
+                      const canActAsTL = canActAsTLForRequest(user);
                       
                       return canActAsTL && req.status === 'pending_tl' && (
                         <>
@@ -783,8 +808,17 @@ export const ResumeLogBook: React.FC = () => {
                             className="w-full py-3 bg-accent-purple text-white font-bold rounded-xl hover:bg-accent-purple/90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-purple/20"
                           >
                             <ArrowRight className="w-4 h-4" />
-                            {isFaiz ? 'Forward (Acting as TL)' : 'Forward to CS'}
+                            {isCSHeadUser ? 'Forward (Acting as TL / CS Head)' : 'Forward to CS'}
                           </button>
+                          {(isCSHeadUser || isManagement) && (
+                            <button 
+                              onClick={() => openActionModal(req.id, candidate?.full_name || 'Candidate', 'cs_forward')}
+                              className="w-full py-2.5 bg-accent-blue/10 text-accent-blue font-bold rounded-xl hover:bg-accent-blue/20 transition-all flex items-center justify-center gap-2 border border-accent-blue/30 text-xs"
+                            >
+                              <ArrowRight className="w-3.5 h-3.5" />
+                              Forward to Resume Team
+                            </button>
+                          )}
                           <button 
                             onClick={() => openActionModal(req.id, candidate?.full_name || 'Candidate', 'tl_reject')}
                             className="w-full py-3 bg-bg-tertiary text-accent-red font-bold rounded-xl hover:bg-accent-red/10 transition-all flex items-center justify-center gap-2 border border-accent-red/20"

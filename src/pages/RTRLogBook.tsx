@@ -29,6 +29,7 @@ import { useToast } from '../contexts/ToastContext';
 import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
+import { isCSHead, canActAsTLForRequest, isManagementUser } from '../lib/permissions';
 import * as XLSX from 'xlsx';
 
 export const RTRLogBook: React.FC = () => {
@@ -276,7 +277,8 @@ export const RTRLogBook: React.FC = () => {
         rtrBase64, 
         rtrFilename,
         type === 'rtr_complete' ? (completedById || user?.id || null) : undefined,
-        type === 'rtr_complete' ? (completedByName.trim() || user?.display_name || user?.username || 'Resume Team') : undefined
+        type === 'rtr_complete' ? (completedByName.trim() || user?.display_name || user?.username || 'Resume Team') : undefined,
+        type
       );
       
       setIsActionModalOpen(false);
@@ -365,7 +367,8 @@ export const RTRLogBook: React.FC = () => {
     rtrBase64?: string, 
     rtrFilename?: string,
     completedByParam?: string | number | null,
-    completedByNameParam?: string
+    completedByNameParam?: string,
+    actionType?: string
   ) => {
     try {
       const updateData: any = { 
@@ -379,13 +382,35 @@ export const RTRLogBook: React.FC = () => {
         updateData.completed_at = new Date().toISOString();
       }
       
-      if ((user?.role === 'jpc_marketing' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && notes && newStatus !== 'pending_rtr_team') updateData.tl_notes = notes;
-      if ((user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && notes) updateData.cs_notes = notes;
-      if (user?.role === 'jpc_resume' || user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') {
+      const isCSHeadUser = isCSHead(user);
+      const isManagement = isManagementUser(user);
+
+      if (actionType === 'tl_forward' || actionType === 'tl_reject') {
+        if (notes) updateData.tl_notes = notes;
+      } else if (actionType === 'cs_forward' && newStatus === 'pending_rtr_team') {
+        const req = requests.find(r => r.id === requestId);
+        if (req?.status === 'pending_tl') {
+          updateData.tl_notes = notes || 'Forwarded directly to RTR Team by CS Head';
+          updateData.cs_notes = notes || 'Forwarded directly to RTR Team by CS Head';
+        } else {
+          if (notes) updateData.cs_notes = notes;
+        }
+      } else if (actionType === 'cs_back') {
+        if (notes) updateData.cs_notes = notes;
+      } else if (actionType === 'rtr_complete' || actionType === 'rtr_back' || actionType === 'rtr_reject') {
         if (notes) updateData.rtr_team_notes = notes;
         if (rtrUrl) updateData.new_rtr_url = rtrUrl;
         if (rtrBase64) updateData.rtr_base64 = rtrBase64;
         if (rtrFilename) updateData.rtr_filename = rtrFilename;
+      } else {
+        if ((user?.role === 'jpc_marketing' || isCSHeadUser || isManagement) && notes && newStatus !== 'pending_rtr_team') updateData.tl_notes = notes;
+        if ((user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || isManagement) && notes) updateData.cs_notes = notes;
+        if (user?.role === 'jpc_resume' || isManagement) {
+          if (notes) updateData.rtr_team_notes = notes;
+          if (rtrUrl) updateData.new_rtr_url = rtrUrl;
+          if (rtrBase64) updateData.rtr_base64 = rtrBase64;
+          if (rtrFilename) updateData.rtr_filename = rtrFilename;
+        }
       }
 
       await updateDoc(doc(db, 'jpc_rtr_requests', requestId), updateData);
@@ -408,6 +433,15 @@ export const RTRLogBook: React.FC = () => {
           type: 'rtr_request',
           message: `RTR request for candidate ${candidates.find(c => c.id === request.candidate_id)?.full_name || 'Unknown'} has been updated to ${newStatus.replace('_', ' ')}`
         });
+
+        if (recipientId !== request.recruiter_id && String(request.recruiter_id) !== String(user?.id)) {
+          await addNotification({
+            recipient_id: request.recruiter_id,
+            sender_id: user?.id || null,
+            type: 'rtr_request',
+            message: `Your RTR request for candidate ${candidates.find(c => c.id === request.candidate_id)?.full_name || 'Unknown'} was moved forward to ${newStatus.replace('_', ' ')}`
+          });
+        }
       }
 
       showToast(`Request updated to ${newStatus.replace('_', ' ')}`, 'success');
@@ -722,17 +756,9 @@ export const RTRLogBook: React.FC = () => {
                   <div className="flex flex-col gap-2 min-w-[180px]">
                      {/* TL Actions */}
                     {(() => {
-                      const mohitUser = team.find(u => u.username === 'mohit.panchal' || u.email === 'mohit.panchal@auriic.co');
-                      const isFaiz = user?.role === 'jpc_cs' && (user.username === 'care' || String(user.display_name).toLowerCase().includes('faiz'));
-                      const isMohitTeamReq = (() => {
-                        const cand = candidates.find(c => c.id === req.candidate_id);
-                        const rec = team.find(u => u.id === req.recruiter_id);
-                        const faizUser = team.find(u => u.username === 'care' || String(u.display_name).toLowerCase().includes('faiz'));
-                        return (cand && (String(cand.assigned_marketing_leader) === String(mohitUser?.id) || String(cand.assigned_marketing_leader) === String(faizUser?.id))) || 
-                               (rec && (String(rec.leader_id) === String(mohitUser?.id) || String(rec.leader_id) === String(faizUser?.id)));
-                      })();
-                      
-                      const canActAsTL = user?.role === 'jpc_marketing' || (isFaiz && mohitUser && isMohitTeamReq);
+                      const isCSHeadUser = isCSHead(user);
+                      const isManagement = isManagementUser(user);
+                      const canActAsTL = canActAsTLForRequest(user);
                       
                       return canActAsTL && req.status === 'pending_tl' && (
                         <>
@@ -741,8 +767,17 @@ export const RTRLogBook: React.FC = () => {
                             className="w-full py-3 bg-accent-purple text-white font-bold rounded-xl hover:bg-accent-purple/90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-purple/20"
                           >
                             <ArrowRight className="w-4 h-4" />
-                            {isFaiz ? 'Forward (Acting as TL)' : 'Forward to CS'}
+                            {isCSHeadUser ? 'Forward (Acting as TL / CS Head)' : 'Forward to CS'}
                           </button>
+                          {(isCSHeadUser || isManagement) && (
+                            <button 
+                              onClick={() => openActionModal(req.id, candidate?.full_name || 'Candidate', 'cs_forward')}
+                              className="w-full py-2.5 bg-accent-blue/10 text-accent-blue font-bold rounded-xl hover:bg-accent-blue/20 transition-all flex items-center justify-center gap-2 border border-accent-blue/30 text-xs"
+                            >
+                              <ArrowRight className="w-3.5 h-3.5" />
+                              Forward to RTR Team
+                            </button>
+                          )}
                           <button 
                             onClick={() => openActionModal(req.id, candidate?.full_name || 'Candidate', 'tl_reject')}
                             className="w-full py-3 bg-bg-tertiary text-accent-red font-bold rounded-xl hover:bg-accent-red/10 transition-all flex items-center justify-center gap-2 border border-accent-red/20"

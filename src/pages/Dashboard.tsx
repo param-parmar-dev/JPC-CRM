@@ -382,8 +382,13 @@ export const Dashboard: React.FC = () => {
 
   const pendingResumeRequests = useMemo(() => {
     if (user?.role === 'jpc_marketing') return resumeRequests.filter(r => r.status === 'pending_tl');
-    if (user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person') return resumeRequests.filter(r => r.status === 'pending_cs');
+    if (user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person') {
+      return resumeRequests.filter(r => r.status === 'pending_cs' || r.status === 'pending_tl');
+    }
     if (user?.role === 'jpc_resume') return resumeRequests.filter(r => r.status === 'pending_resume_team');
+    if (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') {
+      return resumeRequests.filter(r => r.status === 'pending_tl' || r.status === 'pending_cs' || r.status === 'pending_resume_team');
+    }
     return [];
   }, [resumeRequests, user]);
 
