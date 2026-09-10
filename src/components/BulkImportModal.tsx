@@ -203,6 +203,8 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClos
         return matchedUser ? String(matchedUser.id) : null;
       };
 
+      const assignedLeaderId = findUserIdByName(tlNameInput);
+      const assignedRecruiterId = findUserIdByName(recruiterNameInput);
       const isLeadGen = user?.role === 'jpc_lead_gen';
       // Lead Generation users cannot specify or assign sales reps via CSV import
       const explicitSalesId = isLeadGen ? null : findUserIdByName(salesNameInput);

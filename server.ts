@@ -83,7 +83,7 @@ const initFirestore = (id?: string) => {
 db = initFirestore(databaseId);
 
 // Connection test for debugging
-if (db) {
+if (db && process.env.NODE_ENV !== 'test') {
   const testRef = db.collection('_connection_test_').doc('server_start');
   testRef.set({
     last_start: new Date().toISOString(),
@@ -147,6 +147,7 @@ const getSMTPSettings = async () => {
 
 // Daily Target Check Cron Job
 // 6:15 PM Eastern Time (America/New_York)
+if (process.env.NODE_ENV !== 'test') {
 cron.schedule('15 18 * * *', async () => {
   console.log('[Cron] Running daily target check at 6:15 PM America/New_York');
   
@@ -242,53 +243,74 @@ cron.schedule('15 18 * * *', async () => {
 }, {
   timezone: "America/New_York"
 });
+}
 
 // Monthly Performance Report Cron Job
 // Every month end at 10:00 AM Eastern Time
-cron.schedule('0 10 28-31 * *', async () => {
-  const today = new Date();
-  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  if (today.getDate() === lastDay) {
-    console.log('[Cron] Running monthly performance report (Month End) at 10:00 AM America/New_York');
-    await sendMonthlyPerformanceReport();
-  }
-}, {
-  timezone: "America/New_York"
-});
+if (process.env.NODE_ENV !== 'test') {
+  cron.schedule('0 10 28-31 * *', async () => {
+    const today = new Date();
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    if (today.getDate() === lastDay) {
+      console.log('[Cron] Running monthly performance report (Month End) at 10:00 AM America/New_York');
+      await sendMonthlyPerformanceReport();
+    }
+  }, {
+    timezone: "America/New_York"
+  });
+}
 
 // Daily Sales Person Automatic Deactivation Cron Job
 // Every Monday to Friday at 6:30 PM Eastern Time (America/New_York)
-cron.schedule('30 18 * * 1-5', async () => {
-  console.log('[Cron] Running automatic 6:30 PM America/New_York Sales Person deactivation...');
-  try {
-    const activeSalesSnapshot = await db.collection('jpc_users')
-      .where('role', '==', 'jpc_sales')
-      .where('sales_availability_status', '==', 'Active')
-      .get();
+if (process.env.NODE_ENV !== 'test') {
+  cron.schedule('30 18 * * 1-5', async () => {
+    console.log('[Cron] Running automatic 6:30 PM America/New_York Sales Person deactivation...');
+    try {
+      const activeSalesSnapshot = await db.collection('jpc_users')
+        .where('role', '==', 'jpc_sales')
+        .where('sales_availability_status', '==', 'Active')
+        .get();
 
-    if (activeSalesSnapshot.empty) {
-      console.log('[Cron] No active Sales Persons found to deactivate.');
-      return;
-    }
+      if (activeSalesSnapshot.empty) {
+        console.log('[Cron] No active Sales Persons found to deactivate.');
+        return;
+      }
 
-    const batch = db.batch();
-    const deactivatedAt = new Date().toISOString();
-    activeSalesSnapshot.forEach((docSnap: any) => {
-      batch.update(docSnap.ref, {
-        sales_availability_status: 'Deactive',
-        sales_deactivated_at: deactivatedAt,
-        updated_at: deactivatedAt
+      const batch = db.batch();
+      const deactivatedAt = new Date().toISOString();
+      activeSalesSnapshot.forEach((docSnap: any) => {
+        batch.update(docSnap.ref, {
+          sales_availability_status: 'Deactive',
+          sales_deactivated_at: deactivatedAt,
+          updated_at: deactivatedAt
+        });
       });
-    });
 
-    await batch.commit();
-    console.log(`[Cron] Successfully deactivated ${activeSalesSnapshot.size} active Sales Persons at 6:30 PM America/New_York.`);
-  } catch (error) {
-    console.error('[Cron] Error in 6:30 PM Sales Person deactivation:', error);
-  }
-}, {
-  timezone: "America/New_York"
-});
+      await batch.commit();
+      console.log(`[Cron] Successfully deactivated ${activeSalesSnapshot.size} active Sales Persons at 6:30 PM America/New_York.`);
+    } catch (error) {
+      console.error('[Cron] Error in 6:30 PM Sales Person deactivation:', error);
+    }
+  }, {
+    timezone: "America/New_York"
+  });
+}
+
+// Daily Sales Person Working Hours Start & Unassigned Backlog Processing Cron Job
+// Every Monday to Friday at 9:30 AM Eastern Time (America/New_York)
+if (process.env.NODE_ENV !== 'test') {
+  cron.schedule('30 9 * * 1-5', async () => {
+    console.log('[Cron] Sales working hours starting at 9:30 AM America/New_York. Triggering unassigned backlog processing...');
+    try {
+      const result = await processUnassignedLeadsEngine(db);
+      console.log(`[Cron] 9:30 AM unassigned backlog processing completed:`, result);
+    } catch (error) {
+      console.error('[Cron] Error in 9:30 AM unassigned backlog processing:', error);
+    }
+  }, {
+    timezone: "America/New_York"
+  });
+}
 
 
 async function sendMonthlyPerformanceReport(targetMonth?: number, targetYear?: number) {
@@ -900,7 +922,7 @@ export function isSalesWorkingHours(date: Date = new Date()): boolean {
       weekday: 'short',
       hour: 'numeric',
       minute: 'numeric',
-      hour12: false
+      hourCycle: 'h23'
     });
     const parts = formatter.formatToParts(date);
     let weekday = '';
@@ -1031,13 +1053,13 @@ export async function assignLeadRoundRobinTransaction(
           assigned_sales: activeOverrideId,
           updated_at: new Date().toISOString()
         });
-      } else if (candidateData) {
+      } else {
         transaction.set(candRef, {
-          ...candidateData,
+          ...(candidateData || {}),
           id: candidateId,
           assigned_sales: activeOverrideId,
           updated_at: new Date().toISOString()
-        });
+        }, { merge: true });
       }
 
       return {
@@ -1055,13 +1077,13 @@ export async function assignLeadRoundRobinTransaction(
           assigned_sales: null,
           updated_at: new Date().toISOString()
         });
-      } else if (candidateData) {
+      } else {
         transaction.set(candRef, {
-          ...candidateData,
+          ...(candidateData || {}),
           id: candidateId,
           assigned_sales: null,
           updated_at: new Date().toISOString()
-        });
+        }, { merge: true });
       }
 
       return {
@@ -1101,13 +1123,13 @@ export async function assignLeadRoundRobinTransaction(
           assigned_sales: null,
           updated_at: new Date().toISOString()
         });
-      } else if (candidateData) {
+      } else {
         transaction.set(candRef, {
-          ...candidateData,
+          ...(candidateData || {}),
           id: candidateId,
           assigned_sales: null,
           updated_at: new Date().toISOString()
-        });
+        }, { merge: true });
       }
 
       return {
@@ -1176,13 +1198,13 @@ export async function assignLeadRoundRobinTransaction(
         assigned_sales: String(assignedUser.id),
         updated_at: new Date().toISOString()
       });
-    } else if (candidateData) {
+    } else {
       transaction.set(candRef, {
-        ...candidateData,
+        ...(candidateData || {}),
         id: candidateId,
         assigned_sales: String(assignedUser.id),
         updated_at: new Date().toISOString()
-      });
+      }, { merge: true });
     }
 
     return {
@@ -1193,52 +1215,87 @@ export async function assignLeadRoundRobinTransaction(
   });
 }
 
+// In-memory concurrency guards for backlog processing
+let isBacklogRunning = false;
+let rerunBacklogRequested = false;
+
 /**
  * Processes backlog of unassigned leads chronologically through the unified round-robin engine.
  * Continues the global round-robin sequence across all currently eligible Sales Persons.
+ * If multiple triggers fire concurrently, runs are serialized and follow-up passes process pending items.
  */
-export async function processUnassignedLeadsEngine(targetDb: any, forceInWorkingHours?: boolean) {
+export async function processUnassignedLeadsEngine(
+  targetDb: any,
+  forceInWorkingHours?: boolean
+): Promise<{ processed: number; totalUnassigned?: number; reason?: string }> {
   const inHours = forceInWorkingHours !== undefined ? forceInWorkingHours : isSalesWorkingHours();
   if (!inHours) {
     console.log('[Backlog] Outside working hours. Skipping unassigned backlog processing.');
     return { processed: 0, reason: 'outside_working_hours' };
   }
 
-  const activeCheck = await targetDb.collection('jpc_users')
-    .where('role', '==', 'jpc_sales')
-    .where('sales_availability_status', '==', 'Active')
-    .limit(1)
-    .get();
-
-  if (activeCheck.empty) {
-    console.log('[Backlog] No active sales reps. Skipping unassigned backlog processing.');
-    return { processed: 0, reason: 'no_active_sales_reps' };
+  // Concurrency guard: if another execution is in flight, request a follow-up pass and return
+  if (isBacklogRunning) {
+    rerunBacklogRequested = true;
+    console.log('[Backlog] Processing already in progress. Flagged for follow-up pass.');
+    return { processed: 0, reason: 'already_running_queued' };
   }
 
-  const candSnapshot = await targetDb.collection('jpc_candidates')
-    .where('deleted_at', '==', null)
-    .get();
+  isBacklogRunning = true;
+  let totalProcessed = 0;
 
-  const unassigned = candSnapshot.docs
-    .map((d: any) => ({ id: d.id, ...d.data() }))
-    .filter((c: any) => c.assigned_sales === null || c.assigned_sales === undefined || c.assigned_sales === '')
-    .sort((a: any, b: any) => (a.created_at || '').localeCompare(b.created_at || '')); // chronological (oldest first)
+  try {
+    do {
+      rerunBacklogRequested = false;
 
-  console.log(`[Backlog] Processing ${unassigned.length} unassigned leads in chronological order...`);
-  let processed = 0;
+      // Check if at least one active, non-leave sales person exists
+      const activeCheck = await targetDb.collection('jpc_users')
+        .where('role', '==', 'jpc_sales')
+        .where('sales_availability_status', '==', 'Active')
+        .get();
 
-  for (const cand of unassigned) {
-    try {
-      const res = await assignLeadRoundRobinTransaction(targetDb, cand.id, undefined, null, 'system', forceInWorkingHours);
-      if (!res.isUnassigned) {
-        processed++;
+      const hasActive = activeCheck.docs.some((d: any) => {
+        const u = d.data();
+        return !u.deleted_at && !u.is_on_leave;
+      });
+
+      if (!hasActive) {
+        console.log('[Backlog] No active, non-leave sales reps found. Skipping unassigned backlog processing.');
+        return { processed: totalProcessed, reason: 'no_active_sales_reps' };
       }
-    } catch (err) {
-      console.error(`[Backlog] Error assigning unassigned lead ${cand.id}:`, err);
-    }
-  }
 
-  return { processed, totalUnassigned: unassigned.length };
+      const candSnapshot = await targetDb.collection('jpc_candidates').get();
+
+      const unassigned = candSnapshot.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((c: any) => !c.deleted_at && !c.not_interested_at && (c.assigned_sales === null || c.assigned_sales === undefined || c.assigned_sales === ''))
+        .sort((a: any, b: any) => (a.created_at || '').localeCompare(b.created_at || '')); // chronological (oldest first)
+
+      if (unassigned.length === 0) {
+        break;
+      }
+
+      console.log(`[Backlog] Processing ${unassigned.length} unassigned leads in chronological order...`);
+
+      for (const cand of unassigned) {
+        try {
+          const res = await assignLeadRoundRobinTransaction(targetDb, cand.id, undefined, null, 'system', forceInWorkingHours);
+          if (!res.isUnassigned) {
+            totalProcessed++;
+          } else if (res.reason === 'no_active_sales_reps' || res.reason === 'outside_working_hours') {
+            console.log(`[Backlog] Stopping processing: ${res.reason}`);
+            return { processed: totalProcessed, totalUnassigned: unassigned.length, reason: res.reason };
+          }
+        } catch (err) {
+          console.error(`[Backlog] Error assigning unassigned lead ${cand.id}:`, err);
+        }
+      }
+    } while (rerunBacklogRequested);
+
+    return { processed: totalProcessed };
+  } finally {
+    isBacklogRunning = false;
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -1270,6 +1327,9 @@ app.post('/api/leads', verifyAuth, async (req, res) => {
     candidateData.lead_generated_by = candidateData.lead_generated_by || user.id || user.uid;
     candidateData.created_at = candidateData.created_at || new Date().toISOString();
     candidateData.updated_at = new Date().toISOString();
+    if (candidateData.deleted_at === undefined) {
+      candidateData.deleted_at = null;
+    }
 
     const result = await assignLeadRoundRobinTransaction(
       db,
@@ -1997,6 +2057,10 @@ app.get('/api/calendly/slots', async (req, res) => {
 });
 
 async function startServer() {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+
   if (process.env.NODE_ENV === 'production') {
     const possibleDistPath = path.join(process.cwd(), 'dist');
     const distPath = fs.existsSync(path.join(possibleDistPath, 'index.html')) 
@@ -2025,13 +2089,15 @@ async function startServer() {
     }
   }
 
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  if (process.env.NODE_ENV !== 'test' && (process.env.NODE_ENV !== 'production' || !process.env.VERCEL)) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   }
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 export default app;
