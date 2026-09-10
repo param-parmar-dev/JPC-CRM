@@ -22,12 +22,12 @@ import { useDebounce } from '../lib/hooks';
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-bg-secondary p-4 border border-border-primary rounded-2xl shadow-xl backdrop-blur-md">
-        <p className="text-xs font-bold text-text-muted mb-1.5 uppercase tracking-wider">{label}</p>
+      <div className="bg-bg-secondary p-3 sm:p-4 border border-border-primary rounded-xl sm:rounded-2xl shadow-xl backdrop-blur-md max-w-[240px] sm:max-w-none text-xs pointer-events-none">
+        <p className="text-[10px] sm:text-xs font-bold text-text-muted mb-1 uppercase tracking-wider truncate">{label}</p>
         {payload.map((entry: any, index: number) => (
-          <p key={index} className="text-xs font-bold flex items-center gap-2 mt-1" style={{ color: entry.stroke || entry.fill || entry.color }}>
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.stroke || entry.fill || entry.color }} />
-            {entry.name}: {typeof entry.value === 'number' ? `$${entry.value.toLocaleString()}` : entry.value}
+          <p key={index} className="text-[11px] sm:text-xs font-bold flex items-center gap-1.5 mt-0.5" style={{ color: entry.stroke || entry.fill || entry.color }}>
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.stroke || entry.fill || entry.color }} />
+            <span className="truncate">{entry.name}: {typeof entry.value === 'number' ? `$${entry.value.toLocaleString()}` : entry.value}</span>
           </p>
         ))}
       </div>
@@ -46,6 +46,13 @@ export const CRMDashboard: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 640 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   // Search state for quick CRM reference
   const [searchQuery, setSearchQuery] = useState('');
@@ -363,20 +370,20 @@ export const CRMDashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 sm:space-y-10">
+    <div className="space-y-4 sm:space-y-8">
       {/* Title block */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-bg-secondary via-bg-tertiary to-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-5 sm:p-8 md:p-10 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
+      <div className="relative overflow-hidden bg-gradient-to-r from-bg-secondary via-bg-tertiary to-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-4 sm:p-8 md:p-10 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 sm:gap-6">
+        <div className="space-y-1.5 sm:space-y-2 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 bg-accent-blue/10 text-accent-blue text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-full">CRM Interactive Module</span>
             <span className="text-[9px] sm:text-[10px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1">
               <Activity className="w-3 h-3 text-accent-teal" /> Realtime Sync Active
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-primary tracking-tight font-heading">
+          <h1 className="text-xl sm:text-3xl md:text-4xl font-extrabold text-text-primary tracking-tight font-heading">
             CRM Dedicated Leads & Sales Dashboard
           </h1>
-          <p className="text-text-secondary max-w-2xl text-xs sm:text-sm md:text-base">
+          <p className="text-text-secondary max-w-2xl text-xs sm:text-sm md:text-base leading-relaxed">
             Complete high-fidelity analytics and structural performance tracking. Filter customer funnel, trajectories, representative performance, and download structured Lead and Sales sheet directly.
           </p>
         </div>
@@ -384,7 +391,7 @@ export const CRMDashboard: React.FC = () => {
         <button
           onClick={handleExportLeadsAndSales}
           disabled={isExporting}
-          className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2.5 px-5 sm:px-6 py-2.5 sm:py-3 bg-accent-blue text-white font-bold rounded-xl sm:rounded-2xl hover:bg-accent-blue/90 hover:-translate-y-0.5 disabled:opacity-50 transition-all shadow-[0_4px_16px_rgba(0,173,140,0.25)] ring-1 ring-white/10 text-xs sm:text-sm cursor-pointer"
+          className="w-full lg:w-auto shrink-0 flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-accent-blue text-white font-bold rounded-xl sm:rounded-2xl hover:bg-accent-blue/90 hover:-translate-y-0.5 disabled:opacity-50 transition-all shadow-[0_4px_16px_rgba(0,173,140,0.25)] ring-1 ring-white/10 text-xs sm:text-sm cursor-pointer"
         >
           {isExporting ? (
             <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -398,15 +405,30 @@ export const CRMDashboard: React.FC = () => {
       <TimeZoneClocks />
 
       {/* Analytical Filtering Controls bar */}
-      <div className="p-4 sm:p-6 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[24px] shadow-sm flex flex-col lg:flex-row flex-wrap items-stretch lg:items-center justify-between gap-4 sm:gap-6">
-        <div className="flex items-center gap-3">
-          <Filter className="w-5 h-5 text-accent-blue shrink-0" />
-          <h3 className="font-bold text-text-primary text-xs sm:text-sm uppercase tracking-wider">Interactive Query Filters</h3>
+      <div className="p-3.5 sm:p-6 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[24px] shadow-sm flex flex-col lg:flex-row flex-wrap items-stretch lg:items-center justify-between gap-3.5 sm:gap-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-accent-blue shrink-0" />
+            <h3 className="font-bold text-text-primary text-xs sm:text-sm uppercase tracking-wider">Interactive Query Filters</h3>
+          </div>
+          {(selectedSourceFilter !== 'all' || selectedAgentFilter !== 'all' || selectedTimeframeFilter !== 'all' || searchQuery.trim()) && (
+            <button
+              onClick={() => {
+                setSelectedSourceFilter('all');
+                setSelectedAgentFilter('all');
+                setSelectedTimeframeFilter('all');
+                setSearchQuery('');
+              }}
+              className="text-[11px] sm:text-xs text-accent-blue hover:underline font-bold"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
 
-        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-row lg:items-center gap-2.5 sm:gap-3.5 w-full lg:w-auto">
           {/* Search bar */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:col-span-2 lg:col-span-1 lg:w-64">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
               <Search className="w-4 h-4" />
             </span>
@@ -415,15 +437,15 @@ export const CRMDashboard: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search leads, names, email..."
-              className="w-full pl-9 pr-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue transition-colors"
+              className="w-full pl-9 pr-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue transition-colors"
             />
           </div>
 
-          <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <div className="w-full">
             <select
               value={selectedSourceFilter}
               onChange={(e) => setSelectedSourceFilter(e.target.value)}
-              className="px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none focus:border-accent-blue transition-colors cursor-pointer min-w-[140px]"
+              className="w-full px-3 sm:px-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none focus:border-accent-blue transition-colors cursor-pointer truncate"
             >
               <option value="all">All Channels (Lead Source)</option>
               {uniqueLeadSources.map(src => (
@@ -432,11 +454,11 @@ export const CRMDashboard: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <div className="w-full">
             <select
               value={selectedAgentFilter}
               onChange={(e) => setSelectedAgentFilter(e.target.value)}
-              className="px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none focus:border-accent-blue transition-colors cursor-pointer min-w-[140px]"
+              className="w-full px-3 sm:px-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none focus:border-accent-blue transition-colors cursor-pointer truncate"
             >
               <option value="all">All Sales / Lead Advocates</option>
               {leadGenAgents.map(ag => (
@@ -445,11 +467,11 @@ export const CRMDashboard: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <div className="w-full sm:col-span-2 lg:col-span-1">
             <select
               value={selectedTimeframeFilter}
               onChange={(e) => setSelectedTimeframeFilter(e.target.value)}
-              className="px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none focus:border-accent-blue transition-colors cursor-pointer min-w-[140px]"
+              className="w-full px-3 sm:px-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none focus:border-accent-blue transition-colors cursor-pointer truncate"
             >
               <option value="all">All Date Horizons</option>
               <option value="7days">Last 7 Days</option>
@@ -461,91 +483,91 @@ export const CRMDashboard: React.FC = () => {
       </div>
 
       {/* CRM Dynamic metric summary row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-fade-in">
-        <div className="bg-bg-secondary p-6 rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-wider">Filtered Volume</p>
-            <p className="text-3xl font-black text-text-primary mt-1">{filteredCRMLeads.length}</p>
-            <p className="text-xs text-accent-blue font-bold mt-1">Matched leads scope</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-6 animate-fade-in">
+        <div className="bg-bg-secondary p-3.5 sm:p-6 rounded-2xl sm:rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between min-w-0">
+          <div className="min-w-0">
+            <p className="text-[9px] sm:text-[10px] font-black text-text-muted uppercase tracking-wider truncate">Filtered Volume</p>
+            <p className="text-xl sm:text-3xl font-black text-text-primary mt-0.5 sm:mt-1 truncate">{filteredCRMLeads.length}</p>
+            <p className="text-[10px] sm:text-xs text-accent-blue font-bold mt-0.5 sm:mt-1 truncate">Matched leads</p>
           </div>
-          <div className="p-4 bg-accent-blue/10 text-accent-blue rounded-2xl">
-            <Users className="w-6 h-6" />
+          <div className="p-2.5 sm:p-4 bg-accent-blue/10 text-accent-blue rounded-xl sm:rounded-2xl shrink-0 ml-2">
+            <Users className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
         </div>
 
-        <div className="bg-bg-secondary p-6 rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-wider">Converted Sales Won</p>
-            <p className="text-3xl font-black text-accent-green mt-1">
+        <div className="bg-bg-secondary p-3.5 sm:p-6 rounded-2xl sm:rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between min-w-0">
+          <div className="min-w-0">
+            <p className="text-[9px] sm:text-[10px] font-black text-text-muted uppercase tracking-wider truncate">Converted Sales</p>
+            <p className="text-xl sm:text-3xl font-black text-accent-green mt-0.5 sm:mt-1 truncate">
               {filteredCRMLeads.filter(c => ['completed', 'offer', 'sales'].includes(c.current_stage)).length}
             </p>
-            <p className="text-xs text-text-secondary font-bold mt-1">
+            <p className="text-[10px] sm:text-xs text-text-secondary font-bold mt-0.5 sm:mt-1 truncate">
               Share: {filteredCRMLeads.length > 0 ? Math.round((filteredCRMLeads.filter(c => ['completed', 'offer', 'sales'].includes(c.current_stage)).length / filteredCRMLeads.length) * 100) : 0}%
             </p>
           </div>
-          <div className="p-4 bg-accent-green/10 text-accent-green rounded-2xl">
-            <CheckCircle2 className="w-6 h-6" />
+          <div className="p-2.5 sm:p-4 bg-accent-green/10 text-accent-green rounded-xl sm:rounded-2xl shrink-0 ml-2">
+            <CheckCircle2 className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
         </div>
 
-        <div className="bg-bg-secondary p-6 rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-wider">Aggregate Gross Value</p>
-            <p className="text-3xl font-black text-accent-purple mt-1">
+        <div className="bg-bg-secondary p-3.5 sm:p-6 rounded-2xl sm:rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between min-w-0">
+          <div className="min-w-0">
+            <p className="text-[9px] sm:text-[10px] font-black text-text-muted uppercase tracking-wider truncate">Gross Value</p>
+            <p className="text-xl sm:text-3xl font-black text-accent-purple mt-0.5 sm:mt-1 truncate">
               ${filteredCRMLeads.reduce((sum, c) => sum + (c.package_amount || 0), 0).toLocaleString()}
             </p>
-            <p className="text-xs text-text-secondary font-bold mt-1">Sum value across leads</p>
+            <p className="text-[10px] sm:text-xs text-text-secondary font-bold mt-0.5 sm:mt-1 truncate">Sum value</p>
           </div>
-          <div className="p-4 bg-accent-purple/10 text-accent-purple rounded-2xl">
-            <DollarSign className="w-6 h-6" />
+          <div className="p-2.5 sm:p-4 bg-accent-purple/10 text-accent-purple rounded-xl sm:rounded-2xl shrink-0 ml-2">
+            <DollarSign className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
         </div>
 
-        <div className="bg-bg-secondary p-6 rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-wider">Contracts Active</p>
-            <p className="text-3xl font-black text-accent-teal mt-1">
+        <div className="bg-bg-secondary p-3.5 sm:p-6 rounded-2xl sm:rounded-3xl border border-border-primary shadow-sm hover:shadow-md transition-all flex items-center justify-between min-w-0">
+          <div className="min-w-0">
+            <p className="text-[9px] sm:text-[10px] font-black text-text-muted uppercase tracking-wider truncate">Contracts Active</p>
+            <p className="text-xl sm:text-3xl font-black text-accent-teal mt-0.5 sm:mt-1 truncate">
               {filteredCRMLeads.filter(c => c.flags?.agreement_signed).length}
             </p>
-            <p className="text-xs text-text-secondary font-bold mt-1">
-              Pending signing: {filteredCRMLeads.filter(c => c.flags?.agreement_sent && !c.flags?.agreement_signed).length}
+            <p className="text-[10px] sm:text-xs text-text-secondary font-bold mt-0.5 sm:mt-1 truncate">
+              Pending: {filteredCRMLeads.filter(c => c.flags?.agreement_sent && !c.flags?.agreement_signed).length}
             </p>
           </div>
-          <div className="p-4 bg-accent-teal/10 text-accent-teal rounded-2xl">
-            <ShieldCheck className="w-6 h-6" />
+          <div className="p-2.5 sm:p-4 bg-accent-teal/10 text-accent-teal rounded-xl sm:rounded-2xl shrink-0 ml-2">
+            <ShieldCheck className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
         </div>
       </div>
 
       {filteredCRMLeads.length === 0 ? (
-        <div className="py-24 text-center bg-bg-secondary border border-dashed border-border-primary rounded-[32px]">
-          <BarChartIcon className="w-16 h-16 text-text-muted mx-auto mb-4 stroke-[1.5]" />
-          <h4 className="text-xl font-bold text-text-primary">No matching leads in active workspace</h4>
-          <p className="text-sm text-text-muted mt-2 max-w-sm mx-auto">
+        <div className="py-12 sm:py-24 text-center bg-bg-secondary border border-dashed border-border-primary rounded-2xl sm:rounded-[32px] p-6">
+          <BarChartIcon className="w-12 h-12 sm:w-16 sm:h-16 text-text-muted mx-auto mb-4 stroke-[1.5]" />
+          <h4 className="text-lg sm:text-xl font-bold text-text-primary">No matching leads in active workspace</h4>
+          <p className="text-xs sm:text-sm text-text-muted mt-2 max-w-sm mx-auto">
             Try resetting your filters or selecting alternate lead sources or active representatives channels.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
           
           {/* Customer Funnel phase progression */}
-          <div className="p-8 bg-bg-secondary border border-border-primary rounded-[32px] flex flex-col justify-between shadow-sm">
+          <div className="p-4 sm:p-6 lg:p-8 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] flex flex-col justify-between shadow-sm min-w-0 overflow-hidden">
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-accent-blue/10 text-accent-blue text-[9px] font-black uppercase tracking-widest rounded-full">Phase Funnel</span>
               </div>
-              <h4 className="text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
-                <BarChartIcon className="w-5 h-5 text-accent-blue" />
-                CRM Customer Funnel Phase Progression (%)
+              <h4 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
+                <BarChartIcon className="w-4 h-4 sm:w-5 sm:h-5 text-accent-blue shrink-0" />
+                <span>CRM Customer Funnel Phase Progression (%)</span>
               </h4>
               <p className="text-xs text-text-secondary mt-1">Cumulative conversion ratios comparing candidate leads generation up to closed won sales.</p>
             </div>
-            <div className="w-full h-72 mt-8">
+            <div className="w-full h-64 sm:h-72 mt-4 sm:mt-8">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={funnelData} layout="vertical" margin={{ left: 10, right: 30, top: 10, bottom: 10 }}>
+                <BarChart data={funnelData} layout="vertical" margin={{ left: isMobile ? 0 : 10, right: isMobile ? 15 : 30, top: 10, bottom: 10 }}>
                   <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#e5e5e5" opacity={0.2} />
-                  <XAxis type="number" domain={[0, 100]} tickFormatter={(val) => `${val}%`} fontSize={10} stroke="#858585" />
-                  <YAxis dataKey="step" type="category" width={115} fontSize={10} stroke="#858585" />
+                  <XAxis type="number" domain={[0, 100]} tickFormatter={(val) => `${val}%`} fontSize={isMobile ? 9 : 10} stroke="#858585" />
+                  <YAxis dataKey="step" type="category" width={isMobile ? 82 : 115} tickFormatter={(val) => isMobile ? (val.split('. ')[1] || val) : val} fontSize={isMobile ? 9 : 10} stroke="#858585" />
                   <Tooltip 
                     formatter={(value: any, name: any) => {
                       if (name === 'rate') return [`${value}% Conversion`, 'Ratio'];
@@ -553,7 +575,7 @@ export const CRMDashboard: React.FC = () => {
                     }}
                     contentStyle={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-primary)', borderRadius: '12px' }}
                   />
-                  <Bar dataKey="rate" radius={[0, 8, 8, 0]} maxBarSize={22}>
+                  <Bar dataKey="rate" radius={[0, 8, 8, 0]} maxBarSize={isMobile ? 18 : 22}>
                     {funnelData.map((entry, index) => (
                       <Cell key={`funnel-cell-${index}`} fill={entry.color} />
                     ))}
@@ -564,23 +586,23 @@ export const CRMDashboard: React.FC = () => {
           </div>
 
           {/* Trajectory comparison */}
-          <div className="p-8 bg-bg-secondary border border-border-primary rounded-[32px] flex flex-col justify-between shadow-sm">
+          <div className="p-4 sm:p-6 lg:p-8 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] flex flex-col justify-between shadow-sm min-w-0 overflow-hidden">
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-accent-purple/10 text-accent-purple text-[9px] font-black uppercase tracking-widest rounded-full">Financial Yield</span>
               </div>
-              <h4 className="text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
-                <DollarSign className="w-5 h-5 text-accent-purple" />
-                Realized Revenue vs Potential Pipeline Value ($)
+              <h4 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
+                <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-accent-purple shrink-0" />
+                <span>Realized Revenue vs Potential Pipeline ($)</span>
               </h4>
               <p className="text-xs text-text-secondary mt-1">Aggregation tracking of real invoices (closed sales) compared with forecast lead funnel estimations.</p>
             </div>
-            <div className="w-full h-72 mt-8">
+            <div className="w-full h-64 sm:h-72 mt-4 sm:mt-8">
               {financialTrajectoryData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-text-muted">No prospective financial pipeline tracked for filtered parameters.</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={financialTrajectoryData} margin={{ left: 5, right: 5, top: 10, bottom: 5 }}>
+                  <AreaChart data={financialTrajectoryData} margin={{ left: isMobile ? -15 : 5, right: isMobile ? 5 : 15, top: 10, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorRealized" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
@@ -592,10 +614,10 @@ export const CRMDashboard: React.FC = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" opacity={0.2} />
-                    <XAxis dataKey="month" fontSize={10} stroke="#858585" />
-                    <YAxis tickFormatter={(val) => `$${val}`} fontSize={10} stroke="#858585" />
+                    <XAxis dataKey="month" fontSize={isMobile ? 8 : 10} stroke="#858585" />
+                    <YAxis tickFormatter={(val) => val >= 1000 ? `$${Math.round(val / 1000)}k` : `$${val}`} fontSize={isMobile ? 8 : 10} stroke="#858585" />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: isMobile ? '10px' : '11px' }} />
                     <Area type="monotone" dataKey="Realized Revenue ($)" stroke="#10b981" fillOpacity={1} fill="url(#colorRealized)" strokeWidth={2.5} />
                     <Area type="monotone" dataKey="Potential Pipeline ($)" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorPotential)" strokeWidth={2.5} />
                   </AreaChart>
@@ -605,27 +627,27 @@ export const CRMDashboard: React.FC = () => {
           </div>
 
           {/* Acquisition Channels Distribution */}
-          <div className="p-8 bg-bg-secondary border border-border-primary rounded-[32px] flex flex-col justify-between shadow-sm">
+          <div className="p-4 sm:p-6 lg:p-8 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] flex flex-col justify-between shadow-sm min-w-0 overflow-hidden">
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-accent-teal/10 text-accent-teal text-[9px] font-black uppercase tracking-widest rounded-full">Stream Sources</span>
               </div>
-              <h4 className="text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
-                <Activity className="w-5 h-5 text-accent-teal" />
-                Acquisition Channel Share & Inbound Stream
+              <h4 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
+                <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-accent-teal shrink-0" />
+                <span>Acquisition Channel Share & Inbound Stream</span>
               </h4>
               <p className="text-xs text-text-secondary mt-1">Interactive share breakdown of lead channels across connected job portals.</p>
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-8 mt-8">
-              <div className="w-full sm:w-1/2 h-56">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-8 mt-4 sm:mt-8">
+              <div className="w-full sm:w-1/2 h-48 sm:h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={sourceChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={55}
-                      outerRadius={75}
+                      innerRadius={isMobile ? 42 : 55}
+                      outerRadius={isMobile ? 65 : 75}
                       paddingAngle={4}
                       dataKey="value"
                     >
@@ -640,11 +662,11 @@ export const CRMDashboard: React.FC = () => {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="w-full sm:w-1/2 space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="w-full sm:w-1/2 space-y-1.5 sm:space-y-2 max-h-[160px] sm:max-h-[220px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar">
                 {sourceChartData.map((item, index) => {
                   const pct = filteredCRMLeads.length > 0 ? Math.round((item.value / filteredCRMLeads.length) * 100) : 0;
                   return (
-                    <div key={index} className="flex items-center justify-between p-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs shadow-sm">
+                    <div key={index} className="flex items-center justify-between p-2 sm:p-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-[11px] sm:text-xs shadow-sm">
                       <div className="flex items-center gap-2 truncate">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                         <span className="font-bold text-text-primary truncate">{item.name}</span>
@@ -658,30 +680,36 @@ export const CRMDashboard: React.FC = () => {
           </div>
 
           {/* Representatives team performance leaderboard */}
-          <div className="p-8 bg-bg-secondary border border-border-primary rounded-[32px] flex flex-col justify-between shadow-sm">
+          <div className="p-4 sm:p-6 lg:p-8 bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] flex flex-col justify-between shadow-sm min-w-0 overflow-hidden">
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-accent-green/10 text-accent-green text-[9px] font-black uppercase tracking-widest rounded-full">Reps Leaderboard</span>
               </div>
-              <h4 className="text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
-                <Users className="w-5 h-5 text-accent-green" />
-                Advocate Conversion Performance Rankings (Top 5)
+              <h4 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2 mt-2">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-accent-green shrink-0" />
+                <span>Advocate Conversion Rankings (Top 5)</span>
               </h4>
               <p className="text-xs text-text-secondary mt-1">Aggregated leads volume vs closed sales conversions across active teammates.</p>
             </div>
-            <div className="w-full h-72 mt-8">
+            <div className="w-full h-64 sm:h-72 mt-4 sm:mt-8">
               {repLeaderboardData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-text-muted font-bold">No active agent assignments compiled on matched selection.</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={repLeaderboardData} margin={{ left: 5, right: 10, top: 10, bottom: 5 }}>
+                  <BarChart data={repLeaderboardData} margin={{ left: isMobile ? -15 : 5, right: isMobile ? 5 : 10, top: 10, bottom: isMobile ? 15 : 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" opacity={0.2} />
-                    <XAxis dataKey="name" fontSize={9} stroke="#858585" />
-                    <YAxis fontSize={9} stroke="#858585" />
+                    <XAxis 
+                      dataKey="name" 
+                      fontSize={isMobile ? 8 : 9} 
+                      stroke="#858585" 
+                      tickFormatter={(name) => isMobile && name.includes(' ') ? `${name.split(' ')[0]} ${name.split(' ')[1]?.[0] || ''}.` : name}
+                      interval={0}
+                    />
+                    <YAxis fontSize={isMobile ? 8 : 9} stroke="#858585" />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="Leads Handled" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={16} />
-                    <Bar dataKey="Successful Sales" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={16} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: isMobile ? '10px' : '11px' }} />
+                    <Bar dataKey="Leads Handled" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={isMobile ? 12 : 16} />
+                    <Bar dataKey="Successful Sales" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={isMobile ? 12 : 16} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -691,20 +719,98 @@ export const CRMDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Leads quick reference table for easier visual validation */}
-      <div className="bg-bg-secondary border border-border-primary rounded-[32px] p-8 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      {/* Leads quick reference table & mobile cards */}
+      <div className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-4 sm:p-6 lg:p-8 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-4 sm:mb-6">
           <div>
-            <h3 className="text-xl font-bold text-text-primary">Filtered Lead Records ({filteredCRMLeads.length})</h3>
-            <p className="text-xs text-text-secondary">Summary list view matching existing criteria for high speed validation.</p>
+            <h3 className="text-lg sm:text-xl font-bold text-text-primary">Filtered Lead Records ({filteredCRMLeads.length})</h3>
+            <p className="text-xs text-text-secondary mt-0.5">Summary list view matching existing criteria for high speed validation.</p>
           </div>
-          <div className="text-xs text-text-muted shrink-0 text-right">
+          <div className="text-xs text-text-muted shrink-0 sm:text-right">
             Real-time verification: <span className="text-text-primary font-bold">{candidates.length} total raw candidates</span>
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-border-primary bg-bg-tertiary">
-          <table className="w-full text-left text-xs border-collapse">
+        {/* Mobile Card List (block md:hidden) */}
+        <div className="block md:hidden space-y-2.5">
+          {filteredCRMLeads.slice(0, 15).map((c) => {
+            const stageLabel = STAGES[c.current_stage]?.label || c.current_stage;
+            return (
+              <div
+                key={c.id}
+                onClick={() => window.location.hash = `#candidate?id=${c.id}`}
+                className="bg-bg-tertiary/60 border border-border-primary rounded-2xl p-3.5 space-y-2.5 shadow-sm active:scale-[0.99] transition-all cursor-pointer hover:border-accent-blue/50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-accent-blue/10 flex items-center justify-center text-accent-blue font-bold text-xs shrink-0">
+                        {c.full_name ? c.full_name.charAt(0).toUpperCase() : '?'}
+                      </div>
+                      <h4 className="font-bold text-text-primary text-sm truncate hover:text-accent-blue transition-colors">
+                        {c.full_name}
+                      </h4>
+                    </div>
+                    {c.email && (
+                      <p className="text-[11px] text-text-muted truncate mt-1 pl-9">
+                        {c.email}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 text-[9px] font-bold rounded-lg shrink-0 inline-block text-center",
+                      ['completed', 'offer', 'sales'].includes(c.current_stage) ? "bg-accent-green/10 text-accent-green" :
+                      c.current_stage === 'not_interested' ? "bg-accent-red/10 text-accent-red" :
+                      c.current_stage === 'not_eligible' ? "bg-accent-red/20 text-accent-red/90" :
+                      "bg-accent-blue/10 text-accent-blue"
+                    )}
+                  >
+                    {stageLabel.split('. ')[1] || stageLabel}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs bg-bg-secondary/70 border border-border-primary/50 rounded-xl p-2.5">
+                  <div className="truncate">
+                    <span className="text-[9px] font-black uppercase tracking-wider block text-text-muted">Source</span>
+                    <span className="text-text-primary font-bold text-xs truncate block">{c.lead_source || 'organic'}</span>
+                  </div>
+                  <div className="truncate">
+                    <span className="text-[9px] font-black uppercase tracking-wider block text-text-muted">Package</span>
+                    <span className="text-text-primary font-bold text-xs truncate block">{c.package_name || '—'}</span>
+                  </div>
+                  <div className="truncate">
+                    <span className="text-[9px] font-black uppercase tracking-wider block text-text-muted">Agreement</span>
+                    <span className="block text-xs font-bold truncate">
+                      {c.flags?.agreement_signed ? (
+                        <span className="text-accent-green">Signed</span>
+                      ) : c.flags?.agreement_sent ? (
+                        <span className="text-accent-amber">Pending Sent</span>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="truncate">
+                    <span className="text-[9px] font-black uppercase tracking-wider block text-text-muted">Fee</span>
+                    <span className="text-accent-purple font-black text-xs block">
+                      {c.package_amount ? `$${c.package_amount.toLocaleString()}` : '$0'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filteredCRMLeads.length === 0 && (
+            <div className="p-8 text-center text-text-muted italic border border-dashed border-border-primary rounded-xl">
+              No active leads matching current parameters
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table View (hidden md:block) */}
+        <div className="hidden md:block overflow-x-auto rounded-2xl border border-border-primary bg-bg-tertiary custom-scrollbar">
+          <table className="w-full text-left text-xs border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-bg-secondary select-none border-b border-border-primary text-text-muted font-bold uppercase tracking-wider">
                 <th className="p-4">Name</th>
@@ -719,9 +825,9 @@ export const CRMDashboard: React.FC = () => {
               {filteredCRMLeads.slice(0, 15).map((c) => {
                 const stageLabel = STAGES[c.current_stage]?.label || c.current_stage;
                 return (
-                  <tr key={c.id} className="hover:bg-bg-secondary/40 transition-colors">
+                  <tr key={c.id} className="hover:bg-bg-secondary/40 transition-colors cursor-pointer" onClick={() => window.location.hash = `#candidate?id=${c.id}`}>
                     <td className="p-4">
-                      <div className="font-bold">{c.full_name}</div>
+                      <div className="font-bold hover:text-accent-blue transition-colors">{c.full_name}</div>
                       <div className="text-[10px] text-text-muted">{c.email || 'No email registered'}</div>
                     </td>
                     <td className="p-4 text-text-muted">
