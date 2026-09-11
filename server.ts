@@ -11,8 +11,9 @@ import cron from 'node-cron';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import nodemailer from 'nodemailer';
-import * as XLSX from 'xlsx';
 import { google } from 'googleapis';
+import * as XLSX from 'xlsx';
+import { parseResumeLocally } from './src/services/localResumeParser.ts';
 
 dotenv.config();
 
@@ -2002,10 +2003,206 @@ Format the response in clean, aesthetic Markdown with professional structures an
   }
 });
 
-// Resume Parsing Endpoint with Gemini AI (models/gemini-3.6-flash & gemini-3.8-flash)
+// Helper functions for server-side document text extraction
+interface DocumentExtraction {
+  text: string;
+  isPasswordProtected?: boolean;
+  isCorrupted?: boolean;
+  isScannedOrImageOnly?: boolean;
+}
+
+const extractServerTextFromPDF = async (buffer: Buffer): Promise<DocumentExtraction> => {
+  try {
+    if (!buffer || buffer.length === 0) {
+      return { text: '', isCorrupted: true };
+    }
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      useSystemFonts: true,
+      disableFontFace: true,
+    }).promise;
+    let text = '';
+    const numPages = Math.min(doc.numPages, 10);
+    for (let i = 1; i <= numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map((item: any) => item.str + (item.hasEOL ? '\n' : ' '));
+      text += strings.join('') + '\n';
+    }
+    const trimmed = text.trim();
+    const nonWhitespace = trimmed.replace(/\s+/g, '');
+    const isScanned = nonWhitespace.length < 20;
+    return { text: trimmed, isScannedOrImageOnly: isScanned };
+  } catch (err: any) {
+    console.warn('[Server Resume Parse] PDF extraction error:', err?.message || err);
+    const isPw = err?.name === 'PasswordException' || String(err?.message || '').toLowerCase().includes('password');
+    return { text: '', isPasswordProtected: isPw, isCorrupted: !isPw };
+  }
+};
+
+const extractServerTextFromDOCX = async (buffer: Buffer): Promise<DocumentExtraction> => {
+  try {
+    if (!buffer || buffer.length === 0) {
+      return { text: '', isCorrupted: true };
+    }
+    const mammoth = await import('mammoth');
+    const result = await mammoth.extractRawText({ buffer });
+    return { text: result.value.trim() };
+  } catch (err: any) {
+    console.warn('[Server Resume Parse] DOCX extraction error:', err?.message || err);
+    return { text: '', isCorrupted: true };
+  }
+};
+
+// Smart merge preserving high-confidence local fields and guarding against Gemini hallucinations
+const mergeCandidateData = (local: any, gemini: any, rawDocText: string) => {
+  if (!local) return gemini;
+
+  // Contact info: preserve local if confidence is high
+  const full_name = (local.confidence?.name >= 0.8 && local.full_name) ? local.full_name : (gemini.full_name || local.full_name || '');
+  const email = (local.confidence?.email >= 0.9 && local.email) ? local.email : (gemini.email || local.email || '');
+  const phone = (local.confidence?.phone >= 0.8 && local.phone) ? local.phone : (gemini.phone || local.phone || '');
+
+  // Experience: preserve local structured experience if present
+  const current_company = local.current_company || gemini.current_company || '';
+  const current_designation = local.current_designation || gemini.current_designation || '';
+  const experience_years = local.experience_years || gemini.experience_years || '';
+  const job_interest = local.job_interest || gemini.job_interest || current_designation;
+
+  // Education: preserve local if detected
+  const degree = local.degree || gemini.degree || '';
+  const university = local.university || gemini.university || '';
+  const graduation_year = local.graduation_year || gemini.graduation_year || '';
+  const education = local.education || gemini.education || (degree && university ? `${degree} - ${university}` : (degree || university));
+
+  // Skills: preserve local detected skills; add Gemini skills ONLY if they appear in the source text
+  const mergedSkillsSet = new Set<string>();
+  if (local.skills) {
+    local.skills.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((s: string) => mergedSkillsSet.add(s));
+  }
+  if (gemini.skills) {
+    const docTextLower = rawDocText.toLowerCase();
+    const geminiSkills = gemini.skills.split(',').map((s: string) => s.trim()).filter(Boolean);
+    for (const gs of geminiSkills) {
+      if (docTextLower.includes(gs.toLowerCase())) {
+        mergedSkillsSet.add(gs);
+      }
+    }
+  }
+
+  return {
+    full_name,
+    phone,
+    email,
+    job_interest,
+    location: local.location || gemini.location || '',
+    education,
+    degree,
+    university,
+    graduation_year,
+    experience_years,
+    current_company,
+    current_designation,
+    skills: Array.from(mergedSkillsSet).join(', '),
+    linkedin_url: local.linkedin_url || gemini.linkedin_url || '',
+    notes: gemini.notes || local.notes || '',
+    categorized_skills: local.categorized_skills,
+    certifications: local.certifications || gemini.certifications || '',
+    languages: local.languages || gemini.languages || '',
+    summary: gemini.summary || local.summary || '',
+    experience: local.experience || [],
+    education_history: local.education_history || [],
+    confidence: local.confidence,
+    parser_used: 'gemini_merged'
+  };
+};
+
+// Resume Parsing Endpoint (Hybrid Deterministic ATS + Gemini Flash Fallback)
 app.post('/api/resume/parse', async (req, res) => {
   const { textToParse, fileBase64, mimeType } = req.body;
 
+  // 1. Security check: payload size (max 10MB)
+  if (fileBase64 && fileBase64.length > 14_000_000) {
+    return res.status(413).json({ error: 'File size exceeds maximum limit of 10MB.' });
+  }
+
+  // 2. Security check: MIME type validation
+  const ALLOWED_MIME_TYPES = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'text/plain',
+  ];
+  if (mimeType && !ALLOWED_MIME_TYPES.includes(mimeType)) {
+    return res.status(400).json({ error: 'Unsupported file type. Please upload a PDF, DOCX, or TXT file.' });
+  }
+
+  let rawText = (textToParse || '').trim();
+  let isScannedOrImageOnly = false;
+
+  // 3. Extract text from base64 buffer on the server if raw text not sent
+  if (!rawText && fileBase64) {
+    try {
+      const buffer = Buffer.from(fileBase64, 'base64');
+      if (buffer.length === 0) {
+        return res.status(400).json({ error: 'The uploaded file is empty.' });
+      }
+
+      if (mimeType === 'application/pdf') {
+        const extraction = await extractServerTextFromPDF(buffer);
+        if (extraction.isPasswordProtected) {
+          return res.status(422).json({ error: 'This PDF is password-protected. Please upload an unlocked document.' });
+        }
+        if (extraction.isCorrupted) {
+          return res.status(400).json({ error: 'The uploaded PDF file is corrupted or unreadable.' });
+        }
+        rawText = extraction.text;
+        isScannedOrImageOnly = Boolean(extraction.isScannedOrImageOnly);
+      } else if (
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        mimeType === 'application/msword'
+      ) {
+        const extraction = await extractServerTextFromDOCX(buffer);
+        if (extraction.isCorrupted) {
+          return res.status(400).json({ error: 'The uploaded DOCX file is corrupted or unreadable.' });
+        }
+        rawText = extraction.text;
+      } else if (mimeType === 'text/plain') {
+        rawText = buffer.toString('utf-8').trim();
+      }
+    } catch (extractErr: any) {
+      console.warn('[Resume Parse] Failed to extract buffer on server:', extractErr?.message || extractErr);
+      return res.status(400).json({ error: 'Failed to extract text from document.' });
+    }
+  }
+
+  // 4. Deterministic Local Parsing (LeverParser algorithm)
+  let localCandidate: any = null;
+  if (rawText && rawText.length > 20 && !isScannedOrImageOnly) {
+    try {
+      localCandidate = parseResumeLocally(rawText);
+    } catch (parseErr: any) {
+      console.warn('[Resume Parse] Local parsing error:', parseErr?.message || parseErr);
+    }
+  }
+
+  // 5. Fast return if confidence is high (saves 100% LLM tokens and ~3500ms latency)
+  if (localCandidate) {
+    const hasContact = Boolean(localCandidate.full_name && (localCandidate.email || localCandidate.phone));
+    const isConfident = localCandidate.confidence?.overall >= 0.65 && hasContact;
+
+    if (isConfident) {
+      console.log(`[Resume Parse] Local hybrid parser succeeded with confidence ${Math.round(localCandidate.confidence.overall * 100)}%. Zero Gemini cost.`);
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate.confidence,
+        parser_used: 'local_hybrid'
+      });
+    }
+  }
+
+  // 6. Gemini AI Fallback
   const apiKey = process.env.GEMINI_API_KEY;
   const isKeyEmptyOrPlaceholder = !apiKey || 
     apiKey.trim() === '' || 
@@ -2013,38 +2210,25 @@ app.post('/api/resume/parse', async (req, res) => {
     apiKey === 'PLACEHOLDER' ||
     apiKey.length < 20;
 
-  // Fallback regex extractor if no valid key or if AI fails
-  const fallbackExtract = (rawText: string) => {
-    if (!rawText) return null;
-    const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const phoneMatch = rawText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{10}\b/);
-    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-    const candidateName = lines.length > 0 ? lines[0].replace(/[^a-zA-Z\s]/g, '').slice(0, 50).trim() : '';
+  // Handle scanned / image-only PDFs when Gemini key is missing
+  if (isScannedOrImageOnly && isKeyEmptyOrPlaceholder) {
+    return res.status(422).json({
+      error: 'This PDF appears to be a scanned image with no selectable text. Local parsing requires a searchable text PDF or DOCX. For scanned documents, please configure a valid Gemini API key for Cloud OCR.',
+      isScanned: true,
+      ocrSupportedLocally: false
+    });
+  }
 
-    return {
-      full_name: candidateName,
-      phone: phoneMatch ? phoneMatch[0] : '',
-      email: emailMatch ? emailMatch[0] : '',
-      job_interest: '',
-      location: '',
-      education: '',
-      degree: '',
-      university: '',
-      graduation_year: '',
-      experience_years: '',
-      current_company: '',
-      current_designation: '',
-      skills: '',
-      linkedin_url: '',
-      notes: ''
-    };
-  };
-
+  // Handle missing API key when local candidate exists
   if (isKeyEmptyOrPlaceholder) {
-    console.warn('[Resume Parse] GEMINI_API_KEY is missing or invalid in server environment. Attempting text regex fallback.');
-    const fallbackData = fallbackExtract(textToParse || '');
-    if (fallbackData && (fallbackData.email || fallbackData.phone || fallbackData.full_name)) {
-      return res.json({ candidate: fallbackData, isFallback: true });
+    if (localCandidate && (localCandidate.full_name || localCandidate.email || localCandidate.phone)) {
+      console.warn('[Resume Parse] Gemini API key unavailable. Returning local hybrid parse candidate.');
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate?.confidence,
+        parser_used: 'local_hybrid',
+        warning: 'Parsed with local engine (Gemini API key not configured)'
+      });
     }
     return res.status(400).json({ error: 'GEMINI_API_KEY is missing or invalid. Please configure it in your Settings > Secrets.' });
   }
@@ -2060,8 +2244,8 @@ app.post('/api/resume/parse', async (req, res) => {
     });
 
     const parts: any[] = [];
-    if (textToParse && textToParse.length > 30) {
-      parts.push({ text: `Extract candidate information from this resume text:\n\n${textToParse}` });
+    if (rawText && rawText.length > 30) {
+      parts.push({ text: `Extract candidate information from this resume text:\n\n${rawText}` });
     } else if (fileBase64 && mimeType && mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && mimeType !== 'application/msword') {
       parts.push({
         inlineData: {
@@ -2070,22 +2254,29 @@ app.post('/api/resume/parse', async (req, res) => {
         },
       });
       parts.push({ text: "Extract candidate information from this resume document." });
-    } else if (textToParse) {
-      parts.push({ text: `Extract candidate information from this text:\n\n${textToParse}` });
+    } else if (rawText) {
+      parts.push({ text: `Extract candidate information from this text:\n\n${rawText}` });
     } else {
+      if (localCandidate) {
+        return res.json({ candidate: localCandidate, parser_used: 'local_hybrid' });
+      }
       return res.status(400).json({ error: 'No resume text or valid document provided for parsing.' });
     }
 
     parts.push({ text: "Return the extracted data in JSON format following the schema. If a field is not found or not stated, return an empty string for that field." });
 
-    // Try modern models: gemini-3.6-flash, gemini-3.8-flash, gemini-flash-latest
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest"];
+    // Official production Gemini models with 12-second timeout guard
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
     let lastError: any = null;
-    let parsedResult: any = null;
+    let geminiResult: any = null;
 
     for (const modelName of modelsToTry) {
       try {
-        const response = await ai.models.generateContent({
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Gemini API timeout after 12000ms for model ${modelName}`)), 12000)
+        );
+
+        const callPromise = ai.models.generateContent({
           model: modelName,
           contents: { parts },
           config: {
@@ -2113,34 +2304,54 @@ app.post('/api/resume/parse', async (req, res) => {
           },
         });
 
-        if (response.text) {
-          parsedResult = JSON.parse(response.text.trim());
-          console.log(`[Resume Parse] Successfully parsed resume using model: ${modelName}`);
+        const response: any = await Promise.race([callPromise, timeoutPromise]);
+
+        if (response && response.text) {
+          const cleanedText = response.text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+          geminiResult = JSON.parse(cleanedText);
+          console.log(`[Resume Parse] Successfully parsed resume using fallback model: ${modelName}`);
           break;
         }
       } catch (mErr: any) {
         lastError = mErr;
-        console.warn(`[Resume Parse] Model ${modelName} failed or unavailable:`, mErr.message || mErr);
+        console.warn(`[Resume Parse] Model ${modelName} fallback failed:`, mErr?.message || mErr);
       }
     }
 
-    if (parsedResult) {
-      return res.json({ candidate: parsedResult });
+    if (geminiResult) {
+      const merged = mergeCandidateData(localCandidate, geminiResult, rawText);
+      return res.json({ candidate: merged, parser_used: localCandidate ? 'gemini_merged' : 'gemini' });
     }
 
-    // If AI models failed, use regex fallback to extract available candidate details
-    console.error('[Resume Parse] All AI models failed, attempting fallback extraction:', lastError?.message || lastError);
-    const fallbackData = fallbackExtract(textToParse || '');
-    if (fallbackData && (fallbackData.email || fallbackData.phone || fallbackData.full_name)) {
-      return res.json({ candidate: fallbackData, isFallback: true, warning: lastError?.message });
+    // If all Gemini calls failed, safely return local candidate
+    if (localCandidate) {
+      console.warn('[Resume Parse] Gemini models failed. Returning local parsed candidate:', lastError?.message || lastError);
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate.confidence,
+        parser_used: 'local_hybrid',
+        warning: lastError?.message
+      });
+    }
+
+    // If scanned file and Gemini failed
+    if (isScannedOrImageOnly) {
+      return res.status(502).json({
+        error: 'Cloud OCR processing failed or timed out. Please try again or upload a text-based resume.',
+        details: lastError?.message
+      });
     }
 
     return res.status(500).json({ error: lastError?.message || 'Failed to parse resume with AI model' });
   } catch (error: any) {
     console.error('[Resume Parse] Error in resume parse route:', error);
-    const fallbackData = fallbackExtract(textToParse || '');
-    if (fallbackData) {
-      return res.json({ candidate: fallbackData, isFallback: true });
+    if (localCandidate) {
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate.confidence,
+        parser_used: 'local_hybrid',
+        warning: error.message
+      });
     }
     return res.status(500).json({ error: error.message || 'Error parsing resume' });
   }

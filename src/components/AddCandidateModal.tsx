@@ -146,7 +146,7 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
                 });
                 showToast('Resume parsed successfully!', 'success');
               } else {
-                showToast('Failed to parse resume details', 'error');
+                showToast('Could not extract candidate details from this file. Please verify the document format or enter details manually.', 'error');
               }
             }
             resolve();

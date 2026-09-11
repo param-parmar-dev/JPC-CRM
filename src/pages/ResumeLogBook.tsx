@@ -1081,7 +1081,6 @@ export const ResumeLogBook: React.FC = () => {
                           onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                           className="hidden"
                           accept=".pdf,.doc,.docx"
-                          required
                         />
                         <label 
                           htmlFor="resume-upload"

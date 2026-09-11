@@ -1,9 +1,15 @@
-import { GoogleGenAI, Type } from '@google/genai';
 import * as pdfjsLib from 'pdfjs-dist';
 import * as mammoth from 'mammoth';
+import { parseResumeLocally, LocalParsedResume } from './localResumeParser';
 
-// Configure the worker for pdfjs
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+// Configure the worker for pdfjs safely across environments
+if (typeof window !== 'undefined') {
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+  } catch {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  }
+}
 
 export interface ParsedCandidate {
   full_name: string;
@@ -21,7 +27,15 @@ export interface ParsedCandidate {
   skills: string;
   linkedin_url: string;
   notes: string;
+  github_url?: string;
+  certifications?: string;
+  languages?: string;
+  summary?: string;
+  categorized_skills?: Record<string, string[]>;
+  confidence?: any;
+  parser_used?: 'local_hybrid' | 'gemini' | 'gemini_merged' | 'heuristic';
 }
+
 
 const extractTextFromPDF = async (base64: string): Promise<string> => {
   try {
@@ -85,7 +99,7 @@ export async function parseResume(fileBase64: string, mimeType: string): Promise
       textToParse = extractTextFromTXT(fileBase64);
     }
 
-    // 1. Primary approach: Server-side API endpoint with Gemini 3.6 Flash / 3.8 Flash
+    // 1. Primary approach: Server-side API endpoint with local hybrid + Gemini fallback
     try {
       const response = await fetch('/api/resume/parse', {
         method: 'POST',
@@ -109,101 +123,55 @@ export async function parseResume(fileBase64: string, mimeType: string): Promise
         if (errJson.candidate) {
           return errJson.candidate as ParsedCandidate;
         }
+
+        // Handle specific server-side errors with clear user-friendly messages
+        if (response.status === 422) {
+          throw new Error(errJson.error || 'This PDF appears to be a scanned image with no readable text layer. Please upload a searchable text-based PDF/DOCX or configure Cloud OCR.');
+        }
+        if (response.status === 413) {
+          throw new Error('File size exceeds the 10MB limit. Please upload a smaller document.');
+        }
+        if (response.status === 400 && errJson.error) {
+          throw new Error(errJson.error);
+        }
+        if (response.status === 502 && errJson.error) {
+          throw new Error(errJson.error);
+        }
         console.warn('Server resume parse route returned non-OK status:', response.status, errJson);
       }
-    } catch (apiErr) {
-      console.warn('Could not reach /api/resume/parse, attempting direct client fallback:', apiErr);
+    } catch (apiErr: any) {
+      // If error was explicitly thrown above with an intentional user-facing message, propagate it
+      if (apiErr?.message && (
+        apiErr.message.includes('scanned') ||
+        apiErr.message.includes('readable text') ||
+        apiErr.message.includes('password') ||
+        apiErr.message.includes('10MB') ||
+        apiErr.message.includes('corrupted') ||
+        apiErr.message.includes('Cloud OCR')
+      )) {
+        throw apiErr;
+      }
+      console.warn('Could not reach /api/resume/parse, using client-side local parser fallback:', apiErr);
     }
 
-    // 2. Secondary fallback: Direct client call using gemini-3.6-flash / gemini-3.8-flash
-    const apiKey = (process.env as any).GEMINI_API_KEY;
-    if (apiKey && apiKey.length > 20) {
-      const ai = new GoogleGenAI({ apiKey });
-
-      const parts: any[] = [];
-      if (textToParse.length > 50) {
-        parts.push({ text: `Extract candidate information from this resume text:\n\n${textToParse}` });
-      } else if (mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && mimeType !== 'application/msword') {
-        parts.push({
-          inlineData: {
-            data: fileBase64,
-            mimeType: mimeType,
-          },
-        });
-        parts.push({ text: "Extract candidate information from this resume document." });
-      } else {
-        return null;
-      }
-
-      parts.push({ text: "Return the data in JSON format following the provided schema. If a field is not found, return an empty string." });
-
-      const modelsToTry = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest"];
-      for (const m of modelsToTry) {
-        try {
-          const response = await ai.models.generateContent({
-            model: m,
-            contents: { parts },
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  full_name: { type: Type.STRING },
-                  phone: { type: Type.STRING },
-                  email: { type: Type.STRING },
-                  job_interest: { type: Type.STRING },
-                  location: { type: Type.STRING },
-                  education: { type: Type.STRING },
-                  degree: { type: Type.STRING },
-                  university: { type: Type.STRING },
-                  graduation_year: { type: Type.STRING },
-                  experience_years: { type: Type.STRING },
-                  current_company: { type: Type.STRING },
-                  current_designation: { type: Type.STRING },
-                  skills: { type: Type.STRING },
-                  linkedin_url: { type: Type.STRING },
-                  notes: { type: Type.STRING },
-                }
-              },
-            },
-          });
-
-          if (response.text) {
-            return JSON.parse(response.text.trim()) as ParsedCandidate;
-          }
-        } catch (mErr) {
-          console.warn(`Direct client model ${m} failed, trying next:`, mErr);
-        }
+    // 2. Client-side local deterministic parser (Zero network, < 10ms, offline resilient)
+    if (textToParse && textToParse.length > 20) {
+      const localResult: LocalParsedResume = parseResumeLocally(textToParse);
+      // If we have contact info or candidate name, return local result immediately
+      if (localResult.full_name || localResult.email || localResult.phone) {
+        return localResult as ParsedCandidate;
       }
     }
 
-    // 3. Resilient heuristic fallback if text was extracted
-    if (textToParse) {
-      const emailMatch = textToParse.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-      const phoneMatch = textToParse.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{10}\b/);
-      const firstLine = textToParse.split('\n').map(l => l.trim()).filter(Boolean)[0] || '';
-      return {
-        full_name: firstLine.replace(/[^a-zA-Z\s]/g, '').slice(0, 50).trim(),
-        phone: phoneMatch ? phoneMatch[0] : '',
-        email: emailMatch ? emailMatch[0] : '',
-        job_interest: '',
-        location: '',
-        education: '',
-        degree: '',
-        university: '',
-        graduation_year: '',
-        experience_years: '',
-        current_company: '',
-        current_designation: '',
-        skills: '',
-        linkedin_url: '',
-        notes: ''
-      };
+    // 3. Fallback: if client extracted some text, return whatever the local parser extracted
+    if (textToParse && textToParse.trim().length > 0) {
+      return parseResumeLocally(textToParse) as ParsedCandidate;
     }
 
-    throw new Error('No response from AI');
+    // 4. If no text was extracted at all (e.g. image-only PDF while server was unreachable)
+    throw new Error('This document contains no readable text layer. Please upload a searchable text-based PDF or DOCX file.');
   } catch (error: any) {
-    console.error("Error parsing resume:", error);
-    throw new Error(`Failed to parse resume: ${error.message || error}`);
+    console.error("Error in parseResume:", error);
+    throw error;
   }
 }

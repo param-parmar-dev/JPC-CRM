@@ -10,8 +10,858 @@ import cron from "node-cron";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import nodemailer from "nodemailer";
-import * as XLSX from "xlsx";
 import { google } from "googleapis";
+import * as XLSX from "xlsx";
+
+// src/services/localResumeParser.ts
+var SECTION_PATTERNS = {
+  experience: /^(?:(?:work|professional|employment|relevant|career)\s+)?(?:experience|history|background)\b/i,
+  education: /^(?:educational?(?:\s+background)?|academic\s+(?:background|history|credentials)|education|qualifications)\b/i,
+  skills: /^(?:technical\s+|core\s+|key\s+)?(?:skills|competencies|technologies|proficiencies|expertise|technical\s+stack)\b/i,
+  projects: /^(?:(?:selected|personal|academic|key|notable)\s+)?projects\b/i,
+  certifications: /^(?:(?:professional\s+)?certifications?|licenses?|credentials?|certificates?)\b/i,
+  summary: /^(?:professional\s+)?(?:summary|profile|about\s+me|career\s+objective|executive\s+summary|overview)\b/i,
+  languages: /^(?:languages?|linguistic\s+skills|language\s+proficiency)\b/i
+};
+var SKILL_TAXONOMY = {
+  languages: [
+    "javascript",
+    "typescript",
+    "python",
+    "java",
+    "c++",
+    "c#",
+    "golang",
+    "go",
+    "rust",
+    "ruby",
+    "php",
+    "swift",
+    "kotlin",
+    "scala",
+    "r",
+    "dart",
+    "perl",
+    "shell",
+    "bash",
+    "powershell",
+    "sql",
+    "html",
+    "html5",
+    "css",
+    "css3",
+    "sass",
+    "scss",
+    "matlab",
+    "assembly"
+  ],
+  frameworks: [
+    "react",
+    "react.js",
+    "react native",
+    "next.js",
+    "nextjs",
+    "vue",
+    "vue.js",
+    "nuxt",
+    "angular",
+    "angularjs",
+    "node.js",
+    "nodejs",
+    "express",
+    "express.js",
+    "nestjs",
+    "django",
+    "flask",
+    "fastapi",
+    "spring",
+    "spring boot",
+    "asp.net",
+    ".net core",
+    "ruby on rails",
+    "rails",
+    "laravel",
+    "tailwindcss",
+    "tailwind",
+    "bootstrap",
+    "material-ui",
+    "redux",
+    "graphql",
+    "svelte",
+    "electron",
+    "jquery"
+  ],
+  cloud_devops: [
+    "aws",
+    "amazon web services",
+    "azure",
+    "gcp",
+    "google cloud",
+    "docker",
+    "kubernetes",
+    "k8s",
+    "terraform",
+    "ansible",
+    "jenkins",
+    "ci/cd",
+    "github actions",
+    "gitlab ci",
+    "circleci",
+    "helm",
+    "argo cd",
+    "prometheus",
+    "grafana",
+    "linux",
+    "unix",
+    "nginx",
+    "apache",
+    "serverless"
+  ],
+  databases: [
+    "postgresql",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "redis",
+    "elasticsearch",
+    "dynamodb",
+    "oracle",
+    "sqlite",
+    "cassandra",
+    "neo4j",
+    "firebase",
+    "firestore",
+    "supabase",
+    "snowflake",
+    "bigquery",
+    "mariadb",
+    "mssql",
+    "sql server"
+  ],
+  ai_data: [
+    "machine learning",
+    "deep learning",
+    "nlp",
+    "natural language processing",
+    "computer vision",
+    "tensorflow",
+    "pytorch",
+    "keras",
+    "scikit-learn",
+    "pandas",
+    "numpy",
+    "scipy",
+    "spark",
+    "hadoop",
+    "kafka",
+    "airflow",
+    "tableau",
+    "power bi",
+    "llm",
+    "langchain",
+    "generative ai"
+  ],
+  tools_methods: [
+    "git",
+    "github",
+    "gitlab",
+    "bitbucket",
+    "jira",
+    "confluence",
+    "agile",
+    "scrum",
+    "kanban",
+    "rest",
+    "restful",
+    "microservices",
+    "soap",
+    "postman",
+    "swagger",
+    "jest",
+    "mocha",
+    "cypress",
+    "selenium",
+    "playwright",
+    "junit",
+    "pytest",
+    "tdd",
+    "bdd",
+    "webpack",
+    "vite",
+    "eslint"
+  ]
+};
+var COMMON_TITLES = [
+  "Software Engineer",
+  "Software Developer",
+  "Full Stack Developer",
+  "Frontend Developer",
+  "Backend Developer",
+  "Frontend Engineer",
+  "Backend Engineer",
+  "Full Stack Engineer",
+  "DevOps Engineer",
+  "Cloud Architect",
+  "Solutions Architect",
+  "Data Scientist",
+  "Data Analyst",
+  "Data Engineer",
+  "Machine Learning Engineer",
+  "AI Engineer",
+  "QA Engineer",
+  "Quality Assurance Engineer",
+  "Automation Test Engineer",
+  "Security Engineer",
+  "Systems Administrator",
+  "Network Engineer",
+  "Product Manager",
+  "Project Manager",
+  "Scrum Master",
+  "Engineering Manager",
+  "Tech Lead",
+  "Technical Lead",
+  "CTO",
+  "VP of Engineering",
+  "UI/UX Designer",
+  "Product Designer",
+  "Business Analyst",
+  "Account Executive",
+  "Sales Manager",
+  "Director",
+  "Director of Operations",
+  "Operations Director",
+  "Managing Director",
+  "Executive Director",
+  "Associate Director",
+  "Vice President",
+  "Head of Operations",
+  "Head of Engineering",
+  "General Manager",
+  "Consultant",
+  "Senior Consultant",
+  "Associate",
+  "Intern",
+  "Operations Manager"
+];
+function cleanText(text) {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\t/g, " ").replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, "-").replace(/[ \u00A0\u1680\u180e\u2000-\u200a\u202f\u205f\u3000]/g, " ").trim();
+}
+function extractSections(text) {
+  const lines = text.split("\n").map((l) => l.trim());
+  const sections = {};
+  let currentSection = "header";
+  sections[currentSection] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    if (line.length <= 40 && !line.includes("@") && !line.includes("http") && !line.includes("|")) {
+      let matchedSection = null;
+      for (const [secName, pattern] of Object.entries(SECTION_PATTERNS)) {
+        if (pattern.test(line)) {
+          matchedSection = secName;
+          break;
+        }
+      }
+      if (matchedSection) {
+        currentSection = matchedSection;
+        if (!sections[currentSection]) {
+          sections[currentSection] = [];
+        }
+        continue;
+      }
+    }
+    if (!sections[currentSection]) {
+      sections[currentSection] = [];
+    }
+    sections[currentSection].push(line);
+  }
+  const result = {};
+  for (const [key, val] of Object.entries(sections)) {
+    result[key] = val.join("\n");
+  }
+  return result;
+}
+function extractName(lines) {
+  const skipWords = [
+    "resume",
+    "curriculum vitae",
+    "cv",
+    "profile",
+    "contact",
+    "email",
+    "phone",
+    "address",
+    "summary",
+    "experience",
+    "education",
+    "skills",
+    "page",
+    "objective",
+    "personal",
+    "linkedin",
+    "github",
+    "http",
+    "www",
+    ".com",
+    "@"
+  ];
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    let rawLine = lines[i].trim();
+    if (!rawLine) continue;
+    if (/\s{3,}|\t+/.test(rawLine)) {
+      const parts = rawLine.split(/\s{3,}|\t+/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length > 0) {
+        const firstLower = parts[0].toLowerCase();
+        if (!skipWords.some((w) => firstLower.includes(w)) && !/\d{3,}/.test(parts[0])) {
+          rawLine = parts[0];
+        }
+      }
+    }
+    const lower = rawLine.toLowerCase();
+    if (skipWords.some((w) => lower.includes(w))) continue;
+    if (/\d{3,}/.test(rawLine)) continue;
+    let cleaned = rawLine.replace(/^(?:mr\.|ms\.|mrs\.|dr\.|er\.)\s+/i, "").trim();
+    if (cleaned.includes("|")) {
+      cleaned = cleaned.split("|")[0].trim();
+    } else if (cleaned.includes(" - ")) {
+      cleaned = cleaned.split(" - ")[0].trim();
+    }
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if (words.length >= 2 && words.length <= 4) {
+      const isValidName = words.every((w) => /^[A-Za-z]+[.'-]?[A-Za-z]*$/.test(w));
+      if (isValidName && cleaned.length >= 4 && cleaned.length <= 50) {
+        const isJobTitle = COMMON_TITLES.some((title) => {
+          const escaped = title.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+          return new RegExp(`\\b${escaped}\\b`, "i").test(cleaned);
+        }) || /\b(director|president|officer|manager|lead|architect|engineer|developer|designer|analyst|consultant|coordinator|administrator|specialist)\b/i.test(cleaned);
+        if (!isJobTitle) {
+          const formatted = cleaned === cleaned.toUpperCase() ? cleaned.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ") : cleaned;
+          return { name: formatted, confidence: 0.95 };
+        }
+      }
+    } else if (words.length === 1 && words[0].length >= 3 && /^[A-Za-z]+$/.test(words[0])) {
+      const isJobTitle = COMMON_TITLES.some((title) => {
+        const escaped = title.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+        return new RegExp(`\\b${escaped}\\b`, "i").test(words[0]);
+      }) || /\b(director|president|officer|manager|lead|architect|engineer|developer|designer|analyst|consultant|coordinator|administrator|specialist)\b/i.test(words[0]);
+      if (!isJobTitle) {
+        return { name: words[0], confidence: 0.6 };
+      }
+    }
+  }
+  return { name: "", confidence: 0 };
+}
+function extractEmail(text) {
+  const matches = Array.from(text.matchAll(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g)).map((m) => m[0]);
+  if (matches.length === 0) {
+    return { email: "", confidence: 0 };
+  }
+  const genericPrefixes = ["support@", "noreply@", "no-reply@", "info@", "contact@", "help@", "sales@", "jobs@", "careers@", "admin@", "billing@", "service@"];
+  const personalCandidates = matches.filter((e) => !genericPrefixes.some((p) => e.toLowerCase().startsWith(p)));
+  const selected = personalCandidates.length > 0 ? personalCandidates[0] : matches[0];
+  return { email: selected.toLowerCase(), confidence: 1 };
+}
+function extractPhone(text) {
+  const ukMatch = text.match(/(?:\+44[\s.-]?)?0?7\d{3}[\s.-]?\d{6}\b/);
+  if (ukMatch && (ukMatch[0].startsWith("+44") || ukMatch[0].startsWith("07"))) {
+    return { phone: ukMatch[0], confidence: 0.95 };
+  }
+  const uaeMatch = text.match(/\+971[\s.-]?(?:5\d|0?5\d)[\s.-]?\d{3}[\s.-]?\d{4}\b/);
+  if (uaeMatch) {
+    return { phone: uaeMatch[0], confidence: 0.95 };
+  }
+  const deMatch = text.match(/\+49[\s.-]?(?:[1-9]\d{1,3})[\s.-]?\d{4,8}\b/);
+  if (deMatch) {
+    return { phone: deMatch[0], confidence: 0.95 };
+  }
+  const indianExplicit = text.match(/\+91[\s.-]?([6-9]\d{4}[\s.-]?\d{5})\b/);
+  if (indianExplicit) {
+    const raw = indianExplicit[0].replace(/[\s.-]/g, "");
+    return { phone: raw, confidence: 0.95 };
+  }
+  const usMatch = text.match(/(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/);
+  if (usMatch) {
+    const formatted = `(${usMatch[1]}) ${usMatch[2]}-${usMatch[3]}`;
+    return { phone: formatted, confidence: 0.95 };
+  }
+  const indianImplicit = text.match(/\b([6-9]\d{4}[\s.-]?\d{5})\b/);
+  if (indianImplicit) {
+    const raw = indianImplicit[0].replace(/[\s.-]/g, "");
+    return { phone: `+91 ${raw.slice(0, 5)} ${raw.slice(5)}`, confidence: 0.9 };
+  }
+  const intlMatch = text.match(/\+\d{1,3}[\s.-]?\(?\d{1,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/);
+  if (intlMatch) {
+    return { phone: intlMatch[0], confidence: 0.85 };
+  }
+  const plainMatch = text.match(/\b\d{10}\b/);
+  if (plainMatch) {
+    return { phone: plainMatch[0], confidence: 0.7 };
+  }
+  return { phone: "", confidence: 0 };
+}
+function extractSocials(text) {
+  let linkedin = "";
+  let github = "";
+  const linkedinMatch = text.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/(?:in|pub)\/([A-Za-z0-9_-]+)/i);
+  if (linkedinMatch) {
+    linkedin = `https://linkedin.com/in/${linkedinMatch[1]}`;
+  }
+  const githubMatch = text.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9_-]+)/i);
+  if (githubMatch) {
+    github = `https://github.com/${githubMatch[1]}`;
+  }
+  return { linkedin, github };
+}
+function extractLocation(text) {
+  const locMatch = text.match(/\b([A-Z][a-zA-Z\s]{2,20}),\s*([A-Z]{2}|[A-Z][a-zA-Z]{2,15})\b/);
+  if (locMatch) {
+    const city = locMatch[1].trim();
+    const region = locMatch[2].trim();
+    const ignoreWords = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "bachelor", "master"];
+    if (!ignoreWords.includes(city.toLowerCase()) && !ignoreWords.includes(region.toLowerCase())) {
+      return `${city}, ${region}`;
+    }
+  }
+  const hubs = [
+    "Bengaluru",
+    "Bangalore",
+    "Hyderabad",
+    "Mumbai",
+    "Pune",
+    "Delhi",
+    "Noida",
+    "Gurugram",
+    "Gurgaon",
+    "Chennai",
+    "San Francisco",
+    "New York",
+    "Seattle",
+    "Austin",
+    "Boston",
+    "Chicago",
+    "London",
+    "Toronto",
+    "Vancouver",
+    "Berlin",
+    "Singapore",
+    "Dubai",
+    "Sydney",
+    "Remote"
+  ];
+  for (const hub of hubs) {
+    const reg = new RegExp(`\\b${hub}\\b`, "i");
+    if (reg.test(text.slice(0, 1e3))) {
+      return hub;
+    }
+  }
+  return "";
+}
+function parseDateRange(text) {
+  const months = "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
+  const rangeRegex = new RegExp(
+    `((?:(?:${months})\\s+)?(?:19|20)\\d{2}|\\d{1,2}/(?:19|20)\\d{2})\\s*(?:[-\u2013\u2014to]+)\\s*((?:(?:${months})\\s+)?(?:19|20)\\d{2}|\\d{1,2}/(?:19|20)\\d{2}|present|current|now|ongoing)`,
+    "i"
+  );
+  const match = text.match(rangeRegex);
+  if (match) {
+    const start = match[1].trim();
+    const endRaw = match[2].trim();
+    const isCurrent = /present|current|now|ongoing/i.test(endRaw);
+    return {
+      start,
+      end: isCurrent ? "Present" : endRaw,
+      isCurrent
+    };
+  }
+  const simpleYearRegex = /\b((?:19|20)\d{2})\s*[-–—to]+\s*((?:19|20)\d{2}|present|current|now)\b/i;
+  const yearMatch = text.match(simpleYearRegex);
+  if (yearMatch) {
+    const isCurrent = /present|current|now/i.test(yearMatch[2]);
+    return {
+      start: yearMatch[1],
+      end: isCurrent ? "Present" : yearMatch[2],
+      isCurrent
+    };
+  }
+  return { isCurrent: false };
+}
+function calculateExperienceYears(experiences) {
+  const intervals = [];
+  const currentYear = (/* @__PURE__ */ new Date()).getFullYear();
+  for (const exp of experiences) {
+    if (!exp.start_date) continue;
+    const startYearMatch = exp.start_date.match(/(?:19|20)\d{2}/);
+    if (!startYearMatch) continue;
+    const startYear = parseInt(startYearMatch[0], 10);
+    let endYear = currentYear;
+    if (exp.end_date && !/present|current|now/i.test(exp.end_date)) {
+      const endYearMatch = exp.end_date.match(/(?:19|20)\d{2}/);
+      if (endYearMatch) {
+        endYear = parseInt(endYearMatch[0], 10);
+      }
+    }
+    if (endYear >= startYear && startYear >= 1970 && endYear <= currentYear + 1) {
+      intervals.push([startYear, endYear]);
+    }
+  }
+  if (intervals.length === 0) return "";
+  intervals.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  let currentInterval = [...intervals[0]];
+  for (let i = 1; i < intervals.length; i++) {
+    const next = intervals[i];
+    if (next[0] <= currentInterval[1]) {
+      currentInterval[1] = Math.max(currentInterval[1], next[1]);
+    } else {
+      merged.push(currentInterval);
+      currentInterval = [...next];
+    }
+  }
+  merged.push(currentInterval);
+  let totalYears = 0;
+  for (const [start, end] of merged) {
+    totalYears += Math.max(1, end - start);
+  }
+  return totalYears >= 1 ? `${totalYears} years` : "1 year";
+}
+function extractWorkExperience(sectionText, fullText) {
+  const textToAnalyze = sectionText && sectionText.length > 50 ? sectionText : fullText;
+  const lines = textToAnalyze.split("\n").map((l) => l.trim()).filter(Boolean);
+  const experiences = [];
+  let currentExp = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const dateRange = parseDateRange(line);
+    if (dateRange.start) {
+      if (currentExp && (currentExp.title || currentExp.company)) {
+        experiences.push(currentExp);
+      }
+      currentExp = {
+        title: "",
+        company: "",
+        start_date: dateRange.start,
+        end_date: dateRange.end,
+        is_current: dateRange.isCurrent,
+        responsibilities: []
+      };
+      const lineWithoutDates = line.replace(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\d{4}.*$/i, "").trim();
+      if (lineWithoutDates.length > 3) {
+        if (lineWithoutDates.includes("|")) {
+          const parts = lineWithoutDates.split("|").map((p) => p.trim());
+          currentExp.title = parts[0];
+          currentExp.company = parts[1];
+        } else if (lineWithoutDates.includes(" - ")) {
+          const parts = lineWithoutDates.split(" - ").map((p) => p.trim());
+          currentExp.title = parts[0];
+          currentExp.company = parts[1];
+        } else if (lineWithoutDates.includes(" at ")) {
+          const parts = lineWithoutDates.split(" at ").map((p) => p.trim());
+          currentExp.title = parts[0];
+          currentExp.company = parts[1];
+        } else {
+          currentExp.title = lineWithoutDates;
+        }
+      }
+      if (!currentExp.title && i > 0) {
+        const prevLine = lines[i - 1];
+        if (prevLine.includes("|")) {
+          const parts = prevLine.split("|").map((p) => p.trim());
+          currentExp.company = parts[0];
+          currentExp.location = parts[1];
+          if (i > 1 && !lines[i - 2].startsWith("\u2022") && !lines[i - 2].startsWith("-")) {
+            currentExp.title = lines[i - 2];
+          }
+        } else if (prevLine.includes(" - ") && !/\d{4}/.test(prevLine)) {
+          const parts = prevLine.split(" - ").map((p) => p.trim());
+          currentExp.company = parts[0];
+          currentExp.location = parts[1];
+          if (i > 1 && !lines[i - 2].startsWith("\u2022") && !lines[i - 2].startsWith("-")) {
+            currentExp.title = lines[i - 2];
+          }
+        } else if (prevLine.includes(" at ")) {
+          const parts = prevLine.split(" at ").map((p) => p.trim());
+          currentExp.title = parts[0];
+          currentExp.company = parts[1];
+        } else {
+          const isTitle = COMMON_TITLES.some((t) => prevLine.toLowerCase().includes(t.toLowerCase())) || /\b(engineer|developer|manager|lead|architect|analyst|designer|consultant|specialist|officer|director|intern|administrator|tester|scientist)\b/i.test(prevLine);
+          if (isTitle) {
+            currentExp.title = prevLine;
+            if (i > 1 && !lines[i - 2].startsWith("\u2022") && !lines[i - 2].startsWith("-") && lines[i - 2].length < 60) {
+              currentExp.company = lines[i - 2];
+            }
+          } else {
+            currentExp.company = prevLine;
+            if (i > 1 && !lines[i - 2].startsWith("\u2022") && !lines[i - 2].startsWith("-") && lines[i - 2].length < 60) {
+              currentExp.title = lines[i - 2];
+            }
+          }
+        }
+      }
+      continue;
+    }
+    if (currentExp) {
+      if (line.startsWith("\u2022") || line.startsWith("-") || line.startsWith("*") || line.startsWith("\u25AA")) {
+        const bulletText = line.replace(/^[•\-*▪]\s*/, "").trim();
+        if (bulletText.length > 5) {
+          currentExp.responsibilities?.push(bulletText);
+        }
+      } else if (!currentExp.company && line.length < 60 && !line.includes("http")) {
+        currentExp.company = line;
+      }
+    }
+  }
+  if (currentExp && (currentExp.title || currentExp.company)) {
+    experiences.push(currentExp);
+  }
+  const uniqueExperiences = [];
+  const seenExpKeys = /* @__PURE__ */ new Set();
+  for (const exp of experiences) {
+    if (exp.responsibilities && exp.responsibilities.length > 0) {
+      exp.description = exp.responsibilities.join("\n");
+    }
+    exp.title = exp.title.replace(/^[,\-|]\s*/, "").replace(/[,\-|]\s*$/, "").trim();
+    exp.company = exp.company.replace(/^[,\-|]\s*/, "").replace(/[,\-|]\s*$/, "").trim();
+    const key = `${exp.company.toLowerCase()}|${exp.title.toLowerCase()}|${(exp.start_date || "").toLowerCase()}`;
+    if (!seenExpKeys.has(key) && (exp.company || exp.title)) {
+      seenExpKeys.add(key);
+      uniqueExperiences.push(exp);
+    }
+  }
+  let confidence = 0;
+  if (uniqueExperiences.length > 0) {
+    const hasTitles = uniqueExperiences.filter((e) => e.title).length;
+    const hasCompanies = uniqueExperiences.filter((e) => e.company).length;
+    const hasDates = uniqueExperiences.filter((e) => e.start_date).length;
+    confidence = hasTitles / uniqueExperiences.length * 0.4 + hasCompanies / uniqueExperiences.length * 0.35 + hasDates / uniqueExperiences.length * 0.25;
+  }
+  return { experiences: uniqueExperiences, confidence: Math.round(confidence * 100) / 100 };
+}
+function extractEducation(sectionText, fullText) {
+  const textToAnalyze = sectionText && sectionText.length > 30 ? sectionText : fullText;
+  const lines = textToAnalyze.split("\n").map((l) => l.trim()).filter(Boolean);
+  const educationList = [];
+  const degreeRegex = /\b(?:Bachelor(?:'s)?(?:\s+of\s+[A-Za-z\s]+)?|Master(?:'s)?(?:\s+of\s+[A-Za-z\s]+)?|Ph\.?D|Doctorate|B\.?Tech|B\.?E\.?|B\.?S\.?|B\.?Sc\.?|B\.?A\.?|BCA|BBA|M\.?Tech|M\.?E\.?|M\.?S\.?|M\.?Sc\.?|MBA|MCA|Associate(?:'s)?|Diploma)\b/i;
+  const uniRegex = /\b(?:University|College|Institute|Polytechnic|School|IIT|NIT|BITS|Academy)\b/i;
+  let currentEdu = null;
+  for (const line of lines) {
+    const hasDegree = degreeRegex.test(line);
+    const hasUni = uniRegex.test(line);
+    const allYears = line.match(/\b(19[7-9]\d|20[0-3]\d)\b/g);
+    const latestYear = allYears ? allYears[allYears.length - 1] : "";
+    if (hasDegree || hasUni) {
+      if (hasDegree && hasUni) {
+        educationList.push({
+          degree: line.match(degreeRegex)?.[0] || "",
+          institution: line.replace(degreeRegex, "").replace(/[,\-|]/g, " ").trim(),
+          graduation_year: latestYear
+        });
+      } else if (hasDegree) {
+        currentEdu = {
+          degree: line,
+          institution: "",
+          graduation_year: latestYear
+        };
+      } else if (hasUni) {
+        if (currentEdu && !currentEdu.institution) {
+          currentEdu.institution = line;
+          if (latestYear && !currentEdu.graduation_year) {
+            currentEdu.graduation_year = latestYear;
+          }
+          educationList.push(currentEdu);
+          currentEdu = null;
+        } else {
+          educationList.push({
+            degree: "",
+            institution: line,
+            graduation_year: latestYear
+          });
+        }
+      }
+    } else if (latestYear) {
+      if (currentEdu && !currentEdu.graduation_year) {
+        currentEdu.graduation_year = latestYear;
+        educationList.push(currentEdu);
+        currentEdu = null;
+      } else if (educationList.length > 0 && !educationList[educationList.length - 1].graduation_year) {
+        educationList[educationList.length - 1].graduation_year = latestYear;
+      }
+    }
+  }
+  if (currentEdu) {
+    educationList.push(currentEdu);
+  }
+  const primaryDegree = educationList.find((e) => e.degree)?.degree || "";
+  const primaryUniversity = educationList.find((e) => e.institution)?.institution || "";
+  const gradYear = educationList.find((e) => e.graduation_year)?.graduation_year || "";
+  let confidence = 0;
+  if (primaryDegree && primaryUniversity) confidence = 0.95;
+  else if (primaryDegree || primaryUniversity) confidence = 0.7;
+  else if (gradYear) confidence = 0.4;
+  return { educationList, primaryDegree, primaryUniversity, gradYear, confidence };
+}
+function extractSkills(sectionText, fullText) {
+  const isSkillsSection = Boolean(sectionText && sectionText.length > 20);
+  const textLower = (sectionText || fullText).toLowerCase();
+  const matchedSkills = /* @__PURE__ */ new Set();
+  const categorized = {};
+  const ambiguousSkills = /* @__PURE__ */ new Set(["go", "r", "c", "rest", "git", "spark", "assembly"]);
+  for (const [category, skills] of Object.entries(SKILL_TAXONOMY)) {
+    categorized[category] = [];
+    for (const skill of skills) {
+      const lowerSkill = skill.toLowerCase();
+      if (ambiguousSkills.has(lowerSkill) && !isSkillsSection) {
+        let isStrictMatch = false;
+        if (lowerSkill === "go") {
+          isStrictMatch = /\b(?:golang|go\s+language|go\s+developer|go\s+backend)\b/i.test(fullText) || /\bGo\b/.test(fullText);
+        } else if (lowerSkill === "r") {
+          isStrictMatch = /\b(?:r\s+language|r\s+programming|r\s+studio)\b/i.test(fullText);
+        } else if (lowerSkill === "c") {
+          isStrictMatch = /\b(?:c\s+programming|c\s+language)\b/i.test(fullText);
+        } else if (lowerSkill === "rest") {
+          isStrictMatch = /\b(?:restful|rest\s+api|rest\s+apis)\b/i.test(fullText);
+        } else if (lowerSkill === "spark") {
+          isStrictMatch = /\b(?:apache\s+spark|pyspark|spark\s+streaming)\b/i.test(fullText);
+        } else if (lowerSkill === "git") {
+          isStrictMatch = /\b(?:git\s+version|github|gitlab|git\b)/i.test(fullText);
+        } else if (lowerSkill === "assembly") {
+          isStrictMatch = /\b(?:assembly\s+language|x86|arm\s+assembly)\b/i.test(fullText);
+        }
+        if (isStrictMatch) {
+          const displayName = skill.charAt(0).toUpperCase() + skill.slice(1);
+          matchedSkills.add(displayName);
+          categorized[category].push(displayName);
+        }
+        continue;
+      }
+      const escaped = skill.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+      const regex = new RegExp(`(?:^|[^a-zA-Z0-9#+])${escaped}(?:$|[^a-zA-Z0-9#+])`, "i");
+      if (regex.test(textLower)) {
+        const displayName = skill.charAt(0).toUpperCase() + skill.slice(1);
+        matchedSkills.add(displayName);
+        categorized[category].push(displayName);
+      }
+    }
+  }
+  const skillsList = Array.from(matchedSkills);
+  let confidence = 0;
+  if (skillsList.length >= 8) confidence = 1;
+  else if (skillsList.length >= 5) confidence = 0.85;
+  else if (skillsList.length >= 3) confidence = 0.7;
+  else if (skillsList.length >= 1) confidence = 0.4;
+  return { skillsList, categorized, confidence };
+}
+function extractCertifications(sectionText, fullText) {
+  const textToSearch = sectionText || fullText;
+  const certKeywords = [
+    "AWS Certified",
+    "Solutions Architect",
+    "Cloud Practitioner",
+    "PMP",
+    "Scrum Master",
+    "CSM",
+    "CISSP",
+    "CEH",
+    "Google Cloud Certified",
+    "GCP Professional",
+    "Azure Fundamentals",
+    "Azure Administrator",
+    "CKA",
+    "CKAD",
+    "ISTQB",
+    "Salesforce Certified",
+    "CompTIA"
+  ];
+  const found = [];
+  for (const cert of certKeywords) {
+    if (new RegExp(`\\b${cert}\\b`, "i").test(textToSearch)) {
+      found.push(cert);
+    }
+  }
+  return found.join(", ");
+}
+function extractLanguages(sectionText, fullText) {
+  const textToSearch = sectionText || fullText;
+  const langs = [
+    "English",
+    "Spanish",
+    "French",
+    "German",
+    "Mandarin",
+    "Hindi",
+    "Arabic",
+    "Portuguese",
+    "Japanese",
+    "Russian"
+  ];
+  const found = [];
+  for (const lang of langs) {
+    if (new RegExp(`\\b${lang}\\b`, "i").test(textToSearch)) {
+      found.push(lang);
+    }
+  }
+  return found.join(", ");
+}
+function parseResumeLocally(rawText) {
+  const cleaned = cleanText(rawText);
+  const sections = extractSections(cleaned);
+  const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
+  const headerText = sections["header"] || lines.slice(0, 15).join("\n");
+  const nameResult = extractName(lines);
+  const emailResult = extractEmail(headerText || cleaned);
+  const phoneResult = extractPhone(headerText || cleaned);
+  const socials = extractSocials(cleaned);
+  const location = extractLocation(headerText || cleaned);
+  const contactScore = nameResult.confidence * 0.4 + emailResult.confidence * 0.35 + phoneResult.confidence * 0.25;
+  const expResult = extractWorkExperience(sections["experience"], cleaned);
+  const expYears = calculateExperienceYears(expResult.experiences);
+  const currentExp = expResult.experiences.find((e) => e.is_current) || expResult.experiences[0];
+  const currentCompany = currentExp?.company || "";
+  const currentDesignation = currentExp?.title || "";
+  const eduResult = extractEducation(sections["education"], cleaned);
+  const skillsResult = extractSkills(sections["skills"], cleaned);
+  const certifications = extractCertifications(sections["certifications"], cleaned);
+  const languages = extractLanguages(sections["languages"], cleaned);
+  const summary = sections["summary"] ? sections["summary"].slice(0, 500) : "";
+  const overallConfidence = contactScore * 0.35 + expResult.confidence * 0.3 + eduResult.confidence * 0.2 + skillsResult.confidence * 0.15;
+  const confidence = {
+    overall: Math.round(overallConfidence * 100) / 100,
+    contact: Math.round(contactScore * 100) / 100,
+    name: nameResult.confidence,
+    email: emailResult.confidence,
+    phone: phoneResult.confidence,
+    experience: expResult.confidence,
+    education: eduResult.confidence,
+    skills: skillsResult.confidence
+  };
+  return {
+    full_name: nameResult.name,
+    email: emailResult.email,
+    phone: phoneResult.phone,
+    location,
+    linkedin_url: socials.linkedin,
+    github_url: socials.github,
+    job_interest: currentDesignation || (expResult.experiences[0]?.title || ""),
+    current_company: currentCompany,
+    current_designation: currentDesignation,
+    experience_years: expYears,
+    education: eduResult.primaryDegree ? `${eduResult.primaryDegree} - ${eduResult.primaryUniversity}` : eduResult.primaryUniversity,
+    degree: eduResult.primaryDegree,
+    university: eduResult.primaryUniversity,
+    graduation_year: eduResult.gradYear,
+    skills: skillsResult.skillsList.join(", "),
+    categorized_skills: skillsResult.categorized,
+    certifications,
+    languages,
+    summary,
+    notes: summary,
+    experience: expResult.experiences,
+    education_history: eduResult.educationList,
+    confidence,
+    parser_used: "local_hybrid"
+  };
+}
+
+// server.ts
 dotenv.config();
 var isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
 var databaseId = void 0;
@@ -1543,39 +2393,184 @@ Format the response in clean, aesthetic Markdown with professional structures an
     res.json({ analysis });
   }
 });
+var extractServerTextFromPDF = async (buffer) => {
+  try {
+    if (!buffer || buffer.length === 0) {
+      return { text: "", isCorrupted: true };
+    }
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const doc = await pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      useSystemFonts: true,
+      disableFontFace: true
+    }).promise;
+    let text = "";
+    const numPages = Math.min(doc.numPages, 10);
+    for (let i = 1; i <= numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map((item) => item.str + (item.hasEOL ? "\n" : " "));
+      text += strings.join("") + "\n";
+    }
+    const trimmed = text.trim();
+    const nonWhitespace = trimmed.replace(/\s+/g, "");
+    const isScanned = nonWhitespace.length < 20;
+    return { text: trimmed, isScannedOrImageOnly: isScanned };
+  } catch (err) {
+    console.warn("[Server Resume Parse] PDF extraction error:", err?.message || err);
+    const isPw = err?.name === "PasswordException" || String(err?.message || "").toLowerCase().includes("password");
+    return { text: "", isPasswordProtected: isPw, isCorrupted: !isPw };
+  }
+};
+var extractServerTextFromDOCX = async (buffer) => {
+  try {
+    if (!buffer || buffer.length === 0) {
+      return { text: "", isCorrupted: true };
+    }
+    const mammoth = await import("mammoth");
+    const result = await mammoth.extractRawText({ buffer });
+    return { text: result.value.trim() };
+  } catch (err) {
+    console.warn("[Server Resume Parse] DOCX extraction error:", err?.message || err);
+    return { text: "", isCorrupted: true };
+  }
+};
+var mergeCandidateData = (local, gemini, rawDocText) => {
+  if (!local) return gemini;
+  const full_name = local.confidence?.name >= 0.8 && local.full_name ? local.full_name : gemini.full_name || local.full_name || "";
+  const email = local.confidence?.email >= 0.9 && local.email ? local.email : gemini.email || local.email || "";
+  const phone = local.confidence?.phone >= 0.8 && local.phone ? local.phone : gemini.phone || local.phone || "";
+  const current_company = local.current_company || gemini.current_company || "";
+  const current_designation = local.current_designation || gemini.current_designation || "";
+  const experience_years = local.experience_years || gemini.experience_years || "";
+  const job_interest = local.job_interest || gemini.job_interest || current_designation;
+  const degree = local.degree || gemini.degree || "";
+  const university = local.university || gemini.university || "";
+  const graduation_year = local.graduation_year || gemini.graduation_year || "";
+  const education = local.education || gemini.education || (degree && university ? `${degree} - ${university}` : degree || university);
+  const mergedSkillsSet = /* @__PURE__ */ new Set();
+  if (local.skills) {
+    local.skills.split(",").map((s) => s.trim()).filter(Boolean).forEach((s) => mergedSkillsSet.add(s));
+  }
+  if (gemini.skills) {
+    const docTextLower = rawDocText.toLowerCase();
+    const geminiSkills = gemini.skills.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const gs of geminiSkills) {
+      if (docTextLower.includes(gs.toLowerCase())) {
+        mergedSkillsSet.add(gs);
+      }
+    }
+  }
+  return {
+    full_name,
+    phone,
+    email,
+    job_interest,
+    location: local.location || gemini.location || "",
+    education,
+    degree,
+    university,
+    graduation_year,
+    experience_years,
+    current_company,
+    current_designation,
+    skills: Array.from(mergedSkillsSet).join(", "),
+    linkedin_url: local.linkedin_url || gemini.linkedin_url || "",
+    notes: gemini.notes || local.notes || "",
+    categorized_skills: local.categorized_skills,
+    certifications: local.certifications || gemini.certifications || "",
+    languages: local.languages || gemini.languages || "",
+    summary: gemini.summary || local.summary || "",
+    experience: local.experience || [],
+    education_history: local.education_history || [],
+    confidence: local.confidence,
+    parser_used: "gemini_merged"
+  };
+};
 app.post("/api/resume/parse", async (req, res) => {
   const { textToParse, fileBase64, mimeType } = req.body;
+  if (fileBase64 && fileBase64.length > 14e6) {
+    return res.status(413).json({ error: "File size exceeds maximum limit of 10MB." });
+  }
+  const ALLOWED_MIME_TYPES = [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+    "text/plain"
+  ];
+  if (mimeType && !ALLOWED_MIME_TYPES.includes(mimeType)) {
+    return res.status(400).json({ error: "Unsupported file type. Please upload a PDF, DOCX, or TXT file." });
+  }
+  let rawText = (textToParse || "").trim();
+  let isScannedOrImageOnly = false;
+  if (!rawText && fileBase64) {
+    try {
+      const buffer = Buffer.from(fileBase64, "base64");
+      if (buffer.length === 0) {
+        return res.status(400).json({ error: "The uploaded file is empty." });
+      }
+      if (mimeType === "application/pdf") {
+        const extraction = await extractServerTextFromPDF(buffer);
+        if (extraction.isPasswordProtected) {
+          return res.status(422).json({ error: "This PDF is password-protected. Please upload an unlocked document." });
+        }
+        if (extraction.isCorrupted) {
+          return res.status(400).json({ error: "The uploaded PDF file is corrupted or unreadable." });
+        }
+        rawText = extraction.text;
+        isScannedOrImageOnly = Boolean(extraction.isScannedOrImageOnly);
+      } else if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || mimeType === "application/msword") {
+        const extraction = await extractServerTextFromDOCX(buffer);
+        if (extraction.isCorrupted) {
+          return res.status(400).json({ error: "The uploaded DOCX file is corrupted or unreadable." });
+        }
+        rawText = extraction.text;
+      } else if (mimeType === "text/plain") {
+        rawText = buffer.toString("utf-8").trim();
+      }
+    } catch (extractErr) {
+      console.warn("[Resume Parse] Failed to extract buffer on server:", extractErr?.message || extractErr);
+      return res.status(400).json({ error: "Failed to extract text from document." });
+    }
+  }
+  let localCandidate = null;
+  if (rawText && rawText.length > 20 && !isScannedOrImageOnly) {
+    try {
+      localCandidate = parseResumeLocally(rawText);
+    } catch (parseErr) {
+      console.warn("[Resume Parse] Local parsing error:", parseErr?.message || parseErr);
+    }
+  }
+  if (localCandidate) {
+    const hasContact = Boolean(localCandidate.full_name && (localCandidate.email || localCandidate.phone));
+    const isConfident = localCandidate.confidence?.overall >= 0.65 && hasContact;
+    if (isConfident) {
+      console.log(`[Resume Parse] Local hybrid parser succeeded with confidence ${Math.round(localCandidate.confidence.overall * 100)}%. Zero Gemini cost.`);
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate.confidence,
+        parser_used: "local_hybrid"
+      });
+    }
+  }
   const apiKey = process.env.GEMINI_API_KEY;
   const isKeyEmptyOrPlaceholder = !apiKey || apiKey.trim() === "" || apiKey.toLowerCase().includes("your-api-key") || apiKey === "PLACEHOLDER" || apiKey.length < 20;
-  const fallbackExtract = (rawText) => {
-    if (!rawText) return null;
-    const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const phoneMatch = rawText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{10}\b/);
-    const lines = rawText.split("\n").map((l) => l.trim()).filter(Boolean);
-    const candidateName = lines.length > 0 ? lines[0].replace(/[^a-zA-Z\s]/g, "").slice(0, 50).trim() : "";
-    return {
-      full_name: candidateName,
-      phone: phoneMatch ? phoneMatch[0] : "",
-      email: emailMatch ? emailMatch[0] : "",
-      job_interest: "",
-      location: "",
-      education: "",
-      degree: "",
-      university: "",
-      graduation_year: "",
-      experience_years: "",
-      current_company: "",
-      current_designation: "",
-      skills: "",
-      linkedin_url: "",
-      notes: ""
-    };
-  };
+  if (isScannedOrImageOnly && isKeyEmptyOrPlaceholder) {
+    return res.status(422).json({
+      error: "This PDF appears to be a scanned image with no selectable text. Local parsing requires a searchable text PDF or DOCX. For scanned documents, please configure a valid Gemini API key for Cloud OCR.",
+      isScanned: true,
+      ocrSupportedLocally: false
+    });
+  }
   if (isKeyEmptyOrPlaceholder) {
-    console.warn("[Resume Parse] GEMINI_API_KEY is missing or invalid in server environment. Attempting text regex fallback.");
-    const fallbackData = fallbackExtract(textToParse || "");
-    if (fallbackData && (fallbackData.email || fallbackData.phone || fallbackData.full_name)) {
-      return res.json({ candidate: fallbackData, isFallback: true });
+    if (localCandidate && (localCandidate.full_name || localCandidate.email || localCandidate.phone)) {
+      console.warn("[Resume Parse] Gemini API key unavailable. Returning local hybrid parse candidate.");
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate?.confidence,
+        parser_used: "local_hybrid",
+        warning: "Parsed with local engine (Gemini API key not configured)"
+      });
     }
     return res.status(400).json({ error: "GEMINI_API_KEY is missing or invalid. Please configure it in your Settings > Secrets." });
   }
@@ -1589,10 +2584,10 @@ app.post("/api/resume/parse", async (req, res) => {
       }
     });
     const parts = [];
-    if (textToParse && textToParse.length > 30) {
+    if (rawText && rawText.length > 30) {
       parts.push({ text: `Extract candidate information from this resume text:
 
-${textToParse}` });
+${rawText}` });
     } else if (fileBase64 && mimeType && mimeType !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && mimeType !== "application/msword") {
       parts.push({
         inlineData: {
@@ -1601,20 +2596,26 @@ ${textToParse}` });
         }
       });
       parts.push({ text: "Extract candidate information from this resume document." });
-    } else if (textToParse) {
+    } else if (rawText) {
       parts.push({ text: `Extract candidate information from this text:
 
-${textToParse}` });
+${rawText}` });
     } else {
+      if (localCandidate) {
+        return res.json({ candidate: localCandidate, parser_used: "local_hybrid" });
+      }
       return res.status(400).json({ error: "No resume text or valid document provided for parsing." });
     }
     parts.push({ text: "Return the extracted data in JSON format following the schema. If a field is not found or not stated, return an empty string for that field." });
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest"];
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
     let lastError = null;
-    let parsedResult = null;
+    let geminiResult = null;
     for (const modelName of modelsToTry) {
       try {
-        const response = await ai.models.generateContent({
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error(`Gemini API timeout after 12000ms for model ${modelName}`)), 12e3)
+        );
+        const callPromise = ai.models.generateContent({
           model: modelName,
           contents: { parts },
           config: {
@@ -1641,30 +2642,47 @@ ${textToParse}` });
             }
           }
         });
-        if (response.text) {
-          parsedResult = JSON.parse(response.text.trim());
-          console.log(`[Resume Parse] Successfully parsed resume using model: ${modelName}`);
+        const response = await Promise.race([callPromise, timeoutPromise]);
+        if (response && response.text) {
+          const cleanedText = response.text.trim().replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+          geminiResult = JSON.parse(cleanedText);
+          console.log(`[Resume Parse] Successfully parsed resume using fallback model: ${modelName}`);
           break;
         }
       } catch (mErr) {
         lastError = mErr;
-        console.warn(`[Resume Parse] Model ${modelName} failed or unavailable:`, mErr.message || mErr);
+        console.warn(`[Resume Parse] Model ${modelName} fallback failed:`, mErr?.message || mErr);
       }
     }
-    if (parsedResult) {
-      return res.json({ candidate: parsedResult });
+    if (geminiResult) {
+      const merged = mergeCandidateData(localCandidate, geminiResult, rawText);
+      return res.json({ candidate: merged, parser_used: localCandidate ? "gemini_merged" : "gemini" });
     }
-    console.error("[Resume Parse] All AI models failed, attempting fallback extraction:", lastError?.message || lastError);
-    const fallbackData = fallbackExtract(textToParse || "");
-    if (fallbackData && (fallbackData.email || fallbackData.phone || fallbackData.full_name)) {
-      return res.json({ candidate: fallbackData, isFallback: true, warning: lastError?.message });
+    if (localCandidate) {
+      console.warn("[Resume Parse] Gemini models failed. Returning local parsed candidate:", lastError?.message || lastError);
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate.confidence,
+        parser_used: "local_hybrid",
+        warning: lastError?.message
+      });
+    }
+    if (isScannedOrImageOnly) {
+      return res.status(502).json({
+        error: "Cloud OCR processing failed or timed out. Please try again or upload a text-based resume.",
+        details: lastError?.message
+      });
     }
     return res.status(500).json({ error: lastError?.message || "Failed to parse resume with AI model" });
   } catch (error) {
     console.error("[Resume Parse] Error in resume parse route:", error);
-    const fallbackData = fallbackExtract(textToParse || "");
-    if (fallbackData) {
-      return res.json({ candidate: fallbackData, isFallback: true });
+    if (localCandidate) {
+      return res.json({
+        candidate: localCandidate,
+        confidence: localCandidate.confidence,
+        parser_used: "local_hybrid",
+        warning: error.message
+      });
     }
     return res.status(500).json({ error: error.message || "Error parsing resume" });
   }
