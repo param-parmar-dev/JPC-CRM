@@ -1055,13 +1055,17 @@ export async function assignLeadRoundRobinTransaction(
   candidateData?: any,
   overrideUserId?: string | number | null,
   requestedByRole?: string,
-  forceInWorkingHours?: boolean
+  forceInWorkingHours?: boolean,
+  idempotencyKey?: string | null
 ): Promise<{
   assignedUser: any | null;
   assignedUserId: string | null;
   isUnassigned: boolean;
   reason?: string;
   preserved?: boolean;
+  candidateId?: string;
+  duplicatePrevented?: boolean;
+  alreadyExisted?: boolean;
 }> {
   const managementRoles = ['administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person'];
   const isManagement = requestedByRole && managementRoles.includes(requestedByRole);
@@ -1072,24 +1076,139 @@ export async function assignLeadRoundRobinTransaction(
     activeOverrideId = String(overrideUserId);
   }
 
+  // Normalized phone and email keys for deterministic deduplication
+  const rawPhone = candidateData?.phone ? String(candidateData.phone) : '';
+  const digitsOnly = rawPhone.replace(/[^0-9]/g, '');
+  const cleanPhone = (digitsOnly.length === 11 && digitsOnly.startsWith('1')) ? digitsOnly.slice(1) : digitsOnly;
+  const cleanEmail = candidateData?.email ? String(candidateData.email).toLowerCase().trim() : '';
+
   return await targetDb.runTransaction(async (transaction: any) => {
+    // 1. Check Durable Idempotency Key in Firestore
+    if (idempotencyKey) {
+      const idempRef = targetDb.collection('jpc_idempotency_keys').doc(String(idempotencyKey));
+      const idempDoc = await transaction.get(idempRef);
+      if (idempDoc.exists) {
+        const idempData = idempDoc.data();
+        if (idempData.status === 'completed' && idempData.candidate_id) {
+          const existingCandDoc = await transaction.get(targetDb.collection('jpc_candidates').doc(idempData.candidate_id));
+          const existingCand = existingCandDoc.exists ? existingCandDoc.data() : null;
+          let existingAssignedUser = null;
+          const existingSalesId = idempData.assigned_sales || existingCand?.assigned_sales || null;
+          if (existingSalesId) {
+            const uDoc = await transaction.get(targetDb.collection('jpc_users').doc(String(existingSalesId)));
+            if (uDoc.exists) {
+              existingAssignedUser = { id: uDoc.id, ...uDoc.data() };
+            }
+          }
+          return {
+            assignedUser: existingAssignedUser,
+            assignedUserId: existingSalesId,
+            isUnassigned: idempData.is_unassigned ?? (existingSalesId == null),
+            reason: idempData.reason,
+            candidateId: idempData.candidate_id,
+            duplicatePrevented: true,
+            alreadyExisted: true
+          };
+        }
+      }
+    }
+
     const candRef = targetDb.collection('jpc_candidates').doc(candidateId);
     const candDoc = await transaction.get(candRef);
 
-    // If candidate already exists and has an assigned_sales, do NOT overwrite unless management specifically provided an override
+    // 2. If candidate already exists and has an assigned_sales, do NOT overwrite unless management specifically provided an override
     if (candDoc.exists) {
       const existing = candDoc.data();
       if (existing.assigned_sales && !activeOverrideId) {
+        let existingUser = null;
+        const uDoc = await transaction.get(targetDb.collection('jpc_users').doc(String(existing.assigned_sales)));
+        if (uDoc.exists) {
+          existingUser = { id: uDoc.id, ...uDoc.data() };
+        }
         return {
-          assignedUser: null,
+          assignedUser: existingUser,
           assignedUserId: String(existing.assigned_sales),
           isUnassigned: false,
-          preserved: true
+          preserved: true,
+          candidateId,
+          duplicatePrevented: true,
+          alreadyExisted: true
         };
       }
     }
 
-    // 1. Management explicit assignment override
+    // 3. Deterministic Deduplication Lock Check in Firestore (Phone and Email locks)
+    const phoneLockRef = cleanPhone.length >= 7 
+      ? targetDb.collection('jpc_lead_locks').doc(`phone_${cleanPhone}`) 
+      : null;
+    const emailLockRef = cleanEmail.length >= 5 
+      ? targetDb.collection('jpc_lead_locks').doc(`email_${cleanEmail.replace(/[^a-z0-9@._-]/g, '_')}`) 
+      : null;
+
+    const lockRefs: any[] = [phoneLockRef, emailLockRef].filter(Boolean);
+    for (const lRef of lockRefs) {
+      const lockDoc = await transaction.get(lRef);
+      if (lockDoc.exists) {
+        const lockData = lockDoc.data();
+        const lockedCandId = lockData.candidate_id;
+        if (lockedCandId && lockedCandId !== candidateId) {
+          const lockedCandDoc = await transaction.get(targetDb.collection('jpc_candidates').doc(lockedCandId));
+          if (lockedCandDoc.exists) {
+            const lockedCandData = lockedCandDoc.data();
+            // Only consider duplicate if existing candidate is active (not soft-deleted)
+            if (!lockedCandData.deleted_at) {
+              let lockedUser = null;
+              if (lockedCandData.assigned_sales) {
+                const uDoc = await transaction.get(targetDb.collection('jpc_users').doc(String(lockedCandData.assigned_sales)));
+                if (uDoc.exists) {
+                  lockedUser = { id: uDoc.id, ...uDoc.data() };
+                }
+              }
+              return {
+                assignedUser: lockedUser,
+                assignedUserId: lockedCandData.assigned_sales ? String(lockedCandData.assigned_sales) : null,
+                isUnassigned: !lockedCandData.assigned_sales,
+                candidateId: lockedCandId,
+                duplicatePrevented: true,
+                alreadyExisted: true
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // Helper to persist deterministic locks & idempotency record within this atomic transaction
+    const commitLocksAndIdempotency = (assignedSalesId: string | null, isUnassignedState: boolean, reasonStr?: string) => {
+      const lockPayload = {
+        candidate_id: candidateId,
+        phone: cleanPhone,
+        email: cleanEmail,
+        updated_at: new Date().toISOString()
+      };
+
+      if (phoneLockRef) {
+        transaction.set(phoneLockRef, lockPayload, { merge: true });
+      }
+      if (emailLockRef) {
+        transaction.set(emailLockRef, lockPayload, { merge: true });
+      }
+
+      if (idempotencyKey) {
+        const idempRef = targetDb.collection('jpc_idempotency_keys').doc(String(idempotencyKey));
+        transaction.set(idempRef, {
+          key: String(idempotencyKey),
+          candidate_id: candidateId,
+          assigned_sales: assignedSalesId,
+          is_unassigned: isUnassignedState,
+          reason: reasonStr || null,
+          status: 'completed',
+          created_at: new Date().toISOString()
+        }, { merge: true });
+      }
+    };
+
+    // 4. Management explicit assignment override
     if (activeOverrideId) {
       const userRef = targetDb.collection('jpc_users').doc(activeOverrideId);
       const userSnap = await transaction.get(userRef);
@@ -1109,14 +1228,19 @@ export async function assignLeadRoundRobinTransaction(
         }, { merge: true });
       }
 
+      commitLocksAndIdempotency(activeOverrideId, false);
+
       return {
         assignedUser,
         assignedUserId: activeOverrideId,
-        isUnassigned: false
+        isUnassigned: false,
+        candidateId,
+        duplicatePrevented: false,
+        alreadyExisted: false
       };
     }
 
-    // 2. Working hours validation (independent of scheduled deactivation)
+    // 5. Working hours validation (independent of scheduled deactivation)
     const inWorkingHours = forceInWorkingHours !== undefined ? forceInWorkingHours : isSalesWorkingHours();
     if (!inWorkingHours) {
       if (candDoc.exists) {
@@ -1133,22 +1257,27 @@ export async function assignLeadRoundRobinTransaction(
         }, { merge: true });
       }
 
+      commitLocksAndIdempotency(null, true, 'outside_working_hours');
+
       return {
         assignedUser: null,
         assignedUserId: null,
         isUnassigned: true,
-        reason: 'outside_working_hours'
+        reason: 'outside_working_hours',
+        candidateId,
+        duplicatePrevented: false,
+        alreadyExisted: false
       };
     }
 
-    // 3. Read Round-Robin Configuration
+    // 6. Read Round-Robin Configuration
     const configRef = targetDb.collection('jpc_settings').doc('lead_round_robin');
     const configDoc = await transaction.get(configRef);
     const config = configDoc.exists
       ? configDoc.data()
       : { enabled: true, last_assigned_index: -1, total_leads_assigned: 0 };
 
-    // 4. Query and filter eligible Sales Persons
+    // 7. Query and filter eligible Sales Persons
     const salesQuery = targetDb.collection('jpc_users').where('role', '==', 'jpc_sales');
     const salesSnapshot = await transaction.get(salesQuery);
 
@@ -1163,7 +1292,7 @@ export async function assignLeadRoundRobinTransaction(
       !excludedIds.includes(String(u.id))
     );
 
-    // 5. If no active sales reps, lead remains safely UNASSIGNED
+    // 8. If no active sales reps, lead remains safely UNASSIGNED
     if (eligible.length === 0) {
       if (candDoc.exists) {
         transaction.update(candRef, {
@@ -1179,15 +1308,20 @@ export async function assignLeadRoundRobinTransaction(
         }, { merge: true });
       }
 
+      commitLocksAndIdempotency(null, true, 'no_active_sales_reps');
+
       return {
         assignedUser: null,
         assignedUserId: null,
         isUnassigned: true,
-        reason: 'no_active_sales_reps'
+        reason: 'no_active_sales_reps',
+        candidateId,
+        duplicatePrevented: false,
+        alreadyExisted: false
       };
     }
 
-    // 6. Deterministic ordering
+    // 9. Deterministic ordering
     const customOrder = (config.custom_order_user_ids || []).map((id: any) => String(id));
     let sortedEligible: any[] = [];
     if (customOrder.length > 0) {
@@ -1203,7 +1337,7 @@ export async function assignLeadRoundRobinTransaction(
       sortedEligible = [...eligible].sort((a: any, b: any) => (a.display_name || '').localeCompare(b.display_name || ''));
     }
 
-    // 7. Calculate continuous round-robin pointer
+    // 10. Calculate continuous round-robin pointer
     let nextIndex = 0;
     if (config.last_assigned_user_id) {
       const lastUserIdx = sortedEligible.findIndex((u: any) => String(u.id) === String(config.last_assigned_user_id));
@@ -1254,10 +1388,15 @@ export async function assignLeadRoundRobinTransaction(
       }, { merge: true });
     }
 
+    commitLocksAndIdempotency(String(assignedUser.id), false);
+
     return {
       assignedUser,
       assignedUserId: String(assignedUser.id),
-      isUnassigned: false
+      isUnassigned: false,
+      candidateId,
+      duplicatePrevented: false,
+      alreadyExisted: false
     };
   });
 }
@@ -1378,21 +1517,31 @@ app.post('/api/leads', verifyAuth, async (req, res) => {
       candidateData.deleted_at = null;
     }
 
+    const idempotencyKey = req.headers['idempotency-key'] 
+      || req.body.idempotency_key 
+      || req.body.idempotencyKey 
+      || null;
+
     const result = await assignLeadRoundRobinTransaction(
       db,
       candidateId,
       candidateData,
       overrideUserId,
       user.role,
-      forceWorkingHours
+      forceWorkingHours,
+      idempotencyKey
     );
 
     res.json({
       success: true,
-      candidateId,
+      candidateId: result.candidateId || candidateId,
       assigned_sales: result.assignedUserId,
+      assigned_sales_name: result.assignedUser?.display_name || null,
+      assignedUser: result.assignedUser,
       isUnassigned: result.isUnassigned,
-      reason: result.reason
+      reason: result.reason,
+      duplicatePrevented: result.duplicatePrevented || false,
+      alreadyExisted: result.alreadyExisted || false
     });
   } catch (error: any) {
     console.error('Error creating lead via /api/leads:', error);
@@ -1413,6 +1562,11 @@ app.post('/api/leads/round-robin/assign', verifyAuth, async (req, res) => {
       return res.status(400).json({ error: 'Missing candidateId' });
     }
 
+    const idempotencyKey = req.headers['idempotency-key'] 
+      || req.body.idempotency_key 
+      || req.body.idempotencyKey 
+      || null;
+
     // Lead Generation cannot supply an override
     const effectiveOverride = user.role === 'jpc_lead_gen' ? null : overrideUserId;
 
@@ -1422,7 +1576,8 @@ app.post('/api/leads/round-robin/assign', verifyAuth, async (req, res) => {
       candidateName ? { full_name: candidateName } : undefined,
       effectiveOverride,
       user.role,
-      forceWorkingHours
+      forceWorkingHours,
+      idempotencyKey
     );
 
     res.json({
@@ -1430,7 +1585,10 @@ app.post('/api/leads/round-robin/assign', verifyAuth, async (req, res) => {
       assignedUser: result.assignedUser,
       assignedUserId: result.assignedUserId,
       isUnassigned: result.isUnassigned,
-      reason: result.reason
+      reason: result.reason,
+      candidateId: result.candidateId || candidateId,
+      duplicatePrevented: result.duplicatePrevented || false,
+      alreadyExisted: result.alreadyExisted || false
     });
   } catch (error: any) {
     console.error('Error executing round robin assignment:', error);

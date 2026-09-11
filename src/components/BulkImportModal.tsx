@@ -29,6 +29,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClos
   const { user } = useAuth();
   const { showToast } = useToast();
   const [isImporting, setIsImporting] = useState(false);
+  const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState(0);
   const [parsedData, setParsedData] = useState<any[]>([]);
   const [selectedStage, setSelectedStage] = useState<Stage>('lead_generation');
@@ -136,30 +137,48 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClos
 
   const handleImport = async () => {
     if (parsedData.length === 0) return;
-
+    if (isImportingRef.current || isImporting) return;
+    isImportingRef.current = true;
     setIsImporting(true);
-    let successCount = 0;
-    let failCount = 0;
-    const total = parsedData.length;
 
-    // Pre-process valid candidates for batch round-robin assignment
-    const preparedCandidates: { id: string; name: string; row: any; index: number }[] = [];
-    parsedData.forEach((rawRow, idx) => {
-      const normalizedRow: any = {};
-      Object.keys(rawRow).forEach(key => {
-        normalizedRow[key.trim()] = rawRow[key];
-      });
-      const fullName = (normalizedRow.full_name || normalizedRow.Name || normalizedRow['Full Name'] || normalizedRow['Candidate Name'] || '').toString().trim();
-      const phone = (normalizedRow.phone || normalizedRow.Phone || normalizedRow['Phone Number'] || normalizedRow['Moblie Nomber'] || normalizedRow['Moblie Nomber '] || '').toString().trim();
-      if (fullName && phone) {
-        preparedCandidates.push({
-          id: generateId(),
-          name: fullName,
-          row: normalizedRow,
-          index: idx
+    try {
+      let successCount = 0;
+      let failCount = 0;
+      const total = parsedData.length;
+
+      // Pre-process valid candidates for batch round-robin assignment with in-batch deduplication
+      const preparedCandidates: { id: string; name: string; row: any; index: number }[] = [];
+      const seenPhonesInBatch = new Set<string>();
+      const seenEmailsInBatch = new Set<string>();
+
+      parsedData.forEach((rawRow, idx) => {
+        const normalizedRow: any = {};
+        Object.keys(rawRow).forEach(key => {
+          normalizedRow[key.trim()] = rawRow[key];
         });
-      }
-    });
+        const fullName = (normalizedRow.full_name || normalizedRow.Name || normalizedRow['Full Name'] || normalizedRow['Candidate Name'] || '').toString().trim();
+        const rawPhone = (normalizedRow.phone || normalizedRow.Phone || normalizedRow['Phone Number'] || normalizedRow['Moblie Nomber'] || normalizedRow['Moblie Nomber '] || '').toString().trim();
+        const rawEmail = (normalizedRow.email || normalizedRow.Email || '').toString().toLowerCase().trim();
+
+        const digits = rawPhone.replace(/[^0-9]/g, '');
+        const cleanPhone = (digits.length === 11 && digits.startsWith('1')) ? digits.slice(1) : digits;
+
+        if (fullName && (cleanPhone || rawEmail)) {
+          // Skip duplicate rows within the same batch
+          if (cleanPhone && seenPhonesInBatch.has(cleanPhone)) return;
+          if (rawEmail && seenEmailsInBatch.has(rawEmail)) return;
+
+          if (cleanPhone) seenPhonesInBatch.add(cleanPhone);
+          if (rawEmail) seenEmailsInBatch.add(rawEmail);
+
+          preparedCandidates.push({
+            id: generateId(),
+            name: fullName,
+            row: normalizedRow,
+            index: idx
+          });
+        }
+      });
 
     let roundRobinMap = new Map<string, User>();
     if (autoAssignRoundRobin && preparedCandidates.length > 0) {
@@ -245,6 +264,15 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClos
       }
 
       try {
+        // Check for existing duplicate candidate in Firestore
+        const dup = await checkDuplicateCandidate(phone, email, normalizedRow.whatsapp || phone);
+        if (dup) {
+          console.warn(`Skipping duplicate candidate in import: ${fullName} (${phone || email})`);
+          failCount++;
+          setImportProgress(Math.round(((i + 1) / total) * 100));
+          continue;
+        }
+
         const id = prepItem.id;
         const newCandidate: Candidate = {
           id,
@@ -319,13 +347,19 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClos
       setImportProgress(Math.round(((i + 1) / total) * 100));
     }
 
-    setIsImporting(false);
     showToast(`Import complete: ${successCount} success, ${failCount} failed.`, successCount > 0 ? 'success' : 'error');
     if (successCount > 0) {
       onSuccess();
       onClose();
     }
-  };
+  } catch (globalErr) {
+    console.error('Fatal import error:', globalErr);
+    showToast('Failed to complete candidate import', 'error');
+  } finally {
+    isImportingRef.current = false;
+    setIsImporting(false);
+  }
+};
 
   return (
     <Modal

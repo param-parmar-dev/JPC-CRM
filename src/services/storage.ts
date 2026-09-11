@@ -177,7 +177,7 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 // Candidates
-export const checkDuplicateCandidate = async (phone: string, email: string, whatsapp: string): Promise<string | null> => {
+export const checkDuplicateCandidate = async (phone: string, email: string, whatsapp: string = ''): Promise<string | null> => {
   try {
     const candidatesRef = collection(db, 'jpc_candidates');
     
@@ -185,27 +185,168 @@ export const checkDuplicateCandidate = async (phone: string, email: string, what
     if (phone && phone.trim() !== '') {
       const pQuery = query(candidatesRef, where('phone', '==', phone.trim()));
       const snap = await getDocs(pQuery);
-      if (!snap.empty) return `A candidate with the phone number ${phone} already exists.`;
+      const activeDoc = snap.docs.find(d => !d.data().deleted_at);
+      if (activeDoc) return `A candidate with the phone number ${phone} already exists.`;
     }
 
     // Check Email
     if (email && email.trim() !== '') {
       const eQuery = query(candidatesRef, where('email', '==', email.trim()));
       const snap = await getDocs(eQuery);
-      if (!snap.empty) return `A candidate with the email ${email} already exists.`;
+      const activeDoc = snap.docs.find(d => !d.data().deleted_at);
+      if (activeDoc) return `A candidate with the email ${email} already exists.`;
     }
 
     // Check WhatsApp
     if (whatsapp && whatsapp.trim() !== '') {
       const wQuery = query(candidatesRef, where('whatsapp', '==', whatsapp.trim()));
       const snap = await getDocs(wQuery);
-      if (!snap.empty) return `A candidate with the WhatsApp number ${whatsapp} already exists.`;
+      const activeDoc = snap.docs.find(d => !d.data().deleted_at);
+      if (activeDoc) return `A candidate with the WhatsApp number ${whatsapp} already exists.`;
     }
 
     return null;
   } catch (error) {
     console.error("Error checking for duplicate candidates:", error);
     return null;
+  }
+};
+
+/**
+ * Unified, atomic candidate creation flow.
+ * Combines lead creation, durable idempotency, deterministic deduplication locks,
+ * and round-robin sales assignment in one atomic operation.
+ */
+export const createLeadCandidate = async (
+  candidate: Candidate,
+  userId: string | null,
+  idempotencyKey?: string
+): Promise<{
+  success: boolean;
+  candidateId: string;
+  assignedSalesId: string | null;
+  assignedSalesName?: string;
+  isUnassigned?: boolean;
+  duplicatePrevented?: boolean;
+  alreadyExisted?: boolean;
+}> => {
+  const effectiveId = candidate.id || generateId();
+  const effectiveKey = idempotencyKey || generateId('sub_');
+
+  // 1. Primary: Server-side atomic creation endpoint (/api/leads)
+  try {
+    const currentUser = auth.currentUser;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': effectiveKey
+    };
+
+    if (currentUser) {
+      const idToken = await currentUser.getIdToken();
+      headers['Authorization'] = `Bearer ${idToken}`;
+    }
+
+    const response = await fetch('/api/leads', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ...candidate,
+        id: effectiveId,
+        idempotency_key: effectiveKey
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        success: true,
+        candidateId: data.candidateId || effectiveId,
+        assignedSalesId: data.assigned_sales || null,
+        assignedSalesName: data.assigned_sales_name || undefined,
+        isUnassigned: data.isUnassigned,
+        duplicatePrevented: data.duplicatePrevented || false,
+        alreadyExisted: data.alreadyExisted || false
+      };
+    } else {
+      console.warn('POST /api/leads returned non-OK status:', response.status);
+    }
+  } catch (apiErr) {
+    console.warn('Call to /api/leads failed, falling back to client-side atomic save:', apiErr);
+  }
+
+  // 2. Client-side transactional fallback with deterministic locks
+  try {
+    const digitsOnly = (candidate.phone || '').replace(/[^0-9]/g, '');
+    const cleanPhone = (digitsOnly.length === 11 && digitsOnly.startsWith('1')) ? digitsOnly.slice(1) : digitsOnly;
+    const cleanEmail = (candidate.email || '').toLowerCase().trim();
+
+    const phoneLockRef = cleanPhone.length >= 7 ? doc(db, 'jpc_lead_locks', `phone_${cleanPhone}`) : null;
+    const emailLockRef = cleanEmail.length >= 5 ? doc(db, 'jpc_lead_locks', `email_${cleanEmail.replace(/[^a-z0-9@._-]/g, '_')}`) : null;
+
+    const result = await runTransaction(db, async (transaction) => {
+      const lockRefs = [phoneLockRef, emailLockRef].filter(Boolean);
+      for (const lRef of lockRefs) {
+        const lockDoc = await transaction.get(lRef!);
+        if (lockDoc.exists()) {
+          const lockData = lockDoc.data();
+          const existingCandId = lockData?.candidate_id;
+          if (existingCandId && existingCandId !== effectiveId) {
+            const existingCandDoc = await transaction.get(doc(db, 'jpc_candidates', existingCandId));
+            if (existingCandDoc.exists() && !existingCandDoc.data().deleted_at) {
+              return {
+                candidateId: existingCandId,
+                assignedSalesId: existingCandDoc.data().assigned_sales || null,
+                duplicatePrevented: true,
+                alreadyExisted: true
+              };
+            }
+          }
+        }
+      }
+
+      // Acquire locks and save candidate
+      const lockPayload = {
+        candidate_id: effectiveId,
+        phone: cleanPhone,
+        email: cleanEmail,
+        updated_at: new Date().toISOString()
+      };
+      if (phoneLockRef) transaction.set(phoneLockRef, lockPayload, { merge: true });
+      if (emailLockRef) transaction.set(emailLockRef, lockPayload, { merge: true });
+
+      const candRef = doc(db, 'jpc_candidates', effectiveId);
+      const data = {
+        ...candidate,
+        id: effectiveId,
+        updated_at: new Date().toISOString()
+      };
+      transaction.set(candRef, data, { merge: true });
+
+      return {
+        candidateId: effectiveId,
+        assignedSalesId: candidate.assigned_sales || null,
+        duplicatePrevented: false,
+        alreadyExisted: false
+      };
+    });
+
+    return {
+      success: true,
+      candidateId: result.candidateId,
+      assignedSalesId: result.assignedSalesId,
+      duplicatePrevented: result.duplicatePrevented,
+      alreadyExisted: result.alreadyExisted
+    };
+  } catch (clientErr) {
+    console.error('Error in client-side createLeadCandidate fallback:', clientErr);
+    // Ultimate fallback to saveCandidate
+    await saveCandidate(candidate, userId);
+    return {
+      success: true,
+      candidateId: effectiveId,
+      assignedSalesId: candidate.assigned_sales ? String(candidate.assigned_sales) : null,
+      duplicatePrevented: false
+    };
   }
 };
 
@@ -1151,5 +1292,5 @@ export const processUnassignedLeadsBacklog = async (): Promise<{ success: boolea
 };
 
 // Utils
-export const generateId = () => Math.random().toString(36).slice(2, 11);
+export const generateId = (prefix?: string) => (prefix ? `${prefix}` : '') + Math.random().toString(36).slice(2, 11);
 export const now = () => new Date().toISOString();

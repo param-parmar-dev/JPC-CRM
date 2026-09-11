@@ -71,6 +71,7 @@ export const BookingPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = React.useRef(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const [isAcknowledgeSuccess, setIsAcknowledgeSuccess] = useState(false);
@@ -386,17 +387,23 @@ export const BookingPage: React.FC = () => {
   }, [customDate, customStartTime, customEndTime, proxyTeam, allRounds, allAvailabilities, allCalendarEvents]);
 
   const handleBook = async () => {
+    if (isSubmittingRef.current || isSubmitting) return;
+    isSubmittingRef.current = true;
+
     if (token === 'interview-support-only') {
       if (!formCandidateName.trim() || !formCandidateEmail.trim() || !formCandidatePhone.trim() || !formCandidateWhatsApp.trim() || !formCompany.trim() || !formJobTitle.trim() || !formJobDescription.trim()) {
         showToast('Please fill in all required fields.', 'error');
+        isSubmittingRef.current = false;
         return;
       }
       if (!customDate || !customStartTime || !customEndTime) {
         showToast('Please specify the date, start time, and end time.', 'error');
+        isSubmittingRef.current = false;
         return;
       }
       if (!assignmentResult.bestProxy) {
         showToast('No Proxy Specialist is available at this time. Please adjust the slot schedule.', 'error');
+        isSubmittingRef.current = false;
         return;
       }
 
@@ -586,12 +593,16 @@ export const BookingPage: React.FC = () => {
       } catch (err: any) {
         showToast('Encountered error during booking: ' + err.message, 'error');
       } finally {
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
       }
       return;
     }
 
-    if (!selectedSlotId || !bookingLink || !round || !request) return;
+    if (!selectedSlotId || !bookingLink || !round || !request) {
+      isSubmittingRef.current = false;
+      return;
+    }
     setIsSubmitting(true);
     try {
       let slot: ProxyAvailability;
@@ -603,6 +614,7 @@ export const BookingPage: React.FC = () => {
         } else {
           showToast(resolveErr.message || 'Error checking availability. Please try again.', 'error');
         }
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
         return;
       }
@@ -682,6 +694,7 @@ export const BookingPage: React.FC = () => {
     } catch (error) {
       showToast('Booking failed. Please try again.', 'error');
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };

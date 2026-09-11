@@ -269,6 +269,14 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
     
+    match /jpc_lead_locks/{lockId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /jpc_idempotency_keys/{keyId} {
+      allow read, write: if isSignedIn();
+    }
+    
     // Connectivity test
     match /_connection_test_/{docId} {
       allow read, write: if true;

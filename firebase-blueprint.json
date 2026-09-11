@@ -164,6 +164,14 @@
     "jpc_prep_requests": {
       "schema": "object",
       "description": "Resume understanding and interview question requests"
+    },
+    "jpc_lead_locks": {
+      "schema": "object",
+      "description": "Deterministic concurrency locks for duplicate candidate prevention"
+    },
+    "jpc_idempotency_keys": {
+      "schema": "object",
+      "description": "Durable idempotency keys to prevent duplicate lead submissions"
     }
   }
 }

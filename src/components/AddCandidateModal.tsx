@@ -3,13 +3,12 @@ import { Modal } from './Modal';
 import { LEAD_SOURCES } from '../constants';
 import { 
   generateId, 
-  saveCandidate, 
   seedQCChecklist, 
   logActivity, 
   addNotification, 
   checkDuplicateCandidate, 
   addFollowUp,
-  advanceLeadRoundRobin
+  createLeadCandidate
 } from '../services/storage';
 import { uploadFile } from '../services/fileService';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,6 +30,10 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
   const { showToast } = useToast();
   const [isParsing, setIsParsing] = useState(false);
   const [parsingStep, setParsingStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(generateId('sub_'));
+  const candidateIdRef = useRef<string>(generateId('cand_'));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parsingSteps = [
@@ -164,123 +167,7 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.full_name || !formData.phone) {
-      showToast('Name and Phone are required', 'error');
-      return;
-    }
-
-    const duplicateError = await checkDuplicateCandidate(formData.phone, formData.email, formData.whatsapp);
-    if (duplicateError) {
-      showToast(duplicateError, 'error');
-      return;
-    }
-
-    const id = generateId();
-
-    // Advance Round-Robin assignment automatically
-    let finalAssignedSales: string | null = null;
-    let assignedSalesDisplayName = '';
-    try {
-      const rrResult = await advanceLeadRoundRobin(
-        id,
-        formData.full_name
-      );
-      if (rrResult?.assignedUser) {
-        finalAssignedSales = String(rrResult.assignedUser.id);
-        assignedSalesDisplayName = rrResult.assignedUser.display_name;
-      }
-    } catch (rrErr) {
-      console.error('Failed to advance round robin assignment:', rrErr);
-    }
-
-    const newCandidate: Candidate = {
-      id,
-      full_name: formData.full_name,
-      phone: formData.phone,
-      whatsapp: formData.whatsapp,
-      email: formData.email,
-      job_interest: formData.job_interest,
-      domain_interested: formData.domain_interested,
-      location: formData.location,
-      education: formData.education,
-      degree: extraData.degree,
-      university: extraData.university,
-      graduation_year: extraData.graduation_year,
-      experience_years: extraData.experience_years,
-      current_company: 'N/A',
-      current_designation: extraData.current_designation,
-      skills: extraData.skills,
-      linkedin_url: extraData.linkedin_url,
-      lead_source: formData.lead_source,
-      lead_generated_by: user?.id || null,
-      assigned_sales: finalAssignedSales || null,
-      assigned_cs: null,
-      assigned_resume: null,
-      assigned_marketing_leader: null,
-      assigned_recruiter: null,
-      assigned_marketing: null,
-      package_name: '',
-      package_amount: 0,
-      domain_suggested: '',
-      marketing_entity: formData.marketing_entity,
-      notes: formData.notes,
-      current_stage: 'lead_generation',
-      resume_url: resumeData.url,
-      resume_base64: resumeData.base64,
-      resume_filename: resumeData.filename,
-      flags: {
-        agreement_sent: false,
-        agreement_signed: false,
-        qc_checklist_done: false,
-        resume_approved: false,
-        candidate_resume_approved: false,
-        marketing_email_created: false,
-        two_step_verification: false,
-        linkedin_optimized: false,
-        marketing_started: false
-      },
-      not_interested_at: null,
-      deleted_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    await saveCandidate(newCandidate, user?.id ? String(user.id) : null);
-    await seedQCChecklist(id);
-    const assignedLogText = assignedSalesDisplayName
-      ? `Assigned to ${assignedSalesDisplayName} via Round-Robin rotation.`
-      : `Candidate ${formData.full_name} created as Unassigned (no active sales rep available).`;
-    logActivity(id, 'Candidate created', `Candidate ${formData.full_name} added to the system. ${assignedLogText}`, user?.id ? String(user.id) : null);
-    
-    if (finalAssignedSales) {
-      addNotification({
-        recipient_id: finalAssignedSales,
-        sender_id: user?.id || null,
-        type: 'system_alert',
-        message: `You have been automatically assigned to a new candidate via Round-Robin: ${formData.full_name}`
-      });
-    }
-
-    if (formData.schedule_call_date && formData.schedule_call_time) {
-      const timezoneStr = formData.schedule_call_timezone || 'EST (Eastern Time)';
-      const t12 = new Date(`1970-01-01T${formData.schedule_call_time}:00`).toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
-      addFollowUp({
-        candidate_id: id,
-        stage: 'lead_generation',
-        followup_date: formData.schedule_call_date,
-        note: `Initial Call Scheduled at ${t12} ${timezoneStr}`,
-        done: false,
-        created_by: user?.id || null,
-      });
-      logActivity(id, 'Follow-up scheduled', `Scheduled initial call for ${formData.schedule_call_date} at ${t12} ${timezoneStr}`, user?.id || null);
-    }
-
-    showToast('Candidate added successfully', 'success');
-    onSuccess();
-    onClose();
+  const resetForm = () => {
     setFormData({
       full_name: '',
       phone: '',
@@ -307,12 +194,163 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
       skills: '',
       linkedin_url: ''
     });
+    idempotencyKeyRef.current = generateId('sub_');
+    candidateIdRef.current = generateId('cand_');
+    isSubmittingRef.current = false;
+    setIsSubmitting(false);
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
+    
+    // 1. Synchronous lock to stop rapid clicks or Enter key immediately
+    if (isSubmittingRef.current || isSubmitting) {
+      return;
+    }
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+
+    try {
+      if (!formData.full_name || !formData.phone) {
+        showToast('Name and Phone are required', 'error');
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        return;
+      }
+
+      const duplicateError = await checkDuplicateCandidate(formData.phone, formData.email, formData.whatsapp);
+      if (duplicateError) {
+        showToast(duplicateError, 'error');
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Stable candidate ID & Idempotency Key across retries
+      const candidateId = candidateIdRef.current || generateId('cand_');
+      candidateIdRef.current = candidateId;
+      const idempotencyKey = idempotencyKeyRef.current || generateId('sub_');
+      idempotencyKeyRef.current = idempotencyKey;
+
+      const newCandidate: Candidate = {
+        id: candidateId,
+        full_name: formData.full_name,
+        phone: formData.phone,
+        whatsapp: formData.whatsapp,
+        email: formData.email,
+        job_interest: formData.job_interest,
+        domain_interested: formData.domain_interested,
+        location: formData.location,
+        education: formData.education,
+        degree: extraData.degree,
+        university: extraData.university,
+        graduation_year: extraData.graduation_year,
+        experience_years: extraData.experience_years,
+        current_company: 'N/A',
+        current_designation: extraData.current_designation,
+        skills: extraData.skills,
+        linkedin_url: extraData.linkedin_url,
+        lead_source: formData.lead_source,
+        lead_generated_by: user?.id || null,
+        assigned_sales: null, // Assigned atomically via round-robin
+        assigned_cs: null,
+        assigned_resume: null,
+        assigned_marketing_leader: null,
+        assigned_recruiter: null,
+        assigned_marketing: null,
+        package_name: '',
+        package_amount: 0,
+        domain_suggested: '',
+        marketing_entity: formData.marketing_entity,
+        notes: formData.notes,
+        current_stage: 'lead_generation',
+        resume_url: resumeData.url,
+        resume_base64: resumeData.base64,
+        resume_filename: resumeData.filename,
+        flags: {
+          agreement_sent: false,
+          agreement_signed: false,
+          qc_checklist_done: false,
+          resume_approved: false,
+          candidate_resume_approved: false,
+          marketing_email_created: false,
+          two_step_verification: false,
+          linkedin_optimized: false,
+          marketing_started: false
+        },
+        not_interested_at: null,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Atomic Lead Creation (incorporates durable idempotency & round-robin)
+      const result = await createLeadCandidate(newCandidate, user?.id ? String(user.id) : null, idempotencyKey);
+
+      // If duplicate was prevented, inform user and exit gracefully without duplicating side-effects
+      if (result.duplicatePrevented) {
+        showToast('Lead already saved. Duplicate submission prevented.', 'info');
+        onSuccess();
+        onClose();
+        resetForm();
+        return;
+      }
+
+      const targetId = result.candidateId || candidateId;
+      await seedQCChecklist(targetId);
+
+      const assignedSalesDisplayName = result.assignedSalesName || '';
+      const finalAssignedSales = result.assignedSalesId;
+
+      const assignedLogText = assignedSalesDisplayName
+        ? `Assigned to ${assignedSalesDisplayName} via Round-Robin rotation.`
+        : (finalAssignedSales
+            ? `Assigned via Round-Robin.`
+            : `Candidate ${formData.full_name} created as Unassigned (no active sales rep available).`);
+
+      logActivity(targetId, 'Candidate created', `Candidate ${formData.full_name} added to the system. ${assignedLogText}`, user?.id ? String(user.id) : null);
+      
+      if (finalAssignedSales) {
+        addNotification({
+          recipient_id: finalAssignedSales,
+          sender_id: user?.id || null,
+          type: 'system_alert',
+          message: `You have been automatically assigned to a new candidate via Round-Robin: ${formData.full_name}`
+        });
+      }
+
+      if (formData.schedule_call_date && formData.schedule_call_time) {
+        const timezoneStr = formData.schedule_call_timezone || 'EST (Eastern Time)';
+        const t12 = new Date(`1970-01-01T${formData.schedule_call_time}:00`).toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+        addFollowUp({
+          candidate_id: targetId,
+          stage: 'lead_generation',
+          followup_date: formData.schedule_call_date,
+          note: `Initial Call Scheduled at ${t12} ${timezoneStr}`,
+          done: false,
+          created_by: user?.id || null,
+        });
+        logActivity(targetId, 'Follow-up scheduled', `Scheduled initial call for ${formData.schedule_call_date} at ${t12} ${timezoneStr}`, user?.id || null);
+      }
+
+      showToast('Candidate added successfully', 'success');
+      onSuccess();
+      onClose();
+      resetForm();
+    } catch (err: any) {
+      console.error('Error in handleSubmit:', err);
+      showToast(err.message || 'Failed to create candidate', 'error');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => { if (!isSubmitting) onClose(); }}
       title={isParsing ? "AI Parsing in Progress" : "Add New Candidate"}
       footer={!isParsing ? (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
@@ -326,7 +364,7 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isParsing}
+              disabled={isParsing || isSubmitting}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-bg-tertiary text-text-primary font-medium rounded-xl hover:bg-bg-tertiary/80 transition-all disabled:opacity-50 text-xs sm:text-sm cursor-pointer"
             >
               <Upload className="w-4 h-4" />
@@ -335,16 +373,35 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
           </div>
           <div className="flex items-center gap-2">
             <button 
-              onClick={onClose}
-              className="flex-1 sm:flex-none px-4 py-2.5 text-text-secondary font-medium hover:text-text-primary transition-colors text-xs sm:text-sm text-center cursor-pointer"
+              type="button"
+              onClick={() => { if (!isSubmitting) onClose(); }}
+              disabled={isSubmitting}
+              className={cn(
+                "flex-1 sm:flex-none px-4 py-2.5 text-text-secondary font-medium transition-colors text-xs sm:text-sm text-center",
+                isSubmitting ? "opacity-40 cursor-not-allowed pointer-events-none" : "hover:text-text-primary cursor-pointer"
+              )}
             >
               Cancel
             </button>
             <button 
+              type="button"
               onClick={handleSubmit}
-              className="flex-1 sm:flex-none px-6 py-2.5 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20 text-xs sm:text-sm text-center cursor-pointer"
+              disabled={isSubmitting || isParsing}
+              className={cn(
+                "flex-1 sm:flex-none px-6 py-2.5 bg-accent-blue text-white font-bold rounded-xl transition-all shadow-lg shadow-accent-blue/20 text-xs sm:text-sm text-center flex items-center justify-center gap-2",
+                (isSubmitting || isParsing) 
+                  ? "opacity-50 cursor-not-allowed pointer-events-none" 
+                  : "hover:bg-accent-blue/90 cursor-pointer"
+              )}
             >
-              Save Candidate
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving Candidate...</span>
+                </>
+              ) : (
+                <span>Save Candidate</span>
+              )}
             </button>
           </div>
         </div>
@@ -409,6 +466,7 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
           ) : (
             <motion.form 
               key="form"
+              onSubmit={handleSubmit}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full"

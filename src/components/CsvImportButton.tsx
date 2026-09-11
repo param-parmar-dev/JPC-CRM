@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { Upload, Loader } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { saveCandidate, seedQCChecklist } from '../services/storage';
+import { saveCandidate, seedQCChecklist, checkDuplicateCandidate } from '../services/storage';
 import { Candidate } from '../types';
 
 interface CsvImportProps {
@@ -15,12 +15,16 @@ export const CsvImportButton: React.FC<CsvImportProps> = ({ onSuccess }) => {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const isImportingRef = useRef(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (isImportingRef.current || isImporting) return;
+    isImportingRef.current = true;
     setIsImporting(true);
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -29,12 +33,13 @@ export const CsvImportButton: React.FC<CsvImportProps> = ({ onSuccess }) => {
           const rows = results.data as any[];
           if (rows.length === 0) {
             showToast('CSV file is empty', 'error');
-            setIsImporting(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
             return;
           }
 
           let successCount = 0;
+          const seenPhonesInBatch = new Set<string>();
+          const seenEmailsInBatch = new Set<string>();
+
           for (const row of rows) {
             // Check if this is the custom specific format
             const candidateNameStr = row['Candidate Name'] || row.name || row.full_name || '';
@@ -60,6 +65,22 @@ export const CsvImportButton: React.FC<CsvImportProps> = ({ onSuccess }) => {
             const statusRaw = row['Status'] || '';
             const dateRaw = row['DATE'] || '';
             const linkedinRaw = row['Linkedin Link'] || row.linkedin_url || '';
+
+            const digits = phone.replace(/[^0-9]/g, '');
+            const cleanPhone = (digits.length === 11 && digits.startsWith('1')) ? digits.slice(1) : digits;
+            const cleanEmail = email.toLowerCase().trim();
+
+            if (cleanPhone && seenPhonesInBatch.has(cleanPhone)) continue;
+            if (cleanEmail && seenEmailsInBatch.has(cleanEmail)) continue;
+
+            if (cleanPhone) seenPhonesInBatch.add(cleanPhone);
+            if (cleanEmail) seenEmailsInBatch.add(cleanEmail);
+
+            const dup = await checkDuplicateCandidate(phone, email, phone);
+            if (dup) {
+              console.warn(`Skipping duplicate candidate in CSV import: ${fullName} (${phone || email})`);
+              continue;
+            }
 
             const id = 'cand_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
             const candidate: Candidate = {
@@ -121,6 +142,7 @@ export const CsvImportButton: React.FC<CsvImportProps> = ({ onSuccess }) => {
           console.error("Import error:", error);
           showToast('Failed to import CSV data', 'error');
         } finally {
+          isImportingRef.current = false;
           setIsImporting(false);
           if (fileInputRef.current) fileInputRef.current.value = '';
         }

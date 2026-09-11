@@ -78,17 +78,28 @@ This guide provides step-by-step instructions for each role within the Placify C
 
 ---
 
-## 6. Lead Generation (`jpc_lead_gen`) & Sales (`jpc_sales`)
-**Primary Responsibility**: Bringing in new candidates and initial conversion.
+## 6. Lead Generation (`jpc_lead_gen`)
+**Primary Responsibility**: Bringing new candidate leads into the CRM.
 
 ### Workflow:
-1.  **Adding Leads**: Use the "Add Candidate" button to enter basic info and assign to a Sales representative.
-2.  **Lead Tracking**: Monitor your own leads to see when they move to the `sales` or `cs` stages.
-3.  **Sales Conversion**: Sales team members contact leads and move them forward once interest is confirmed.
+1.  **Adding Leads**: Click **Add Candidate** to enter candidate contact details, target domain, and upload their resume.
+2.  **Automated Sales Routing**: Sales representatives are assigned automatically via the sequential **Round-Robin Engine** (Lead Gen users do not manually select sales reps).
+3.  **Lead Tracking**: Monitor your submitted leads as they advance through Sales conversion and onboarding stages.
 
 ---
 
-## 7. Resume Team (`jpc_resume`)
+## 7. Sales (`jpc_sales`)
+**Primary Responsibility**: Candidate conversion, package presentation, and free trial management.
+
+### Workflow:
+1.  **Shift Availability**: Toggle your status to **Active** at 9:30 AM EST to receive new leads via the automated Round-Robin queue. Toggle to **Deactive** when stepping away or taking leave (the system auto-deactivates at 6:30 PM EST).
+2.  **Lead Outreach**: Engage newly assigned leads promptly, log call notes, and answer candidate queries.
+3.  **15-Day Free Trial**: If candidates wish to evaluate services before purchase, activate their 15-day Free Trial directly from the Candidate Detail page.
+4.  **Sales Conversion**: Move candidates forward to Customer Service (`cs`) once enrollment or free trial terms are confirmed.
+
+---
+
+## 8. Resume Team (`jpc_resume`)
 **Primary Responsibility**: Resume modification and finalization.
 
 ### Workflow:
@@ -98,13 +109,13 @@ This guide provides step-by-step instructions for each role within the Placify C
 
 ---
 
-## 8. Marketing Team (`jpc_marketing`)
+## 9. Marketing Team (`jpc_marketing`)
 **Primary Responsibility**: Profile optimization and approval flow.
 
 ### Workflow:
-1.  **Approvals**: Review and approve resume change requests submitted by recruiters before they reach CS/Resume teams.
+1.  **Approvals**: Review and approve resume change requests submitted by recruiters before they reach CS/Resume teams (CS Head and Management can also assist by approving pending requests if a Marketing TL is away).
 2.  **Optimization**: Coordinate LinkedIn profile updates and branding for candidates.
 
 ---
 
-*Document Version: 1.1.0 | Date: May 15, 2026*
+*Document Version: 1.2.0 | Date: September 12, 2026*
