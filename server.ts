@@ -721,8 +721,9 @@ app.get(['/api/auth/google/login', '/auth/google/login'], (req, res) => {
     `);
   }
 
-  // Construct Redirect URI
-  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  // Construct Redirect URI (guarantee https in production)
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.get('host')?.includes('localhost') ? 'http' : 'https');
+  const redirectUri = `${proto}://${req.get('host')}/api/auth/google/callback`;
 
   // Build Auth URL
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
@@ -752,7 +753,8 @@ app.get(['/api/auth/google/callback', '/auth/google/callback'], async (req, res)
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.get('host')?.includes('localhost') ? 'http' : 'https');
+  const redirectUri = `${proto}://${req.get('host')}/api/auth/google/callback`;
 
   if (!clientId || !clientSecret) {
     return res.status(500).send('Google Client Credentials not configured on server.');
