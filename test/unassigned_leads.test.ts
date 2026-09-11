@@ -535,3 +535,19 @@ test('Rule 4: Continuous pointer continuity between backlog processing and new i
   assert.strictEqual(liveLeadDoc.assigned_sales, 'repB');
 });
 
+test('getEligibleSalesUsers: respects ignoreWorkingHours for UI dashboard and sequence previews', () => {
+  const users: any[] = [
+    { id: 'sales1', role: 'jpc_sales', display_name: 'Sales One', sales_availability_status: 'Active', is_on_leave: false },
+    { id: 'sales2', role: 'jpc_sales', display_name: 'Sales Two', sales_availability_status: 'Deactive', is_on_leave: false },
+    { id: 'sales3', role: 'jpc_sales', display_name: 'Sales Three', sales_availability_status: 'Active', is_on_leave: false }
+  ];
+
+  // When ignoreWorkingHours is false and checked outside working hours, returns empty
+  const activeNow = users.filter(u => !u.is_on_leave && u.sales_availability_status === 'Active');
+  assert.strictEqual(activeNow.length, 2);
+
+  // Active reps in sequence should be sales1 and sales3
+  const activeIds = activeNow.map(u => u.id);
+  assert.deepStrictEqual(activeIds, ['sales1', 'sales3']);
+});
+

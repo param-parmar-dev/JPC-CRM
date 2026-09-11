@@ -48,7 +48,7 @@ export async function seedData(): Promise<void> {
       { id: 'rec2', username: 'rec2', display_name: 'Recruiter 2 (TL1)', role: 'jpc_recruiter', leader_id: 'tl1', created_at: now() },
       { id: 'rec3', username: 'rec3', display_name: 'Recruiter 3 (TL2)', role: 'jpc_recruiter', leader_id: 'tl2', created_at: now() },
       { id: 'rec4', username: 'rec4', display_name: 'Recruiter 4 (TL2)', role: 'jpc_recruiter', leader_id: 'tl2', created_at: now() },
-      { id: 'sales1', username: 'sales1', display_name: 'Sales Person 1', role: 'jpc_sales', created_at: now() },
+      { id: 'sales1', username: 'sales1', display_name: 'Sales Person 1', role: 'jpc_sales', sales_availability_status: 'Active', created_at: now() },
       { id: 'cs1', username: 'cs1', display_name: 'CS Person 1', role: 'jpc_cs', created_at: now() },
       { id: 'resume1', username: 'resume1', display_name: 'Resume Specialist 1', role: 'jpc_resume', created_at: now() },
     ];

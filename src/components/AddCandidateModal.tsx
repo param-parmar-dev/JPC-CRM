@@ -304,11 +304,15 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
       const assignedSalesDisplayName = result.assignedSalesName || '';
       const finalAssignedSales = result.assignedSalesId;
 
+      const unassignedReasonText = result.reason === 'outside_working_hours'
+        ? 'outside sales working hours: Mon–Fri 9:30 AM – 6:30 PM EST'
+        : 'no active sales rep available';
+
       const assignedLogText = assignedSalesDisplayName
         ? `Assigned to ${assignedSalesDisplayName} via Round-Robin rotation.`
         : (finalAssignedSales
             ? `Assigned via Round-Robin.`
-            : `Candidate ${formData.full_name} created as Unassigned (no active sales rep available).`);
+            : `Candidate ${formData.full_name} created as Unassigned (${unassignedReasonText}).`);
 
       logActivity(targetId, 'Candidate created', `Candidate ${formData.full_name} added to the system. ${assignedLogText}`, user?.id ? String(user.id) : null);
       
@@ -335,7 +339,14 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
         logActivity(targetId, 'Follow-up scheduled', `Scheduled initial call for ${formData.schedule_call_date} at ${t12} ${timezoneStr}`, user?.id || null);
       }
 
-      showToast('Candidate added successfully', 'success');
+      if (finalAssignedSales) {
+        showToast(assignedSalesDisplayName ? `Candidate created & assigned to ${assignedSalesDisplayName}` : 'Candidate created & assigned via Round-Robin', 'success');
+      } else {
+        const unassignedMsg = result.reason === 'outside_working_hours'
+          ? 'Candidate created as Unassigned (outside sales working hours: Mon–Fri 9:30 AM – 6:30 PM EST)'
+          : 'Candidate created as Unassigned (no active sales rep available)';
+        showToast(unassignedMsg, 'info');
+      }
       onSuccess();
       onClose();
       resetForm();

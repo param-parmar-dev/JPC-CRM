@@ -180,6 +180,7 @@ export const Team: React.FC = () => {
             leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? formData.leader_id : null,
             candidate_id: formData.role === 'jpc_candidate' ? formData.candidate_id : null,
             is_on_leave: formData.is_on_leave || false,
+            sales_availability_status: formData.role === 'jpc_sales' ? 'Active' : undefined,
             created_at: new Date().toISOString(),
           };
 
@@ -248,6 +249,7 @@ export const Team: React.FC = () => {
           leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? formData.leader_id : null,
           candidate_id: formData.role === 'jpc_candidate' ? formData.candidate_id : null,
           is_on_leave: formData.is_on_leave || false,
+          sales_availability_status: formData.role === 'jpc_sales' ? (editingUser?.sales_availability_status || 'Active') : undefined,
         };
 
         if (formData.role === 'jpc_candidate' && formData.candidate_id) {

@@ -1135,7 +1135,7 @@ async function processUnassignedLeadsEngine(targetDb, forceInWorkingHours) {
     isBacklogRunning = false;
   }
 }
-app.post("/api/leads", verifyAuth, async (req, res) => {
+app.post(["/api/leads", "/leads"], verifyAuth, async (req, res) => {
   try {
     const candidateData = { ...req.body };
     const user = req.user;
@@ -1183,7 +1183,7 @@ app.post("/api/leads", verifyAuth, async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to create lead" });
   }
 });
-app.post("/api/leads/round-robin/assign", verifyAuth, async (req, res) => {
+app.post(["/api/leads/round-robin/assign", "/leads/round-robin/assign"], verifyAuth, async (req, res) => {
   try {
     const { candidateId, candidateName, overrideUserId } = req.body;
     const user = req.user;
@@ -1245,7 +1245,7 @@ app.patch("/api/candidates/:id", verifyAuth, async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to update candidate" });
   }
 });
-app.post("/api/sales/availability", verifyAuth, async (req, res) => {
+app.post(["/api/sales/availability", "/sales/availability"], verifyAuth, async (req, res) => {
   try {
     const { status, userId } = req.body;
     const user = req.user;
@@ -1289,7 +1289,7 @@ app.post("/api/sales/availability", verifyAuth, async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to update availability" });
   }
 });
-app.get("/api/sales/availability", verifyAuth, async (req, res) => {
+app.get(["/api/sales/availability", "/sales/availability"], verifyAuth, async (req, res) => {
   try {
     const forceWorkingHours = req.headers["x-mock-working-hours"] !== void 0 ? req.headers["x-mock-working-hours"] === "true" : void 0;
     const salesSnapshot = await db.collection("jpc_users").where("role", "==", "jpc_sales").get();
@@ -1316,7 +1316,7 @@ app.get("/api/sales/availability", verifyAuth, async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to get sales availability" });
   }
 });
-app.post("/api/leads/assign-unassigned", verifyAuth, async (req, res) => {
+app.post(["/api/leads/assign-unassigned", "/leads/assign-unassigned"], verifyAuth, async (req, res) => {
   try {
     const forceWorkingHours = req.headers["x-mock-working-hours"] !== void 0 ? req.headers["x-mock-working-hours"] === "true" : void 0;
     const result = await processUnassignedLeadsEngine(db, forceWorkingHours);

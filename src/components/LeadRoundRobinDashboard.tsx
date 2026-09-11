@@ -15,7 +15,7 @@ import {
   ChevronUp, ChevronDown, RefreshCw, BarChart2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, isSalesWorkingHours } from '../lib/utils';
 
 interface LeadRoundRobinDashboardProps {
   allUsers: User[];
@@ -52,7 +52,7 @@ export const LeadRoundRobinDashboard: React.FC<LeadRoundRobinDashboardProps> = (
 
   const eligibleReps = useMemo(() => {
     if (!config) return [];
-    return getEligibleSalesUsers(allUsers, config);
+    return getEligibleSalesUsers(allUsers, config, true);
   }, [allUsers, config]);
 
   // Compute next rep in line
@@ -223,10 +223,22 @@ export const LeadRoundRobinDashboard: React.FC<LeadRoundRobinDashboardProps> = (
                   )}>
                     {config.enabled ? "Active" : "Paused"}
                   </span>
+                  <span className={cn(
+                    "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider",
+                    isSalesWorkingHours() ? "bg-accent-green/20 text-accent-green" : "bg-accent-amber/20 text-accent-amber"
+                  )}>
+                    {isSalesWorkingHours() ? "In Hours" : "After Hours"}
+                  </span>
                 </div>
                 <p className="text-sm text-text-secondary mt-0.5">
                   Automatically rotates new incoming leads sequentially among sales team members (1st → Salesperson A, 2nd → Salesperson B, 3rd → Salesperson C).
                 </p>
+                {!isSalesWorkingHours() && (
+                  <p className="text-xs text-accent-amber font-medium mt-1 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span>Working Hours: Mon–Fri 9:30 AM – 6:30 PM EST. Leads created now are placed in the Unassigned backlog until reps activate.</span>
+                  </p>
+                )}
               </div>
             </div>
           </div>

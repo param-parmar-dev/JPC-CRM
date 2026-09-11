@@ -1489,7 +1489,7 @@ export async function processUnassignedLeadsEngine(
 // ----------------------------------------------------------------------------
 
 // Single source of truth for creating a lead
-app.post('/api/leads', verifyAuth, async (req, res) => {
+app.post(['/api/leads', '/leads'], verifyAuth, async (req, res) => {
   try {
     const candidateData = { ...req.body };
     const user = (req as any).user;
@@ -1550,7 +1550,7 @@ app.post('/api/leads', verifyAuth, async (req, res) => {
 });
 
 // Single transactional assignment endpoint for an existing or in-progress candidate
-app.post('/api/leads/round-robin/assign', verifyAuth, async (req, res) => {
+app.post(['/api/leads/round-robin/assign', '/leads/round-robin/assign'], verifyAuth, async (req, res) => {
   try {
     const { candidateId, candidateName, overrideUserId } = req.body;
     const user = (req as any).user;
@@ -1632,7 +1632,7 @@ app.patch('/api/candidates/:id', verifyAuth, async (req, res) => {
 });
 
 // Sales Person Availability Toggle Endpoint
-app.post('/api/sales/availability', verifyAuth, async (req, res) => {
+app.post(['/api/sales/availability', '/sales/availability'], verifyAuth, async (req, res) => {
   try {
     const { status, userId } = req.body;
     const user = (req as any).user;
@@ -1690,7 +1690,7 @@ app.post('/api/sales/availability', verifyAuth, async (req, res) => {
 });
 
 // Get Availability Status of all Sales Persons
-app.get('/api/sales/availability', verifyAuth, async (req, res) => {
+app.get(['/api/sales/availability', '/sales/availability'], verifyAuth, async (req, res) => {
   try {
     const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
       ? req.headers['x-mock-working-hours'] === 'true' 
@@ -1724,7 +1724,7 @@ app.get('/api/sales/availability', verifyAuth, async (req, res) => {
 });
 
 // Trigger backlog assignment of unassigned leads
-app.post('/api/leads/assign-unassigned', verifyAuth, async (req, res) => {
+app.post(['/api/leads/assign-unassigned', '/leads/assign-unassigned'], verifyAuth, async (req, res) => {
   try {
     const forceWorkingHours = req.headers['x-mock-working-hours'] !== undefined 
       ? req.headers['x-mock-working-hours'] === 'true' 
