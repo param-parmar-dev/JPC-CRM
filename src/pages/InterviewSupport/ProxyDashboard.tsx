@@ -396,19 +396,35 @@ export const ProxyDashboard: React.FC = () => {
 
   // Listen for success message from google oauth popup
   useEffect(() => {
-    const handleGoogleMessage = (event: MessageEvent) => {
+    const handleGoogleMessage = async (event: MessageEvent) => {
       const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+      const isAllowedOrigin =
+        origin === window.location.origin ||
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.run.app') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1');
+
+      if (!isAllowedOrigin) {
         return;
       }
+
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        if (event.data.tokens && activeProxyId) {
+          try {
+            const userRef = doc(db, 'jpc_users', String(activeProxyId));
+            await updateDoc(userRef, event.data.tokens);
+          } catch (updateErr) {
+            console.warn('[ProxyDashboard] Client updateDoc fallback error:', updateErr);
+          }
+        }
         showToast('Google Calendar connected successfully with persistent refresh access!', 'success');
         setPopupBlockedError(false);
       }
     };
     window.addEventListener('message', handleGoogleMessage);
     return () => window.removeEventListener('message', handleGoogleMessage);
-  }, []);
+  }, [activeProxyId]);
 
   const handleSyncAllAssignments = async () => {
     if (!activeProxyId) return;

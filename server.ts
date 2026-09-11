@@ -16,6 +16,9 @@ import { google } from 'googleapis';
 
 dotenv.config();
 
+// Environment detection
+export const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+
 // Initialize Firebase Admin safely
 let databaseId: string | undefined = undefined;
 
@@ -38,26 +41,35 @@ try {
 
   // 2. Fallback to firebase-applet-config.json for metadata (projectId, databaseId)
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  let config: any = {
+    projectId: "gen-lang-client-0054307437",
+    firestoreDatabaseId: "production-placify"
+  };
+
   if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    if (config.firestoreDatabaseId) {
-      databaseId = config.firestoreDatabaseId;
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.warn('[Firebase Admin] Could not parse firebase-applet-config.json, using defaults:', e);
+    }
+  }
+
+  if (config.firestoreDatabaseId) {
+    databaseId = config.firestoreDatabaseId;
+  }
+  
+  // Only initialize if not already initialized via Service Account
+  if (!admin.apps.length) {
+    const currentProjectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || config.projectId;
+    
+    if (isServerless && !process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.warn('[Firebase Admin] Running in serverless environment without explicit FIREBASE_SERVICE_ACCOUNT.');
     }
     
-    // Only initialize if not already initialized via Service Account
-    if (!admin.apps.length) {
-      // PREFER the environment's project ID if we're running in Cloud Run/GCP
-      const currentProjectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || config.projectId;
-      
-      if (process.env.VERCEL) {
-        console.warn('[Firebase Admin] Running on Vercel but FIREBASE_SERVICE_ACCOUNT is missing. Firestore may fail.');
-      }
-      
-      admin.initializeApp({
-        projectId: currentProjectId
-      });
-      console.log(`[Firebase Admin] Initialized with projectId: ${currentProjectId} (Config had: ${config.projectId})`);
-    }
+    admin.initializeApp({
+      projectId: currentProjectId
+    });
+    console.log(`[Firebase Admin] Initialized with projectId: ${currentProjectId}`);
   }
 } catch (error) {
   console.error('[Firebase Admin] Error during initialization:', error);
@@ -82,8 +94,8 @@ const initFirestore = (id?: string) => {
 
 db = initFirestore(databaseId);
 
-// Connection test for debugging
-if (db && process.env.NODE_ENV !== 'test') {
+// Connection test for debugging (only run in long-running persistent servers, NOT serverless)
+if (db && process.env.NODE_ENV !== 'test' && !isServerless) {
   const testRef = db.collection('_connection_test_').doc('server_start');
   testRef.set({
     last_start: new Date().toISOString(),
@@ -111,7 +123,7 @@ if (db && process.env.NODE_ENV !== 'test') {
       }
     }
   });
-} else {
+} else if (!db) {
   // If db is still null, create a proxy that throws on access
   db = new Proxy({}, {
     get(target, prop) {
@@ -147,7 +159,7 @@ const getSMTPSettings = async () => {
 
 // Daily Target Check Cron Job
 // 6:15 PM Eastern Time (America/New_York)
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !isServerless) {
 cron.schedule('15 18 * * *', async () => {
   console.log('[Cron] Running daily target check at 6:15 PM America/New_York');
   
@@ -247,7 +259,7 @@ cron.schedule('15 18 * * *', async () => {
 
 // Monthly Performance Report Cron Job
 // Every month end at 10:00 AM Eastern Time
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !isServerless) {
   cron.schedule('0 10 28-31 * *', async () => {
     const today = new Date();
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -262,7 +274,7 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Daily Sales Person Automatic Deactivation Cron Job
 // Every Monday to Friday at 6:30 PM Eastern Time (America/New_York)
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !isServerless) {
   cron.schedule('30 18 * * 1-5', async () => {
     console.log('[Cron] Running automatic 6:30 PM America/New_York Sales Person deactivation...');
     try {
@@ -298,7 +310,7 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Daily Sales Person Working Hours Start & Unassigned Backlog Processing Cron Job
 // Every Monday to Friday at 9:30 AM Eastern Time (America/New_York)
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !isServerless) {
   cron.schedule('30 9 * * 1-5', async () => {
     console.log('[Cron] Sales working hours starting at 9:30 AM America/New_York. Triggering unassigned backlog processing...');
     try {
@@ -560,6 +572,35 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(express.json({ limit: '10mb' }));
 
+// Normalize URL in case Vercel rewrites or reverse proxies strip the /api prefix
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api')) {
+    const knownApiPrefixes = [
+      '/auth/google',
+      '/smtp',
+      '/send-email',
+      '/health',
+      '/leads',
+      '/candidates',
+      '/sales',
+      '/admin',
+      '/gemini',
+      '/resume',
+      '/calendly',
+      '/reports'
+    ];
+    if (knownApiPrefixes.some(prefix => req.url.startsWith(prefix))) {
+      req.url = '/api' + req.url;
+    }
+  }
+  next();
+});
+
+// Root API health check
+app.get(['/api', '/api/health', '/health'], (req, res) => {
+  res.json({ status: 'ok', service: 'Auriic CRM API' });
+});
+
 // SMTP API Endpoints
 app.get('/api/smtp/settings', async (req, res) => {
   try {
@@ -645,7 +686,7 @@ app.post('/api/send-email', async (req, res) => {
 // GOOGLE OAUTH CALENDAR INTEGRATION ROUTES
 // ==========================================
 
-app.get('/api/auth/google/login', (req, res) => {
+app.get(['/api/auth/google/login', '/auth/google/login'], (req, res) => {
   const { userId } = req.query;
   if (!userId) {
     return res.status(400).send('Missing userId query parameter.');
@@ -697,7 +738,7 @@ app.get('/api/auth/google/login', (req, res) => {
   res.redirect(authUrl);
 });
 
-app.get('/api/auth/google/callback', async (req, res) => {
+app.get(['/api/auth/google/callback', '/auth/google/callback'], async (req, res) => {
   const { code, state: userId, error } = req.query;
 
   if (error) {
@@ -738,8 +779,6 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const email = userInfoResponse.data.email || 'connected-user';
 
     // Store in Firestore
-    const userRef = db.collection('jpc_users').doc(String(userId));
-    
     const updateData: any = {
       google_calendar_connected: true,
       google_calendar_status: 'connected',
@@ -752,16 +791,22 @@ app.get('/api/auth/google/callback', async (req, res) => {
       updateData.google_refresh_token = refresh_token;
     }
 
-    await userRef.set(updateData, { merge: true });
-    console.log(`[Google OAuth] Successfully connected user ${userId} to Google Calendar ${email}. Refresh token stored: ${!!refresh_token}`);
+    try {
+      const userRef = db.collection('jpc_users').doc(String(userId));
+      await userRef.set(updateData, { merge: true });
+      console.log(`[Google OAuth] Successfully connected user ${userId} to Google Calendar ${email}. Refresh token stored: ${!!refresh_token}`);
+    } catch (dbErr: any) {
+      console.warn('[Google OAuth] Backend Firestore update warning:', dbErr.message);
+    }
 
     // Return HTML that posts a success message to the parent window and closes itself
     res.send(`
       <html>
         <body>
           <script>
+            const tokenPayload = ${JSON.stringify(updateData)};
             if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', tokens: tokenPayload }, '*');
               window.close();
             } else {
               window.location.href = '/#interviews-proxy';
@@ -780,7 +825,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
 });
 
 // Refresh Google Token Endpoint
-app.post('/api/auth/google/refresh', async (req, res) => {
+app.post(['/api/auth/google/refresh', '/auth/google/refresh'], async (req, res) => {
   const { proxyUserId } = req.body;
   if (!proxyUserId) {
     return res.status(400).json({ error: 'Missing proxyUserId parameter' });
@@ -2057,7 +2102,7 @@ app.get('/api/calendly/slots', async (req, res) => {
 });
 
 async function startServer() {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test' || isServerless) {
     return;
   }
 
@@ -2078,7 +2123,8 @@ async function startServer() {
     });
   } else {
     try {
-      const { createServer: createViteServer } = await import('vite');
+      const vitePkg = 'vite';
+      const { createServer: createViteServer } = await import(/* @vite-ignore */ vitePkg);
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: 'spa',
@@ -2089,14 +2135,12 @@ async function startServer() {
     }
   }
 
-  if (process.env.NODE_ENV !== 'test' && (process.env.NODE_ENV !== 'production' || !process.env.VERCEL)) {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !isServerless) {
   startServer();
 }
 
