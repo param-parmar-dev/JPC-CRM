@@ -23,12 +23,10 @@ import {
   FolderTree
 } from 'lucide-react';
 import { cn, isSalesWorkingHours } from '../lib/utils';
-import { subscribeToQuery, updateSalesAvailability } from '../services/storage';
-import { collection, query, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { subscribeToCollection, updateSalesAvailability } from '../services/storage';
 import { useToast } from '../contexts/ToastContext';
 import { isProxyUser } from '../services/interviewService';
-import { FollowUp, Candidate } from '../types';
+import { FollowUp, Candidate, User } from '../types';
 import { canUserAccessCandidate } from '../lib/permissions';
 
 interface SidebarProps {
@@ -44,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
 
   const [allFollowUps, setAllFollowUps] = useState<FollowUp[]>([]);
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [salesStatus, setSalesStatus] = useState<'Active' | 'Deactive'>(user?.sales_availability_status || 'Deactive');
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
 
@@ -78,60 +77,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
 
 
   useEffect(() => {
-    if (!isAuthReady || !user) return;
+    if (!isAuthReady) return;
 
-    const unsubs: (() => void)[] = [];
+    const unsubFollowUps = subscribeToCollection<FollowUp>('jpc_followups', (data) => {
+      setAllFollowUps(data);
+    });
 
-    const canSeeFollowUps = 
-      user.role !== 'candidate' && 
-      user.role !== 'jpc_candidate' && 
-      user.role !== 'jpc_lead_gen' && 
-      user.role !== 'jpc_resume' && 
-      user.role !== 'jpc_proxy' && 
-      user.role !== 'jpc_marketing' && 
-      user.role !== 'jpc_marketing_support';
+    const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', (data) => {
+      setAllCandidates(data);
+    });
 
-    if (canSeeFollowUps) {
-      const isManagerOrAdmin = user.role === 'administrator' || user.role === 'jpc_manager' || user.role === 'jpc_sysadmin';
-      const fQuery = isManagerOrAdmin
-        ? query(collection(db, 'jpc_followups'), where('done', '==', false))
-        : query(collection(db, 'jpc_followups'), where('created_by', '==', user.id), where('done', '==', false));
-
-      unsubs.push(subscribeToQuery<FollowUp>(fQuery, setAllFollowUps, 'jpc_followups'));
-    }
-
-    const canSeeNotInterestedOrEligible = 
-      user.role === 'administrator' || 
-      user.role === 'jpc_manager' || 
-      user.role === 'jpc_sysadmin' || 
-      user.role === 'jpc_lead_gen' || 
-      user.role === 'jpc_sales';
-
-    if (canSeeNotInterestedOrEligible) {
-      const cQuery = query(
-        collection(db, 'jpc_candidates'),
-        where('current_stage', 'in', ['not_interested', 'not_eligible'])
-      );
-      unsubs.push(subscribeToQuery<Candidate>(cQuery, setAllCandidates, 'jpc_candidates'));
-    }
+    const unsubUsers = subscribeToCollection<User>('jpc_users', (data) => {
+      setAllUsers(data);
+    });
 
     return () => {
-      unsubs.forEach(fn => fn());
+      unsubFollowUps();
+      unsubCandidates();
+      unsubUsers();
     };
-  }, [isAuthReady, user]);
+  }, [isAuthReady]);
 
   const followUpsCount = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    return allFollowUps.filter(f => f.followup_date <= today).length;
-  }, [allFollowUps]);
+    const personal = user?.role === 'administrator' || user?.role === 'jpc_manager' 
+      ? allFollowUps 
+      : allFollowUps.filter(f => f.created_by === user?.id);
+    return personal.filter(f => !f.done && f.followup_date <= today).length;
+  }, [user, allFollowUps]);
 
   const notInterestedCount = useMemo(() => {
-    return allCandidates.filter(c => c.current_stage === 'not_interested' && canUserAccessCandidate(c, user)).length;
-  }, [allCandidates, user]);
+    return allCandidates.filter(c => c.current_stage === 'not_interested' && canUserAccessCandidate(c, user, allUsers)).length;
+  }, [allCandidates, user, allUsers]);
 
   const notEligibleCount = useMemo(() => {
-    return allCandidates.filter(c => c.current_stage === 'not_eligible' && canUserAccessCandidate(c, user)).length;
-  }, [allCandidates, user]);
+    return allCandidates.filter(c => c.current_stage === 'not_eligible' && canUserAccessCandidate(c, user, allUsers)).length;
+  }, [allCandidates, user, allUsers]);
 
   const navItems = [
     { label: 'Dashboard', hash: '#dashboard', icon: LayoutDashboard, visible: true },
@@ -139,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
       label: 'CRM Leads & Sales', 
       hash: '#crm-dashboard', 
       icon: TrendingUp, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_lead_gen'
+      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person'
     },
     { label: 'My Profile', hash: `#candidate?id=${user?.candidate_id}`, icon: UserIcon, visible: (user?.role === 'candidate' || user?.role === 'jpc_candidate') && !!user?.candidate_id },
     { 

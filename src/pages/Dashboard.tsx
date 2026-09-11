@@ -18,6 +18,7 @@ import { ThoughtsConfigModal, DEFAULT_QUOTES } from '../components/ThoughtsConfi
 import { CelebrationBanner } from '../components/CelebrationBanner';
 import { db, firebaseConfig } from '../firebase';
 import { query, collection, where, limit, doc, getDoc } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell 
 } from 'recharts';
@@ -279,66 +280,58 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady) return;
 
-    const unsubs: (() => void)[] = [];
-
     const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', (data) => {
-      const active = data.filter(c => !c.deleted_at);
-      setCandidates(active);
+      setCandidates(data);
       setIsLoading(false);
     });
-    unsubs.push(unsubCandidates);
 
     const unsubFollowUps = subscribeToCollection<FollowUp>('jpc_followups', (data) => {
       setFollowUps(data);
-    }, 1000);
-    unsubs.push(unsubFollowUps);
+    });
 
+    let unsubNotifications = () => {};
     if (user) {
       const q = query(
         collection(db, 'jpc_notifications'),
         where('recipient_id', '==', String(user.id))
       );
-      unsubs.push(subscribeToQuery<Notification>(q, setNotifications, 'jpc_notifications'));
+      unsubNotifications = subscribeToQuery<Notification>(q, setNotifications, 'jpc_notifications');
     }
 
-    const needsResumeRequests = user && [
-      'administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person', 'jpc_marketing', 'jpc_resume'
-    ].includes(user.role);
-    if (needsResumeRequests) {
-      const qResume = query(collection(db, 'jpc_resume_requests'), where('status', 'in', ['pending_tl', 'pending_cs', 'pending_resume_team']));
-      unsubs.push(subscribeToQuery<ResumeChangeRequest>(qResume, setResumeRequests, 'jpc_resume_requests'));
-    }
+    const unsubResumeRequests = subscribeToCollection<ResumeChangeRequest>('jpc_resume_requests', (data) => {
+      setResumeRequests(data);
+    });
 
-    const needsInterviews = user && (
-      isProxyUser(user) ||
-      ['administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person', 'jpc_recruiter'].includes(user.role)
-    );
-    if (needsInterviews) {
-      unsubs.push(subscribeToCollection<InterviewSupportRequest>('jpc_interview_requests', setInterviews, 200));
-    }
+    const unsubInterviews = subscribeToCollection<InterviewSupportRequest>('jpc_interview_requests', (data) => {
+      setInterviews(data);
+    });
 
-    const needsTargetRequests = user && [
-      'administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person', 'jpc_marketing'
-    ].includes(user.role);
-    if (needsTargetRequests) {
-      const qTarget = query(collection(db, 'jpc_target_reductions'), where('status', '==', 'pending'));
-      unsubs.push(subscribeToQuery<TargetReductionRequest>(qTarget, setTargetRequests, 'jpc_target_reductions'));
-    }
+    const unsubTargetRequests = subscribeToCollection<TargetReductionRequest>('jpc_target_reductions', (data) => {
+      setTargetRequests(data);
+    });
 
-    const needsApps = user && [
-      'administrator', 'jpc_sysadmin', 'jpc_manager', 'jpc_cs', 'jpc_compliance_person', 'jpc_marketing', 'jpc_recruiter'
-    ].includes(user.role);
-    if (needsApps) {
-      unsubs.push(subscribeToCollection<Application>('jpc_applications', setApplications, 1000));
-    }
+    const unsubApps = subscribeToCollection<Application>('jpc_applications', (data) => {
+      setApplications(data);
+    });
 
-    unsubs.push(subscribeToCollection<User>('jpc_users', setAllUsers));
+    const unsubUsers = subscribeToCollection<User>('jpc_users', (data) => {
+      setAllUsers(data);
+    });
 
-    const qAnnouncements = query(collection(db, 'jpc_feature_announcements'), where('is_active', '==', true));
-    unsubs.push(subscribeToQuery<FeatureAnnouncement>(qAnnouncements, setFeatureAnnouncements, 'jpc_feature_announcements'));
+    const unsubAnnouncements = subscribeToCollection<FeatureAnnouncement>('jpc_feature_announcements', (data) => {
+      setFeatureAnnouncements(data.filter(a => a.is_active));
+    });
 
     return () => {
-      unsubs.forEach(fn => fn());
+      unsubCandidates();
+      unsubFollowUps();
+      unsubNotifications();
+      unsubResumeRequests();
+      unsubInterviews();
+      unsubTargetRequests();
+      unsubApps();
+      unsubUsers();
+      unsubAnnouncements();
     };
   }, [isAuthReady, user]);
 
@@ -540,10 +533,9 @@ export const Dashboard: React.FC = () => {
     return filtered.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 5);
   }, [candidates, user]);
 
-  const handleExportLeadsAndSales = async () => {
+  const handleExportLeadsAndSales = () => {
     setIsExporting(true);
     try {
-      const XLSX = await import('xlsx');
       if (candidates.length === 0) {
         showToast('No leads or sales data found to export', 'error');
         setIsExporting(false);

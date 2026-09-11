@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Candidate, FollowUp, Application, User } from '../types';
+import * as XLSX from 'xlsx';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell 
@@ -244,10 +245,9 @@ export const CRMDashboard: React.FC = () => {
     }));
   }, [filteredCRMLeads]);
 
-  const handleExportLeadsAndSales = async () => {
+  const handleExportLeadsAndSales = () => {
     setIsExporting(true);
     try {
-      const XLSX = await import('xlsx');
       if (candidates.length === 0) {
         showToast('No leads or sales data found to export', 'error');
         setIsExporting(false);

@@ -10,10 +10,11 @@ import { Candidate, Stage, User, Application, FollowUp } from '../types';
 import { CandidateSheet } from '../components/CandidateSheet';
 import { TrackJobSheet } from '../components/TrackJobSheet';
 import { BulkImportModal } from '../components/BulkImportModal';
-const AddCandidateModal = React.lazy(() => import('../components/AddCandidateModal').then(m => ({ default: m.AddCandidateModal })));
+import { AddCandidateModal } from '../components/AddCandidateModal';
 import { useDebounce } from '../lib/hooks';
 import { canUserAccessCandidate } from '../lib/permissions';
 import { List } from 'react-window';
+import * as XLSX from 'xlsx';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
@@ -246,7 +247,6 @@ export const Candidates: React.FC = () => {
   const handleExportLeadsAndSales = async () => {
     setIsExporting(true);
     try {
-      const XLSX = await import('xlsx');
       if (candidates.length === 0) {
         showToast('No leads or sales data found to export', 'error');
         setIsExporting(false);
@@ -612,15 +612,11 @@ export const Candidates: React.FC = () => {
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => {}}
       />
-      {isAddModalOpen && (
-        <React.Suspense fallback={null}>
-          <AddCandidateModal
-            isOpen={isAddModalOpen}
-            onClose={() => setIsAddModalOpen(false)}
-            onSuccess={() => {}}
-          />
-        </React.Suspense>
-      )}
+      <AddCandidateModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => {}}
+      />
     </div>
   );
 };
