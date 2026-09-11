@@ -1,10 +1,3 @@
-import { GoogleGenAI, Type } from '@google/genai';
-import * as pdfjsLib from 'pdfjs-dist';
-import * as mammoth from 'mammoth';
-
-// Configure the worker for pdfjs
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
-
 export interface ParsedCandidate {
   full_name: string;
   phone: string;
@@ -25,6 +18,8 @@ export interface ParsedCandidate {
 
 const extractTextFromPDF = async (base64: string): Promise<string> => {
   try {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
     const binaryString = window.atob(base64);
     const len = binaryString.length;
     const bytes = new Uint8Array(len);
@@ -50,6 +45,7 @@ const extractTextFromPDF = async (base64: string): Promise<string> => {
 
 const extractTextFromDOCX = async (base64: string): Promise<string> => {
   try {
+    const mammoth = await import('mammoth');
     const binaryString = window.atob(base64);
     const len = binaryString.length;
     const bytes = new Uint8Array(len);
@@ -118,6 +114,7 @@ export async function parseResume(fileBase64: string, mimeType: string): Promise
     // 2. Secondary fallback: Direct client call using gemini-3.6-flash / gemini-3.8-flash
     const apiKey = (process.env as any).GEMINI_API_KEY;
     if (apiKey && apiKey.length > 20) {
+      const { GoogleGenAI, Type } = await import('@google/genai');
       const ai = new GoogleGenAI({ apiKey });
 
       const parts: any[] = [];

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToCollection, saveCandidate, addNotification } from '../services/storage';
+import { subscribeToCollection, subscribeToQuery, saveCandidate, addNotification } from '../services/storage';
+import { collection, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
 import { Candidate, User, Stage } from '../types';
 import { STAGES } from '../constants';
 
@@ -15,7 +17,20 @@ export const SLAMonitor: React.FC = () => {
     // Allow admins, managers, and system-level roles to run the monitor
     if (!['administrator', 'jpc_sysadmin', 'jpc_manager'].includes(user.role)) return;
 
-    const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', setCandidates);
+    const qCandidates = query(
+      collection(db, 'jpc_candidates'),
+      where('current_stage', 'in', [
+        'sales', 
+        'cs_qc', 
+        'marketing_leader', 
+        'cs_strategy_check',
+        'resume_team',
+        'cs_assign_recruiter', 
+        'recruiter', 
+        'sys_admin'
+      ])
+    );
+    const unsubCandidates = subscribeToQuery<Candidate>(qCandidates, setCandidates, 'jpc_candidates');
     const unsubUsers = subscribeToCollection<User>('jpc_users', setUsers);
 
     return () => {

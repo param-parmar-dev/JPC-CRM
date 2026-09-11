@@ -21,6 +21,10 @@ export default defineConfig(({mode}) => {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
+          manualChunks: {
+            'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+            'lucide-icons': ['lucide-react'],
+          },
         },
       },
     },

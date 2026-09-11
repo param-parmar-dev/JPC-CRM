@@ -4,13 +4,12 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { Sidebar } from './components/Sidebar';
 import { isProxyUser } from './services/interviewService';
-import { AddCandidateModal } from './components/AddCandidateModal';
 import { NotificationList } from './components/NotificationList';
 import { SLAMonitor } from './components/SLAMonitor';
-import { MigrationExecutor } from './MigrationExecutor';
-import { migrateAllChecklists, testConnection, autoAssignFaizToCandidates } from './services/storage';
 import { Plus, Menu } from 'lucide-react';
 import { MobileBottomNav } from './components/MobileBottomNav';
+
+const AddCandidateModal = lazy(() => import('./components/AddCandidateModal').then(m => ({ default: m.AddCandidateModal })));
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -43,18 +42,33 @@ const PageLoader = () => (
   </div>
 );
 
+const getDefaultHashForRole = (user: any): string => {
+  if (!user) return '#dashboard';
+  if ((user.role === 'candidate' || user.role === 'jpc_candidate') && user.candidate_id) {
+    return `#candidate?id=${user.candidate_id}`;
+  }
+  if (user.role === 'jpc_proxy') {
+    return '#interviews-proxy';
+  }
+  if (user.role === 'jpc_resume') {
+    return '#resume-log';
+  }
+  if (user.role === 'jpc_lead_gen') {
+    return '#crm-dashboard';
+  }
+  return '#dashboard';
+};
+
 const AppContent: React.FC = () => {
   const { user, isLoading, isAuthReady } = useAuth();
-  const [currentHash, setCurrentHash] = useState(window.location.hash || '#dashboard');
+  const [currentHash, setCurrentHash] = useState(() => window.location.hash || '#dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-
-  useEffect(() => {
-    if (isAuthReady) {
-      testConnection();
-    }
-  }, [isAuthReady]);
+  // Synchronously compute the role-appropriate hash so non-dashboard roles never mount Dashboard
+  const effectiveHash = (!currentHash || currentHash === '#' || currentHash === '#dashboard') && user
+    ? getDefaultHashForRole(user)
+    : currentHash;
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -68,17 +82,13 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (isAuthReady && user) {
-      if (user.role === 'candidate' && user.candidate_id) {
-        const targetHash = `#candidate?id=${user.candidate_id}`;
-        if (window.location.hash !== targetHash) {
-          window.location.hash = targetHash;
+      const current = window.location.hash;
+      if (!current || current === '#' || current === '#dashboard') {
+        const defaultHash = getDefaultHashForRole(user);
+        if (defaultHash !== '#dashboard' && current !== defaultHash) {
+          window.location.hash = defaultHash;
+          setCurrentHash(defaultHash);
         }
-      }
-      
-      // Only run maintenance tasks for administrators
-      if (user.role === 'administrator' || user.role === 'jpc_sysadmin') {
-        migrateAllChecklists().catch(console.error);
-        autoAssignFaizToCandidates().catch(console.error);
       }
     }
   }, [isAuthReady, user]);
@@ -95,7 +105,7 @@ const AppContent: React.FC = () => {
   }
 
 
-  const isBookingPage = currentHash.startsWith('#book-interview');
+  const isBookingPage = effectiveHash.startsWith('#book-interview');
 
   if (!user && !isBookingPage) {
     return (
@@ -106,7 +116,7 @@ const AppContent: React.FC = () => {
   }
 
   const renderPage = () => {
-    const hash = currentHash.split('?')[0];
+    const hash = effectiveHash.split('?')[0];
     
     if (user?.role === 'candidate' || user?.role === 'jpc_candidate') {
       switch (hash) {
@@ -121,7 +131,7 @@ const AppContent: React.FC = () => {
       case '#dashboard': 
         return <Dashboard />;
       case '#crm-dashboard':
-        if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin' && user?.role !== 'jpc_manager' && user?.role !== 'jpc_cs') return <Dashboard />;
+        if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin' && user?.role !== 'jpc_manager' && user?.role !== 'jpc_cs' && user?.role !== 'jpc_compliance_person' && user?.role !== 'jpc_lead_gen') return <Dashboard />;
         return <CRMDashboard />;
       case '#pipeline': 
         if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin' && user?.role !== 'jpc_manager' && user?.role !== 'jpc_cs' && user?.role !== 'jpc_recruiter' && user?.role !== 'jpc_marketing' && user?.role !== 'jpc_marketing_support' && user?.role !== 'jpc_sales' && user?.role !== 'jpc_resume') return <Dashboard />;
@@ -204,14 +214,14 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const isReceiptPage = currentHash.startsWith('#receipt');
+  const isReceiptPage = effectiveHash.startsWith('#receipt');
   // isBookingPage is already declared above
 
   return (
     <div className="min-h-screen bg-bg-primary flex">
       {!isReceiptPage && !isBookingPage && (
         <Sidebar 
-          currentHash={currentHash} 
+          currentHash={effectiveHash} 
           isOpen={isSidebarOpen} 
           setIsOpen={setIsSidebarOpen} 
         />
@@ -230,7 +240,7 @@ const AppContent: React.FC = () => {
               </button>
               <div className="md:hidden min-w-0">
                 <h1 className="text-base font-bold font-heading text-text-primary tracking-tight truncate">
-                  {getMobileTitle(currentHash)}
+                  {getMobileTitle(effectiveHash)}
                 </h1>
               </div>
               <div className="hidden md:block">
@@ -264,21 +274,24 @@ const AppContent: React.FC = () => {
 
       {!isReceiptPage && !isBookingPage && (
         <MobileBottomNav 
-          currentHash={currentHash} 
+          currentHash={effectiveHash} 
           onOpenMenu={() => setIsSidebarOpen(true)} 
           user={user} 
         />
       )}
 
       <SLAMonitor />
-      <MigrationExecutor />
-      <AddCandidateModal 
-        isOpen={isAddModalOpen} 
-        onClose={() => setIsAddModalOpen(false)}
-        onSuccess={() => {
-          window.dispatchEvent(new HashChangeEvent('hashchange'));
-        }}
-      />
+      {isAddModalOpen && (
+        <Suspense fallback={null}>
+          <AddCandidateModal 
+            isOpen={isAddModalOpen} 
+            onClose={() => setIsAddModalOpen(false)}
+            onSuccess={() => {
+              window.dispatchEvent(new HashChangeEvent('hashchange'));
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

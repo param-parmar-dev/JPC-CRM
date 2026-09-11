@@ -11,7 +11,9 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
-import { subscribeToCollection } from '../services/storage';
+import { subscribeToQuery } from '../services/storage';
+import { collection, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
 
 interface MobileBottomNavProps {
   currentHash: string;
@@ -28,14 +30,19 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   useEffect(() => {
     if (!user) return;
-    const unsub = subscribeToCollection<any>('jpc_followups', (data) => {
+    const isCandidate = user.role === 'candidate' || user.role === 'jpc_candidate';
+    if (isCandidate) return;
+
+    const isManagerOrAdmin = user.role === 'administrator' || user.role === 'jpc_manager' || user.role === 'jpc_sysadmin';
+    const q = isManagerOrAdmin
+      ? query(collection(db, 'jpc_followups'), where('done', '==', false))
+      : query(collection(db, 'jpc_followups'), where('created_by', '==', user.id), where('done', '==', false));
+
+    const unsub = subscribeToQuery<any>(q, (data) => {
       const today = new Date().toISOString().split('T')[0];
-      const personal = user.role === 'administrator' || user.role === 'jpc_manager'
-        ? data
-        : data.filter(f => f.created_by === user.id);
-      const pendingCount = personal.filter(f => !f.done && f.followup_date <= today).length;
+      const pendingCount = data.filter(f => f.followup_date <= today).length;
       setFollowUpsCount(pendingCount);
-    });
+    }, 'jpc_followups');
     return () => unsub();
   }, [user]);
 
