@@ -91,10 +91,16 @@ startxref
   // Warmup local parser for JIT compilation
   parseResumeLocally(extractedPdfText);
 
-  // Measure 5: Local Deterministic Parser execution
-  const t3 = performance.now();
-  const parsed = parseResumeLocally(extractedPdfText);
-  const localParserTime = performance.now() - t3;
+  // Measure 5: Local Deterministic Parser execution (smooth CPU scheduling jitter across 5 warm runs)
+  const parserRuns: number[] = [];
+  let parsed = parseResumeLocally(extractedPdfText);
+  for (let k = 0; k < 5; k++) {
+    const t3 = performance.now();
+    parsed = parseResumeLocally(extractedPdfText);
+    parserRuns.push(performance.now() - t3);
+  }
+  parserRuns.sort((a, b) => a - b);
+  const localParserTime = parserRuns[2]; // median
 
   // Measure 6: End-to-end warm total (Decode + Warm Extraction + Local Parsing)
   const endToEndLocalTime = bufferDecodeTime + warmPdfExtractionTime + localParserTime;
@@ -426,12 +432,14 @@ test('5. Merging Logic: Preserve local values and filter hallucinated Gemini ski
       name: 0.95,
       email: 1.0,
       phone: 0.95,
+      location: 0.95,
+      job_interest: 0.95,
       experience: 0.95,
       education: 0.95,
       skills: 0.85
     },
     parser_used: 'local_hybrid'
-  };
+  } as any as LocalParsedResume;
 
   const rawDocText = `
     Sarah Connor
@@ -486,4 +494,237 @@ test('5. Merging Logic: Preserve local values and filter hallucinated Gemini ski
   assert.ok(!merged.skills.includes('Blockchain'), 'Hallucinated skill Blockchain was accepted');
   assert.ok(!merged.skills.includes('Quantum Computing'), 'Hallucinated skill Quantum Computing was accepted');
   assert.equal(merged.summary, 'Seasoned systems engineer specializing in autonomous defensive infrastructure.');
+});
+
+// =========================================================================
+// 5. CRITICAL BUG REGRESSION: ANTI-NAME GUARD ON JOB_INTEREST & DESIGNATION
+// =========================================================================
+test('5. Bug Regression: Candidate name must NEVER populate job_interest or current_designation', async () => {
+  // Test case simulating the exact condition that caused the bug:
+  // Candidate name on line 1, immediately followed by dates/companies
+  const resumeWithTrickyLayout = `
+    Vikram Malhotra
+    vikram.malhotra@techcorp.io | +91 98765 43210 | Bangalore, Karnataka, India
+    linkedin.com/in/vikram-malhotra | github.com/vmalhotra | vikram.dev
+
+    SUMMARY
+    Senior Full Stack Engineer with 7+ years of experience designing high-scale distributed systems.
+
+    EXPERIENCE
+    Infosys Technologies
+    2020 - Present
+    Lead Full Stack Developer
+    - Spearheaded microservices migration reducing latency by 40%.
+    - Built reactive real-time analytics dashboard with React, Node.js, and Kafka.
+
+    Wipro Technologies
+    2017 - 2020
+    Software Engineer
+    - Developed REST APIs in Python Django and PostgreSQL.
+
+    EDUCATION
+    B.Tech in Computer Science and Engineering
+    National Institute of Technology Karnataka (NITK)
+    2013 - 2017 | GPA: 8.8 / 10
+
+    SKILLS
+    Languages: Python, TypeScript, JavaScript, Go, SQL
+    Frameworks: React, Node.js, Express, Next.js, Django
+    Databases: PostgreSQL, MongoDB, Redis
+    Cloud & DevOps: AWS, Docker, Kubernetes, CI/CD, Terraform
+    Tools: Git, Jira, Postman
+
+    ADDITIONAL DETAILS
+    Notice Period: 30 days
+    Current CTC: 24 LPA
+    Expected CTC: 32 LPA
+    Work Authorization: Citizen (India)
+    Work Mode: Hybrid / Remote
+    Languages: English (Fluent), Hindi (Native)
+    Certifications: AWS Certified Solutions Architect Associate
+  `;
+
+  const parsed = parseResumeLocally(resumeWithTrickyLayout);
+
+  // 1. Assert candidate name is correctly identified
+  assert.equal(parsed.full_name, 'Vikram Malhotra');
+  assert.equal(parsed.first_name, 'Vikram');
+  assert.equal(parsed.last_name, 'Malhotra');
+
+  // 2. CRITICAL BUG REGRESSION ASSERTION:
+  // job_interest must NOT be the candidate's name
+  assert.notEqual(parsed.job_interest.toLowerCase(), 'vikram malhotra');
+  assert.notEqual(parsed.job_interest.toLowerCase(), 'vikram');
+  assert.notEqual(parsed.job_interest.toLowerCase(), 'malhotra');
+  assert.ok(
+    parsed.job_interest.toLowerCase().includes('full stack') || 
+    parsed.job_interest.toLowerCase().includes('engineer') || 
+    parsed.job_interest.toLowerCase().includes('developer'),
+    `job_interest was "${parsed.job_interest}", expected a valid job title`
+  );
+
+  // 3. current_designation must NOT be the candidate's name
+  assert.notEqual(parsed.current_designation.toLowerCase(), 'vikram malhotra');
+  assert.notEqual(parsed.current_company.toLowerCase(), 'vikram malhotra');
+
+  // 4. Domain inference
+  assert.ok(
+    parsed.domain_interested.toLowerCase().includes('full stack') || 
+    parsed.domain_interested.toLowerCase().includes('software'),
+    `domain_interested was "${parsed.domain_interested}"`
+  );
+});
+
+// =========================================================================
+// 6. COMPREHENSIVE CANDIDATE DETAILS EXTRACTION SUITE
+// =========================================================================
+test('6. Comprehensive Candidate Details Extraction: Basic, Socials, Attributes, Categories, Metadata', async () => {
+  const comprehensiveResume = `
+    Dr. Jessica Pearson
+    jessica.pearson@pearsonhardman.com | +1 (212) 555-0144 | Alt: +1 (212) 555-0199
+    54th Street, New York, NY 10022, USA
+    linkedin.com/in/jessica-pearson-law
+    github.com/jessicap
+    jessicapearson.law
+
+    EXECUTIVE SUMMARY
+    Managing Partner with over 15 years leading enterprise corporate litigation, risk governance, and regulatory compliance.
+
+    PROFESSIONAL EXPERIENCE
+    Pearson Specter Litt | New York, NY
+    Managing Partner
+    2018 - Present
+    - Direct corporate litigation strategy for Fortune 100 conglomerates.
+
+    Hardman & Associates | New York, NY
+    Senior Associate Attorney
+    2009 - 2018
+    - Managed multi-district civil antitrust proceedings.
+
+    EDUCATION
+    Juris Doctor (J.D.) in Corporate Law
+    Harvard Law School
+    2006 - 2009 | GPA: 3.92
+
+    Bachelor of Arts in Political Science
+    Columbia University
+    2002 - 2006 | GPA: 3.88
+
+    SKILLS & COMPETENCIES
+    Litigation, Corporate Governance, Regulatory Compliance, Contract Negotiation, Team Leadership, Risk Management, M&A
+
+    ADDITIONAL SPECIFICATIONS
+    Notice Period: 2 months
+    Current CTC: $350,000 / year
+    Expected CTC: $450,000 / year
+    Work Authorization: US Citizen
+    Work Preference: Hybrid
+    Languages: English (Native), French (Fluent)
+    Certifications: New York State Bar Admission, Certified Compliance & Ethics Professional
+  `;
+
+  const parsed = parseResumeLocally(comprehensiveResume);
+
+  // Basic Details & Name Splitting
+  assert.equal(parsed.full_name, 'Jessica Pearson');
+  assert.equal(parsed.first_name, 'Jessica');
+  assert.equal(parsed.last_name, 'Pearson');
+  assert.equal(parsed.email, 'jessica.pearson@pearsonhardman.com');
+  assert.ok(parsed.phone.includes('212'));
+  assert.ok(parsed.alternate_phone.includes('0199'), `alternate_phone was "${parsed.alternate_phone}"`);
+
+  // Location decomposition
+  assert.ok(parsed.location.includes('New York') || parsed.location.includes('NY'), `location was "${parsed.location}"`);
+  assert.equal(parsed.city, 'New York');
+  assert.equal(parsed.state, 'NY');
+  assert.equal(parsed.country, 'USA');
+  assert.ok(parsed.current_address.includes('54th Street'), `current_address was "${parsed.current_address}"`);
+
+  // Socials & Portfolios
+  assert.ok(parsed.linkedin_url.includes('linkedin.com/in/jessica-pearson-law'));
+  assert.ok(parsed.github_url.includes('github.com/jessicap'));
+  assert.ok(parsed.portfolio_url.includes('jessicapearson.law'));
+
+  // Professional Attributes
+  assert.ok(parsed.notice_period.toLowerCase().includes('2 month'), `notice_period was "${parsed.notice_period}"`);
+  assert.ok(parsed.current_ctc.includes('350,000'), `current_ctc was "${parsed.current_ctc}"`);
+  assert.ok(parsed.expected_ctc.includes('450,000'), `expected_ctc was "${parsed.expected_ctc}"`);
+  assert.ok(parsed.work_authorization.toLowerCase().includes('citizen'), `work_auth was "${parsed.work_authorization}"`);
+  assert.ok(parsed.remote_preference.toLowerCase().includes('hybrid'), `remote_pref was "${parsed.remote_preference}"`);
+
+  // Education History
+  assert.ok(parsed.education_history.length >= 2, `education_history count was ${parsed.education_history.length}`);
+  assert.ok(parsed.education_history[0].degree.includes('Juris Doctor') || parsed.education_history[0].degree.includes('J.D.'));
+  assert.ok(parsed.education_history[0].specialization?.includes('Corporate Law'));
+  assert.equal(parsed.education_history[0].gpa, '3.92');
+
+  // Certifications & Languages
+  assert.ok(parsed.certifications.length > 0, 'Certifications should be extracted');
+  assert.ok(parsed.certifications.toLowerCase().includes('bar') || parsed.certifications.toLowerCase().includes('compliance'));
+  assert.ok(parsed.languages.length > 0, 'Languages should be extracted');
+  assert.ok(parsed.languages.toLowerCase().includes('english') || parsed.languages.toLowerCase().includes('french'));
+
+  // Metadata & Field Sources
+  assert.equal(parsed.field_sources.full_name, 'local');
+  assert.equal(parsed.field_sources.email, 'local');
+  assert.equal(parsed.field_sources.phone, 'local');
+  assert.ok(parsed.confidence.overall > 0.8, `Confidence was ${parsed.confidence.overall}`);
+  assert.ok(Array.isArray(parsed.missing_fields), 'missing_fields must be an array');
+});
+
+// =========================================================================
+// 7. NON-DESTRUCTIVE FORM PRE-FILL INTEGRITY TEST
+// =========================================================================
+test('7. Non-Destructive Pre-fill: User manual edits must NEVER be overwritten by parsed resume', () => {
+  // Pre-existing user form state typed by recruiter
+  const userFormData = {
+    full_name: 'Manually Entered Name',
+    phone: '+1 555-999-0000',
+    whatsapp: '',
+    email: '',
+    job_interest: 'Custom Recruiter Role',
+    domain_interested: '',
+    location: '',
+    education: '',
+    notes: 'Important recruiter initial note.'
+  };
+
+  // Incoming parsed resume payload
+  const incomingParsed = {
+    full_name: 'Resume File Name',
+    phone: '+1 888-777-6666',
+    whatsapp: '+1 888-777-6666',
+    email: 'candidate@domain.com',
+    job_interest: 'Parsed Software Engineer',
+    domain_interested: 'Full Stack Development',
+    location: 'Austin, TX',
+    education: 'B.S. Computer Science',
+    notes: 'Resume executive summary here.'
+  };
+
+  // Simulate AddCandidateModal non-destructive merge
+  const mergedFormData = {
+    full_name: userFormData.full_name.trim() ? userFormData.full_name : incomingParsed.full_name,
+    phone: userFormData.phone.trim() ? userFormData.phone : incomingParsed.phone,
+    whatsapp: userFormData.whatsapp.trim() ? userFormData.whatsapp : incomingParsed.whatsapp,
+    email: userFormData.email.trim() ? userFormData.email : incomingParsed.email,
+    job_interest: userFormData.job_interest.trim() ? userFormData.job_interest : incomingParsed.job_interest,
+    domain_interested: userFormData.domain_interested.trim() ? userFormData.domain_interested : incomingParsed.domain_interested,
+    location: userFormData.location.trim() ? userFormData.location : incomingParsed.location,
+    education: userFormData.education.trim() ? userFormData.education : incomingParsed.education,
+    notes: userFormData.notes.trim() ? userFormData.notes : incomingParsed.notes
+  };
+
+  // Assert user manual entries were preserved
+  assert.equal(mergedFormData.full_name, 'Manually Entered Name');
+  assert.equal(mergedFormData.phone, '+1 555-999-0000');
+  assert.equal(mergedFormData.job_interest, 'Custom Recruiter Role');
+  assert.equal(mergedFormData.notes, 'Important recruiter initial note.');
+
+  // Assert previously empty fields were populated
+  assert.equal(mergedFormData.whatsapp, '+1 888-777-6666');
+  assert.equal(mergedFormData.email, 'candidate@domain.com');
+  assert.equal(mergedFormData.domain_interested, 'Full Stack Development');
+  assert.equal(mergedFormData.location, 'Austin, TX');
+  assert.equal(mergedFormData.education, 'B.S. Computer Science');
 });

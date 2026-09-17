@@ -25,6 +25,7 @@ import {
   User, 
   ProxyAvailability 
 } from '../../types';
+import { InterviewCompletionModal } from '../../components/InterviewCompletionModal';
 import { 
   Calendar, 
   Search, 
@@ -1095,6 +1096,8 @@ export const InterviewSupportDashboard: React.FC = () => {
           onClose={() => setResultUpdateConfig(null)}
           round={resultUpdateConfig.round}
           request={resultUpdateConfig.request}
+          candidates={candidates}
+          team={team}
           onSuccess={() => {
             setResultUpdateConfig(null);
             showToast('Result updated successfully!', 'success');
@@ -1392,14 +1395,29 @@ const ResultUpdateModal: React.FC<{
   onClose: () => void;
   round: InterviewRound;
   request: InterviewSupportRequest;
+  candidates?: Candidate[];
+  team?: User[];
   onSuccess: () => void;
-}> = ({ onClose, round, request, onSuccess }) => {
+}> = ({ onClose, round, request, candidates = [], team = [], onSuccess }) => {
   const { user } = useAuth();
   const [result, setResult] = useState<InterviewRound['result']>('pending');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
+
+  const matchedCandidate = useMemo(() => {
+    return candidates.find(c => String(c.id) === String(request.candidate_id)) || null;
+  }, [candidates, request.candidate_id]);
 
   const handleUpdate = async () => {
     if (result === 'pending' || !user) return;
+
+    if (result === 'offer') {
+      if (matchedCandidate) {
+        setIsCompletionModalOpen(true);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       // 1. Update Round Result
@@ -1412,18 +1430,15 @@ const ResultUpdateModal: React.FC<{
 
       // 3. Update Request status based on result
       let newStatus = request.overall_status;
-      if (result === 'offer') newStatus = 'placed';
-      else if (result === 'rejected') newStatus = 'rejected';
+      if (result === 'rejected') newStatus = 'rejected';
+      else if (result === 'next_round') newStatus = 'next_round';
       
       await updateInterviewSupportRequest(request.id, {
         overall_status: newStatus
       });
 
-      // 4. Update Candidate Pipeline Stage
-      if (result === 'offer') {
-        await updateCandidate(request.candidate_id, { current_stage: 'offer' });
-      } else if (result === 'rejected' && request.overall_status !== 'placed') {
-        // Only move back if they haven't already been placed elsewhere (though unlikely in current flow)
+      // 4. Update Candidate Pipeline Stage if rejected
+      if (result === 'rejected' && request.overall_status !== 'placed') {
         await updateCandidate(request.candidate_id, { current_stage: 'application_tracking' });
       }
 
@@ -1445,72 +1460,109 @@ const ResultUpdateModal: React.FC<{
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 40 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-bg-secondary w-full max-w-md rounded-[48px] shadow-2xl overflow-hidden border border-border-primary"
-      >
-        <div className="p-10">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <span className="text-[10px] font-black text-accent-green uppercase tracking-[0.3em]">Decision Console</span>
-              <h2 className="text-3xl font-black text-text-primary tracking-tight mt-1">Company Result</h2>
-              <p className="text-xs font-bold text-text-muted mt-2">Log the final result received from the client company.</p>
-            </div>
-            <button onClick={onClose} className="p-3 hover:bg-bg-tertiary rounded-2xl transition-colors">
-              <X className="w-6 h-6 text-text-muted" />
-            </button>
-          </div>
+  const handleCompletionSuccess = async () => {
+    try {
+      await updateInterviewRound(round.id, { result: 'offer' });
+      await logInterviewActivity(round.id, 'RESULT_FINALIZED', { result: 'offer', clearance: 'pending_compliance_approval' }, user?.id as string || '');
+      await updateInterviewSupportRequest(request.id, { overall_status: 'completed' });
+    } catch (err) {
+      console.error('Error updating round after interview completion:', err);
+    }
+    setIsCompletionModalOpen(false);
+    onSuccess();
+  };
 
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <label className="text-[10px] font-black text-text-muted uppercase tracking-widest px-1 text-center block">Select Company Verdict</label>
-              <div className="grid grid-cols-1 gap-3">
-                {[
-                  { id: 'pending', label: 'Pending Result', color: 'text-text-muted', bg: 'bg-bg-tertiary', border: 'border-border-primary' },
-                  { id: 'next_round', label: 'Next Round', color: 'text-accent-blue', bg: 'bg-accent-blue/10', border: 'border-accent-blue/30' },
-                  { id: 'offer', label: 'Offer Received', color: 'text-accent-green', bg: 'bg-accent-green/10', border: 'border-accent-green/30' },
-                  { id: 'rejected', label: 'Candidate Rejected', color: 'text-accent-red', bg: 'bg-accent-red/10', border: 'border-accent-red/30' }
-                ].map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setResult(item.id as any)}
-                    className={cn(
-                      "w-full py-5 rounded-3xl border font-black uppercase tracking-widest transition-all text-center",
-                      result === item.id 
-                        ? cn(item.bg, item.border, item.color, "ring-2 ring-offset-2 ring-offset-bg-secondary")
-                        : "bg-bg-tertiary border-border-primary text-text-muted hover:border-text-muted"
-                    )}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9, y: 40 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="bg-bg-secondary w-full max-w-md rounded-[48px] shadow-2xl overflow-hidden border border-border-primary"
+        >
+          <div className="p-10">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <span className="text-[10px] font-black text-accent-green uppercase tracking-[0.3em]">Decision Console</span>
+                <h2 className="text-3xl font-black text-text-primary tracking-tight mt-1">Company Result</h2>
+                <p className="text-xs font-bold text-text-muted mt-2">Log the final result received from the client company.</p>
+              </div>
+              <button onClick={onClose} className="p-3 hover:bg-bg-tertiary rounded-2xl transition-colors">
+                <X className="w-6 h-6 text-text-muted" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-text-muted uppercase tracking-widest px-1 text-center block">Select Company Verdict</label>
+                <div className="grid grid-cols-1 gap-3">
+                  {[
+                    { id: 'pending', label: 'Pending Result', color: 'text-text-muted', bg: 'bg-bg-tertiary', border: 'border-border-primary' },
+                    { id: 'next_round', label: 'Next Round', color: 'text-accent-blue', bg: 'bg-accent-blue/10', border: 'border-accent-blue/30' },
+                    { id: 'offer', label: 'Offer Received', color: 'text-accent-green', bg: 'bg-accent-green/10', border: 'border-accent-green/30' },
+                    { id: 'rejected', label: 'Candidate Rejected', color: 'text-accent-red', bg: 'bg-accent-red/10', border: 'border-accent-red/30' }
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => setResult(item.id as any)}
+                      className={cn(
+                        "w-full py-5 rounded-3xl border font-black uppercase tracking-widest transition-all text-center",
+                        result === item.id 
+                          ? cn(item.bg, item.border, item.color, "ring-2 ring-offset-2 ring-offset-bg-secondary")
+                          : "bg-bg-tertiary border-border-primary text-text-muted hover:border-text-muted"
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                {result === 'offer' && (
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-600 dark:text-amber-400">
+                    <span className="font-bold">Interview Completion Gate:</span> An Interview Completion Form will open to log the proxy person, feedback, and offer details for Compliance Head approval.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 pt-6">
+                <button 
+                  type="button" 
+                  onClick={onClose}
+                  className="flex-1 py-4 bg-bg-tertiary text-text-primary font-bold rounded-[20px] hover:bg-bg-tertiary/80 transition-all text-sm"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleUpdate}
+                  disabled={result === 'pending' || isSubmitting}
+                  className="flex-1 py-4 bg-accent-green text-white font-bold rounded-[20px] hover:bg-accent-green/90 shadow-xl shadow-accent-green/20 transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                  {result === 'offer' ? 'Complete Form' : 'Save Result'}
+                </button>
               </div>
             </div>
-
-            <div className="flex gap-4 pt-6">
-              <button 
-                type="button" 
-                onClick={onClose}
-                className="flex-1 py-4 bg-bg-tertiary text-text-primary font-bold rounded-[20px] hover:bg-bg-tertiary/80 transition-all text-sm"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleUpdate}
-                disabled={result === 'pending' || isSubmitting}
-                className="flex-1 py-4 bg-accent-green text-white font-bold rounded-[20px] hover:bg-accent-green/90 shadow-xl shadow-accent-green/20 transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                Save Result
-              </button>
-            </div>
           </div>
-        </div>
-      </motion.div>
-    </div>
+        </motion.div>
+      </div>
+
+      {isCompletionModalOpen && matchedCandidate && (
+        <InterviewCompletionModal
+          isOpen={isCompletionModalOpen}
+          onClose={() => setIsCompletionModalOpen(false)}
+          candidate={matchedCandidate}
+          teamUsers={team}
+          defaultValues={{
+            company_name: request.interview_company_name || request.company_name,
+            job_title: request.job_title,
+            round_label: round.round_label || 'Final Round',
+            interview_date: round.interview_date || (round.booked_slot_time ? round.booked_slot_time.substring(0, 10) : ''),
+            proxy_user_id: round.proxy_user_id || request.proxy_user_id
+          }}
+          onSuccess={handleCompletionSuccess}
+        />
+      )}
+    </>
   );
 };
 

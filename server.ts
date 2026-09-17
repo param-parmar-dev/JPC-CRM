@@ -663,6 +663,11 @@ app.post('/api/send-email', async (req, res) => {
         const settings = smtpSettings || await getSMTPSettings();
         if (!settings || !settings.host) return res.status(400).json({ error: 'SMTP settings not configured' });
 
+        const toAddresses = Array.isArray(to) ? to.filter(Boolean).join(', ') : to;
+        if (!toAddresses || !toAddresses.trim()) {
+            return res.status(400).json({ error: 'No recipient email address provided' });
+        }
+
         const transporter = nodemailer.createTransport({
             host: settings.host,
             port: Number(settings.port),
@@ -672,7 +677,7 @@ app.post('/api/send-email', async (req, res) => {
         });
         await transporter.sendMail({
             from: `${settings.from_name} <${settings.from_email}>`,
-            to,
+            to: toAddresses,
             subject,
             text,
             html
@@ -681,6 +686,148 @@ app.post('/api/send-email', async (req, res) => {
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
+});
+
+app.post('/api/candidate/notify-offer-approved', async (req, res) => {
+  const { candidate, request, reviewerName } = req.body;
+  try {
+    const settings = await getSMTPSettings();
+    if (!settings || !settings.host) {
+      console.warn('[Offer Email] SMTP settings not configured. Notification skipped.');
+      return res.status(200).json({ success: true, note: 'SMTP not configured' });
+    }
+
+    const recipients = (settings.offer_notification_emails && Array.isArray(settings.offer_notification_emails))
+      ? settings.offer_notification_emails.filter(Boolean)
+      : [];
+
+    if (recipients.length === 0) {
+      console.warn('[Offer Email] No offer_notification_emails configured in Admin Dashboard.');
+      return res.status(200).json({ success: true, note: 'No notification recipients configured' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: settings.host,
+      port: Number(settings.port),
+      secure: !!settings.secure,
+      auth: { user: settings.user, pass: settings.pass },
+      tls: { rejectUnauthorized: false }
+    });
+
+    const candidateName = candidate?.full_name || 'Candidate';
+    const candidateId = candidate?.id || '';
+    const companyName = request?.interview_details?.company_name || 'Client Company';
+    const subject = `[Offer Approved] ${candidateName} moved to Offer Stage (${companyName})`;
+    
+    const textContent = `
+Candidate Offer Approval Notification
+--------------------------------------
+Candidate: ${candidateName} (${candidateId})
+Phone: ${candidate?.phone || 'N/A'} | Email: ${candidate?.email || 'N/A'}
+Stage: Moved to Offer
+Approved By: ${reviewerName || 'Compliance Head'}
+Approved At: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} EST
+
+Interview Details:
+- Company / Client: ${companyName}
+- Job Title / Role: ${request?.interview_details?.job_title || 'N/A'}
+- Interview Round: ${request?.interview_details?.round_label || 'N/A'}
+- Interview Date: ${request?.interview_details?.interview_date || 'N/A'} ${request?.interview_details?.interview_time || ''}
+- Mode: ${request?.interview_details?.interview_mode || 'N/A'}
+- Offered Package: ${request?.interview_details?.offered_package || 'N/A'}
+- Expected Joining: ${request?.interview_details?.expected_joining_date || 'N/A'}
+- Work Location: ${request?.interview_details?.offered_location || 'N/A'}
+
+Proxy Support Information:
+- Proxy Person: ${request?.proxy_person_name || 'None / Not Applicable'}
+- Proxy Attended: ${request?.proxy_attended ? String(request.proxy_attended).toUpperCase() : 'N/A'}
+
+Interview Feedback & Remarks:
+${request?.feedback_and_remarks || 'N/A'}
+
+Questions Asked:
+${request?.questions_asked || 'N/A'}
+
+Compliance Remarks:
+${request?.compliance_remarks || 'Approved for Offer stage.'}
+    `.trim();
+
+    const htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; color: #1e293b;">
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; color: white;">
+          <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.1em; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 9999px;">Compliance Approved</span>
+          <h1 style="margin: 12px 0 4px 0; font-size: 22px; font-weight: 800;">Candidate Moved to Offer Stage</h1>
+          <p style="margin: 0; font-size: 14px; opacity: 0.9;">Compliance Head has approved the interview completion report for <strong>${candidateName}</strong>.</p>
+        </div>
+        
+        <div style="padding: 24px; line-height: 1.6;">
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b; width: 35%;">Candidate Name:</td>
+              <td style="padding: 8px 0; font-size: 14px; font-weight: bold; color: #0f172a;">${candidateName} (${candidateId})</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Contact:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;">${candidate?.phone || 'N/A'} &bull; ${candidate?.email || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Hiring Company:</td>
+              <td style="padding: 8px 0; font-size: 14px; font-weight: bold; color: #0f172a;">${companyName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Job Title / Role:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;">${request?.interview_details?.job_title || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Offered Package:</td>
+              <td style="padding: 8px 0; font-size: 14px; font-weight: bold; color: #10b981;">${request?.interview_details?.offered_package || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Work Location / Joining:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;">${request?.interview_details?.offered_location || 'N/A'} | Joining: ${request?.interview_details?.expected_joining_date || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Proxy Person:</td>
+              <td style="padding: 8px 0; font-size: 13px; font-weight: bold; color: #0f172a;">${request?.proxy_person_name || 'None / Not Applicable'} (Attended: ${request?.proxy_attended ? String(request.proxy_attended).toUpperCase() : 'N/A'})</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Approved By:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;"><strong>${reviewerName || 'Compliance Head'}</strong></td>
+            </tr>
+          </table>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Interview Feedback & Remarks</h4>
+            <p style="margin: 0; font-size: 13px; color: #1e293b; white-space: pre-line;">${request?.feedback_and_remarks || 'No specific remarks entered.'}</p>
+          </div>
+
+          ${request?.questions_asked ? `
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Questions Asked in Interview</h4>
+            <p style="margin: 0; font-size: 13px; color: #1e293b; white-space: pre-line;">${request.questions_asked}</p>
+          </div>` : ''}
+
+          <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+            This is an automated notification sent via Auriic CRM SMTP System.
+          </div>
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `${settings.from_name || 'Auriic CRM'} <${settings.from_email}>`,
+      to: recipients.join(', '),
+      subject,
+      text: textContent,
+      html: htmlContent
+    });
+
+    console.log(`[Offer Email] Successfully sent notification to ${recipients.length} recipients: ${recipients.join(', ')}`);
+    res.json({ success: true, recipientsCount: recipients.length });
+  } catch (error: any) {
+    console.error('[Offer Email Error]:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ==========================================
@@ -2057,7 +2204,19 @@ const extractServerTextFromDOCX = async (buffer: Buffer): Promise<DocumentExtrac
 
 // Smart merge preserving high-confidence local fields and guarding against Gemini hallucinations
 const mergeCandidateData = (local: any, gemini: any, rawDocText: string) => {
-  if (!local) return gemini;
+  if (!local) {
+    const field_sources: Record<string, string> = {};
+    for (const key of Object.keys(gemini || {})) {
+      if (gemini[key]) field_sources[key] = 'gemini';
+    }
+    return {
+      ...gemini,
+      field_sources,
+      missing_fields: [],
+      warnings: ['Parsed via Gemini API fallback'],
+      parser_used: 'gemini'
+    };
+  }
 
   // Contact info: preserve local if confidence is high
   const full_name = (local.confidence?.name >= 0.8 && local.full_name) ? local.full_name : (gemini.full_name || local.full_name || '');
@@ -2068,7 +2227,15 @@ const mergeCandidateData = (local: any, gemini: any, rawDocText: string) => {
   const current_company = local.current_company || gemini.current_company || '';
   const current_designation = local.current_designation || gemini.current_designation || '';
   const experience_years = local.experience_years || gemini.experience_years || '';
-  const job_interest = local.job_interest || gemini.job_interest || current_designation;
+
+  // Job interest: NEVER allow candidate name
+  let job_interest = local.job_interest || gemini.job_interest || current_designation || '';
+  if (job_interest && full_name && (
+    job_interest.trim().toLowerCase() === full_name.trim().toLowerCase() ||
+    job_interest.toLowerCase().replace(/^(?:mr\.|ms\.|mrs\.|dr\.|prof\.|er\.)\s+/i, '').trim() === full_name.toLowerCase().replace(/^(?:mr\.|ms\.|mrs\.|dr\.|prof\.|er\.)\s+/i, '').trim()
+  )) {
+    job_interest = current_designation && current_designation !== full_name ? current_designation : '';
+  }
 
   // Education: preserve local if detected
   const degree = local.degree || gemini.degree || '';
@@ -2091,29 +2258,64 @@ const mergeCandidateData = (local: any, gemini: any, rawDocText: string) => {
     }
   }
 
+  // Build field sources
+  const field_sources: Record<string, string> = { ...(local.field_sources || {}) };
+  if (!local.full_name && gemini.full_name) field_sources.full_name = 'gemini';
+  if (!local.email && gemini.email) field_sources.email = 'gemini';
+  if (!local.phone && gemini.phone) field_sources.phone = 'gemini';
+  if (!local.job_interest && gemini.job_interest) field_sources.job_interest = 'gemini';
+  if (!local.current_company && gemini.current_company) field_sources.current_company = 'gemini';
+  if (!local.current_designation && gemini.current_designation) field_sources.current_designation = 'gemini';
+  if (!local.degree && gemini.degree) field_sources.degree = 'gemini';
+  if (!local.university && gemini.university) field_sources.university = 'gemini';
+  if (!local.graduation_year && gemini.graduation_year) field_sources.graduation_year = 'gemini';
+
   return {
     full_name,
+    first_name: local.first_name || gemini.first_name || '',
+    last_name: local.last_name || gemini.last_name || '',
     phone,
+    whatsapp: local.whatsapp || gemini.whatsapp || phone,
+    alternate_phone: local.alternate_phone || gemini.alternate_phone || '',
     email,
     job_interest,
+    domain_interested: local.domain_interested || gemini.domain_interested || '',
     location: local.location || gemini.location || '',
+    city: local.city || gemini.city || '',
+    state: local.state || gemini.state || '',
+    country: local.country || gemini.country || '',
+    current_address: local.current_address || gemini.current_address || '',
     education,
     degree,
     university,
+    specialization: local.specialization || gemini.specialization || '',
     graduation_year,
+    gpa: local.gpa || gemini.gpa || '',
     experience_years,
     current_company,
     current_designation,
     skills: Array.from(mergedSkillsSet).join(', '),
     linkedin_url: local.linkedin_url || gemini.linkedin_url || '',
+    github_url: local.github_url || gemini.github_url || '',
+    portfolio_url: local.portfolio_url || gemini.portfolio_url || '',
+    website_url: local.website_url || gemini.website_url || '',
+    notice_period: local.notice_period || gemini.notice_period || '',
+    current_ctc: local.current_ctc || gemini.current_ctc || '',
+    expected_ctc: local.expected_ctc || gemini.expected_ctc || '',
+    work_authorization: local.work_authorization || gemini.work_authorization || '',
+    remote_preference: local.remote_preference || gemini.remote_preference || '',
     notes: gemini.notes || local.notes || '',
-    categorized_skills: local.categorized_skills,
+    categorized_skills: local.categorized_skills || {},
     certifications: local.certifications || gemini.certifications || '',
     languages: local.languages || gemini.languages || '',
     summary: gemini.summary || local.summary || '',
-    experience: local.experience || [],
-    education_history: local.education_history || [],
+    experience: local.experience && local.experience.length > 0 ? local.experience : (gemini.experience || []),
+    education_history: local.education_history && local.education_history.length > 0 ? local.education_history : (gemini.education_history || []),
     confidence: local.confidence,
+    field_sources,
+    missing_fields: local.missing_fields || [],
+    warnings: local.warnings || [],
+    raw_text: local.raw_text,
     parser_used: 'gemini_merged'
   };
 };
@@ -2197,6 +2399,9 @@ app.post('/api/resume/parse', async (req, res) => {
       return res.json({
         candidate: localCandidate,
         confidence: localCandidate.confidence,
+        field_sources: localCandidate.field_sources,
+        missing_fields: localCandidate.missing_fields,
+        warnings: localCandidate.warnings,
         parser_used: 'local_hybrid'
       });
     }
@@ -2226,6 +2431,9 @@ app.post('/api/resume/parse', async (req, res) => {
       return res.json({
         candidate: localCandidate,
         confidence: localCandidate?.confidence,
+        field_sources: localCandidate?.field_sources,
+        missing_fields: localCandidate?.missing_fields,
+        warnings: localCandidate?.warnings,
         parser_used: 'local_hybrid',
         warning: 'Parsed with local engine (Gemini API key not configured)'
       });
@@ -2258,12 +2466,19 @@ app.post('/api/resume/parse', async (req, res) => {
       parts.push({ text: `Extract candidate information from this text:\n\n${rawText}` });
     } else {
       if (localCandidate) {
-        return res.json({ candidate: localCandidate, parser_used: 'local_hybrid' });
+        return res.json({
+          candidate: localCandidate,
+          confidence: localCandidate.confidence,
+          field_sources: localCandidate.field_sources,
+          missing_fields: localCandidate.missing_fields,
+          warnings: localCandidate.warnings,
+          parser_used: 'local_hybrid'
+        });
       }
       return res.status(400).json({ error: 'No resume text or valid document provided for parsing.' });
     }
 
-    parts.push({ text: "Return the extracted data in JSON format following the schema. If a field is not found or not stated, return an empty string for that field." });
+    parts.push({ text: "Return the extracted data in JSON format following the schema. If a field is not found or not stated, return an empty string for that field. Never put the candidate's name in the job_interest field." });
 
     // Official production Gemini models with 12-second timeout guard
     const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
@@ -2285,19 +2500,41 @@ app.post('/api/resume/parse', async (req, res) => {
               type: Type.OBJECT,
               properties: {
                 full_name: { type: Type.STRING },
+                first_name: { type: Type.STRING },
+                last_name: { type: Type.STRING },
                 phone: { type: Type.STRING },
                 email: { type: Type.STRING },
+                whatsapp: { type: Type.STRING },
+                alternate_phone: { type: Type.STRING },
                 job_interest: { type: Type.STRING },
+                domain_interested: { type: Type.STRING },
                 location: { type: Type.STRING },
+                city: { type: Type.STRING },
+                state: { type: Type.STRING },
+                country: { type: Type.STRING },
+                current_address: { type: Type.STRING },
                 education: { type: Type.STRING },
                 degree: { type: Type.STRING },
                 university: { type: Type.STRING },
+                specialization: { type: Type.STRING },
                 graduation_year: { type: Type.STRING },
+                gpa: { type: Type.STRING },
                 experience_years: { type: Type.STRING },
                 current_company: { type: Type.STRING },
                 current_designation: { type: Type.STRING },
                 skills: { type: Type.STRING },
                 linkedin_url: { type: Type.STRING },
+                github_url: { type: Type.STRING },
+                portfolio_url: { type: Type.STRING },
+                website_url: { type: Type.STRING },
+                notice_period: { type: Type.STRING },
+                current_ctc: { type: Type.STRING },
+                expected_ctc: { type: Type.STRING },
+                work_authorization: { type: Type.STRING },
+                remote_preference: { type: Type.STRING },
+                certifications: { type: Type.STRING },
+                languages: { type: Type.STRING },
+                summary: { type: Type.STRING },
                 notes: { type: Type.STRING },
               }
             },
@@ -2320,7 +2557,14 @@ app.post('/api/resume/parse', async (req, res) => {
 
     if (geminiResult) {
       const merged = mergeCandidateData(localCandidate, geminiResult, rawText);
-      return res.json({ candidate: merged, parser_used: localCandidate ? 'gemini_merged' : 'gemini' });
+      return res.json({
+        candidate: merged,
+        confidence: merged.confidence,
+        field_sources: merged.field_sources,
+        missing_fields: merged.missing_fields,
+        warnings: merged.warnings,
+        parser_used: localCandidate ? 'gemini_merged' : 'gemini'
+      });
     }
 
     // If all Gemini calls failed, safely return local candidate
@@ -2329,6 +2573,9 @@ app.post('/api/resume/parse', async (req, res) => {
       return res.json({
         candidate: localCandidate,
         confidence: localCandidate.confidence,
+        field_sources: localCandidate.field_sources,
+        missing_fields: localCandidate.missing_fields,
+        warnings: localCandidate.warnings,
         parser_used: 'local_hybrid',
         warning: lastError?.message
       });

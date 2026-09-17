@@ -13,14 +13,25 @@ if (typeof window !== 'undefined') {
 
 export interface ParsedCandidate {
   full_name: string;
+  first_name?: string;
+  last_name?: string;
   phone: string;
+  whatsapp?: string;
+  alternate_phone?: string;
   email: string;
   job_interest: string;
+  domain_interested?: string;
   location: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  current_address?: string;
   education: string;
   degree: string;
   university: string;
+  specialization?: string;
   graduation_year: string;
+  gpa?: string;
   experience_years: string;
   current_company: string;
   current_designation: string;
@@ -28,11 +39,24 @@ export interface ParsedCandidate {
   linkedin_url: string;
   notes: string;
   github_url?: string;
+  portfolio_url?: string;
+  website_url?: string;
+  notice_period?: string;
+  current_ctc?: string;
+  expected_ctc?: string;
+  work_authorization?: string;
+  remote_preference?: string;
   certifications?: string;
   languages?: string;
   summary?: string;
   categorized_skills?: Record<string, string[]>;
+  experience?: any[];
+  education_history?: any[];
   confidence?: any;
+  field_sources?: Record<string, string>;
+  missing_fields?: string[];
+  warnings?: string[];
+  raw_text?: string;
   parser_used?: 'local_hybrid' | 'gemini' | 'gemini_merged' | 'heuristic';
 }
 

@@ -38,7 +38,8 @@ import {
   FeatureAnnouncement,
   ResumeSubstitutionRequest,
   LeadRoundRobinConfig,
-  LeadRoundRobinAssignment
+  LeadRoundRobinAssignment,
+  InterviewOfferRequest
 } from '../types';
 
 export enum OperationType {
@@ -1404,6 +1405,42 @@ export const processUnassignedLeadsBacklog = async (): Promise<{ success: boolea
     console.error('Failed to trigger backlog processing:', e);
   }
   return { success: false, processed: 0 };
+};
+
+// Interview Offer Request Helpers
+export const createInterviewOfferRequest = async (request: InterviewOfferRequest): Promise<void> => {
+  try {
+    await setDoc(doc(db, 'jpc_interview_offer_requests', request.id), {
+      ...request,
+      created_at: request.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `jpc_interview_offer_requests/${request.id}`);
+  }
+};
+
+export const updateInterviewOfferRequest = async (id: string, updates: Partial<InterviewOfferRequest>): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'jpc_interview_offer_requests', id), {
+      ...updates,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `jpc_interview_offer_requests/${id}`);
+  }
+};
+
+export const getInterviewOfferRequest = async (id: string): Promise<InterviewOfferRequest | null> => {
+  try {
+    const snap = await getDoc(doc(db, 'jpc_interview_offer_requests', id));
+    if (snap.exists()) {
+      return snap.data() as InterviewOfferRequest;
+    }
+  } catch (error) {
+    console.error('Error fetching interview offer request:', error);
+  }
+  return null;
 };
 
 // Utils

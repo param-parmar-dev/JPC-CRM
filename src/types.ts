@@ -134,6 +134,33 @@ export interface Candidate {
   free_trial_end_date?: string | null;
   free_trial_managed_by?: string | number | null;
   free_trial_updated_at?: string | null;
+  // Extended Resume / Profile Details
+  first_name?: string;
+  last_name?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  current_address?: string;
+  alternate_phone?: string;
+  portfolio_url?: string;
+  github_url?: string;
+  website_url?: string;
+  notice_period?: string;
+  current_ctc?: string;
+  expected_ctc?: string;
+  work_authorization?: string;
+  remote_preference?: string;
+  certifications?: string;
+  languages?: string;
+  summary?: string;
+  categorized_skills?: Record<string, string[]>;
+  experience?: any[];
+  education_history?: any[];
+  parsing_metadata?: any;
+  parser_used?: string;
+  interview_offer_status?: 'pending_approval' | 'approved' | 'rejected' | null;
+  interview_offer_request_id?: string | null;
+  interview_offer_rejection_reason?: string | null;
 }
 
 export interface ResumeVersion {
@@ -429,6 +456,49 @@ export interface SMTPSettings {
   pass: string;
   from_name: string;
   from_email: string;
+  offer_notification_emails?: string[];
+}
+
+export interface InterviewOfferDetails {
+  company_name: string;
+  job_title: string;
+  round_label: string;
+  interview_date: string;
+  interview_time?: string;
+  interview_mode?: string;
+  offered_package?: string;
+  offered_role?: string;
+  offered_location?: string;
+  expected_joining_date?: string;
+  client_name?: string;
+}
+
+export interface InterviewOfferRequest {
+  id: string;
+  candidate_id: string;
+  candidate_name: string;
+  candidate_email?: string;
+  candidate_phone?: string;
+  candidate_package?: string | number;
+  submitted_by: string | number;
+  submitted_by_name: string;
+  proxy_user_id?: string | number | null;
+  proxy_person_name: string;
+  proxy_attended?: 'yes' | 'no' | 'n/a';
+  proxy_support_notes?: string;
+  interview_details: InterviewOfferDetails;
+  feedback_and_remarks: string;
+  questions_asked?: string;
+  technical_remarks?: string;
+  recommendation_status?: 'recommended_for_offer' | 'strong_hire' | 'conditional_offer' | string;
+  additional_interview_notes?: string;
+  status: 'pending_compliance_approval' | 'approved' | 'rejected';
+  compliance_reviewer_id?: string | number | null;
+  compliance_reviewer_name?: string | null;
+  compliance_reviewed_at?: string | null;
+  compliance_remarks?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ResumePrepRequest {

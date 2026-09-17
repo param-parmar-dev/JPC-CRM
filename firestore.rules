@@ -265,6 +265,10 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    match /jpc_interview_offer_requests/{requestId} {
+      allow read, write: if isSignedIn();
+    }
+
     match /jpc_settings/{docId} {
       allow read, write: if isSignedIn();
     }

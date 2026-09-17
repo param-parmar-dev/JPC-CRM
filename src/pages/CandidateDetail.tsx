@@ -45,6 +45,7 @@ import {
   ArrowRight,
   AlertCircle,
   CheckCircle2,
+  XCircle,
   FileText,
   FileEdit,
   Download,
@@ -63,13 +64,17 @@ import {
   Image,
   Trash2,
   Lock,
-  Sparkles
+  Sparkles,
+  Award,
+  Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { canManageFreeTrial } from '../lib/permissions';
+import { canManageFreeTrial, isComplianceHead } from '../lib/permissions';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
-import { Candidate, Payment, Promise as PromiseType, QCChecklistItem, FollowUp, ActivityLog, User, Stage, ResumeChangeRequest, Application, InterviewSupportRequest, TargetReductionRequest, ResumeVersion } from '../types';
+import { Candidate, Payment, Promise as PromiseType, QCChecklistItem, FollowUp, ActivityLog, User, Stage, ResumeChangeRequest, Application, InterviewSupportRequest, TargetReductionRequest, ResumeVersion, InterviewOfferRequest } from '../types';
+import { InterviewCompletionModal } from '../components/InterviewCompletionModal';
+import { ComplianceOfferApprovalModal } from '../components/ComplianceOfferApprovalModal';
 import { query, collection, where, onSnapshot, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db, firebaseConfig } from '../firebase';
 import { initializeApp } from 'firebase/app';
@@ -119,6 +124,9 @@ export const CandidateDetail: React.FC = () => {
   const [interviews, setInterviews] = useState<InterviewSupportRequest[]>([]);
   const [targetRequests, setTargetRequests] = useState<TargetReductionRequest[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [interviewOfferRequests, setInterviewOfferRequests] = useState<InterviewOfferRequest[]>([]);
+  const [isInterviewCompletionModalOpen, setIsInterviewCompletionModalOpen] = useState(false);
+  const [isComplianceApprovalModalOpen, setIsComplianceApprovalModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -183,6 +191,10 @@ export const CandidateDetail: React.FC = () => {
       setInterviews(snap.docs.map(d => d.data() as InterviewSupportRequest));
     });
 
+    const unsubOfferRequests = onSnapshot(query(collection(db, 'jpc_interview_offer_requests'), where('candidate_id', '==', id)), (snap) => {
+      setInterviewOfferRequests(snap.docs.map(d => d.data() as InterviewOfferRequest).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    });
+
     const unsubUsers = subscribeToCollection<User>('jpc_users', (data) => {
       setAllUsers(data);
     });
@@ -198,6 +210,7 @@ export const CandidateDetail: React.FC = () => {
       unsubApps();
       unsubTargetRequests();
       unsubInterviews();
+      unsubOfferRequests();
       unsubUsers();
     };
   }, [isAuthReady, id]);
@@ -249,6 +262,7 @@ export const CandidateDetail: React.FC = () => {
   const resumeUsers = allUsers.filter(u => u.role === 'jpc_resume' && !u.is_on_leave);
   const marketingLeaders = allUsers.filter(u => u.role === 'jpc_marketing' && !u.is_on_leave);
   const marketingUsers = allUsers.filter(u => (u.role === 'jpc_marketing_support' || u.role === 'jpc_marketing') && !u.is_on_leave);
+  const latestOfferRequest = interviewOfferRequests[0] || null;
 
   // Edit states
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
@@ -856,6 +870,16 @@ export const CandidateDetail: React.FC = () => {
   };
 
   const handleMoveToOffer = async () => {
+    if (candidate?.current_stage === 'interviewing') {
+      setIsOfferModalOpen(false);
+      if (candidate.interview_offer_status === 'pending_approval') {
+        setIsComplianceApprovalModalOpen(true);
+      } else {
+        setIsInterviewCompletionModalOpen(true);
+      }
+      return;
+    }
+
     if (!offerDetails) {
       showToast('Please provide offer details', 'error');
       return;
@@ -873,11 +897,15 @@ export const CandidateDetail: React.FC = () => {
   };
 
   const handleStageMove = async (newStage: Stage, isUndo = false) => {
-    // CS now has admin-like access for stage movement as per update
-    // if (!isUndo && user?.role === 'jpc_cs' && !candidate.agreement_url) {
-    //   showToast('Agreement must be uploaded before moving to another step.', 'error');
-    //   return;
-    // }
+    // Intercept move to Offer when in Interviewing stage
+    if (newStage === 'offer' && candidate.current_stage === 'interviewing') {
+      if (candidate.interview_offer_status === 'pending_approval') {
+        setIsComplianceApprovalModalOpen(true);
+        return;
+      }
+      setIsInterviewCompletionModalOpen(true);
+      return;
+    }
 
     try {
       const oldStageLabel = STAGES[candidate.current_stage].label;
@@ -1492,6 +1520,39 @@ export const CandidateDetail: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Interview Completion Modal */}
+      {candidate && (
+        <InterviewCompletionModal
+          isOpen={isInterviewCompletionModalOpen}
+          onClose={() => setIsInterviewCompletionModalOpen(false)}
+          candidate={candidate}
+          teamUsers={allUsers}
+          defaultValues={{
+            company_name: interviews[0]?.interview_company_name || interviews[0]?.company_name || '',
+            job_title: interviews[0]?.job_title || candidate.job_interest || candidate.current_designation || '',
+            round_label: 'Final Round',
+            proxy_user_id: interviews[0]?.proxy_user_id || null,
+            offered_package: candidate.package_name || (candidate.package_amount ? `$${candidate.package_amount}` : '')
+          }}
+          onSuccess={() => {
+            setIsInterviewCompletionModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* Compliance Offer Approval Modal */}
+      {candidate && (
+        <ComplianceOfferApprovalModal
+          isOpen={isComplianceApprovalModalOpen}
+          onClose={() => setIsComplianceApprovalModalOpen(false)}
+          candidate={candidate}
+          request={latestOfferRequest}
+          onSuccess={() => {
+            setIsComplianceApprovalModalOpen(false);
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
         <div className="flex items-center gap-3 sm:gap-4">
@@ -1501,6 +1562,11 @@ export const CandidateDetail: React.FC = () => {
           <div className="min-w-0">
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight truncate">{candidate.full_name}</h1>
+              {candidate.job_interest && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                  {candidate.job_interest}
+                </span>
+              )}
               {candidate.is_free_trial && (
                 <FreeTrialBadge 
                   startDate={candidate.free_trial_start_date}
@@ -1659,6 +1725,80 @@ export const CandidateDetail: React.FC = () => {
         </div>
       )}
 
+      {/* Pending Compliance Approval Banner */}
+      {candidate.current_stage === 'interviewing' && candidate.interview_offer_status === 'pending_approval' && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border-2 border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                  Pending Compliance Head Approval
+                </span>
+              </div>
+              <h4 className="text-sm font-bold text-text-primary mt-1">
+                Interview Completed — Awaiting Offer Clearance
+              </h4>
+              <p className="text-xs text-text-secondary mt-0.5">
+                {latestOfferRequest 
+                  ? `Submitted for ${latestOfferRequest.interview_details?.company_name} by ${latestOfferRequest.submitted_by_name}. Candidate will move to Offer upon Compliance Head approval.`
+                  : 'Interview completion form submitted. Candidate will move to Offer upon Compliance Head approval.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {isComplianceHead(user) ? (
+              <button
+                type="button"
+                onClick={() => setIsComplianceApprovalModalOpen(true)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-accent-blue text-white font-bold text-xs rounded-xl shadow-md hover:bg-accent-blue/90 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" /> Review & Decide
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsComplianceApprovalModalOpen(true)}
+                className="w-full sm:w-auto px-4 py-2.5 bg-bg-tertiary text-text-primary border border-border-primary font-bold text-xs rounded-xl hover:bg-bg-tertiary/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <FileText className="w-4 h-4" /> View Details
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Banner */}
+      {candidate.current_stage === 'interviewing' && candidate.interview_offer_status === 'rejected' && (
+        <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-500 flex items-center justify-center shrink-0">
+              <XCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-500">
+                Interview-to-Offer Request Rejected
+              </span>
+              <h4 className="text-sm font-bold text-text-primary mt-1">
+                Compliance Head rejected the offer transition request
+              </h4>
+              <p className="text-xs text-rose-500 mt-0.5">
+                <strong>Reason:</strong> {candidate.interview_offer_rejection_reason || latestOfferRequest?.compliance_remarks || 'Not approved by Compliance Head.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsInterviewCompletionModalOpen(true)}
+            className="w-full sm:w-auto px-4 py-2.5 bg-accent-blue text-white font-bold text-xs rounded-xl hover:bg-accent-blue/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <FileText className="w-4 h-4" /> Resubmit Interview Form
+          </button>
+        </div>
+      )}
+
       {/* Stage Move Bar */}
       {canMoveStage && (
         <div className="bg-bg-secondary border border-border-primary rounded-2xl p-3.5 sm:p-4 flex flex-col gap-3">
@@ -1685,17 +1825,25 @@ export const CandidateDetail: React.FC = () => {
             
             {TRANSITIONS[candidate.current_stage].map(stageKey => {
               const isDisabled = false; // CS now has admin-like access
+              const isOfferFromInterview = candidate.current_stage === 'interviewing' && stageKey === 'offer';
+              const isPendingApproval = isOfferFromInterview && candidate.interview_offer_status === 'pending_approval';
+
               return (
                 <button
                   key={stageKey}
                   onClick={() => handleStageMove(stageKey as Stage)}
                   disabled={isDisabled}
                   className={cn(
-                    "px-3 sm:px-4 py-2 bg-bg-tertiary border border-border-primary rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer",
-                    isDisabled ? "opacity-50 cursor-not-allowed text-text-muted" : "text-text-primary hover:border-accent-blue hover:text-accent-blue"
+                    "px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer border",
+                    isPendingApproval 
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500 hover:text-white"
+                      : isDisabled 
+                        ? "opacity-50 cursor-not-allowed text-text-muted bg-bg-tertiary border-border-primary" 
+                        : "bg-bg-tertiary border-border-primary text-text-primary hover:border-accent-blue hover:text-accent-blue"
                   )}
                 >
                   {STAGES[stageKey as Stage].icon} {STAGES[stageKey as Stage].label.split('. ')[1] || STAGES[stageKey as Stage].label}
+                  {isPendingApproval && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">Clearance Pending</span>}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               );
@@ -2244,7 +2392,10 @@ export const CandidateDetail: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12">
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Phone / WhatsApp</p>
-                    <p className="text-text-primary font-medium">{candidate.phone} / {candidate.whatsapp || '—'}</p>
+                    <p className="text-text-primary font-medium">
+                      {candidate.phone} / {candidate.whatsapp || '—'}
+                      {candidate.alternate_phone ? <span className="text-xs text-text-secondary block mt-0.5">Alt: {candidate.alternate_phone}</span> : null}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Email Address</p>
@@ -2252,16 +2403,66 @@ export const CandidateDetail: React.FC = () => {
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Location</p>
-                    <p className="text-text-primary font-medium">{candidate.location || '—'}</p>
+                    <p className="text-text-primary font-medium">{candidate.location || [candidate.city, candidate.state, candidate.country].filter(Boolean).join(', ') || '—'}</p>
+                    {candidate.current_address && candidate.current_address !== candidate.location && (
+                      <p className="text-xs text-text-muted truncate">{candidate.current_address}</p>
+                    )}
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">LinkedIn Profile</p>
-                    {candidate.linkedin_url ? (
-                      <a href={candidate.linkedin_url} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline flex items-center gap-1">
-                        View Profile <ExternalLink className="w-3 h-3" />
-                      </a>
-                    ) : <p className="text-text-muted italic">Not provided</p>}
+                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Online Profiles</p>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {candidate.linkedin_url && (
+                        <a href={candidate.linkedin_url} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline flex items-center gap-1">
+                          LinkedIn <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {candidate.github_url && (
+                        <a href={candidate.github_url} target="_blank" rel="noreferrer" className="text-accent-purple hover:underline flex items-center gap-1">
+                          GitHub <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {(candidate.portfolio_url || candidate.website_url) && (
+                        <a href={candidate.portfolio_url || candidate.website_url} target="_blank" rel="noreferrer" className="text-accent-teal hover:underline flex items-center gap-1">
+                          Portfolio <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {!candidate.linkedin_url && !candidate.github_url && !candidate.portfolio_url && !candidate.website_url && (
+                        <p className="text-text-muted italic">Not provided</p>
+                      )}
+                    </div>
                   </div>
+                  {(candidate.notice_period || candidate.work_authorization || candidate.current_ctc || candidate.expected_ctc || candidate.remote_preference) && (
+                    <div className="space-y-1 md:col-span-2 pt-2 border-t border-border-primary/50">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Employment Specifications</p>
+                      <div className="flex flex-wrap gap-2">
+                        {candidate.notice_period && (
+                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-lg text-xs text-text-primary flex items-center gap-1.5">
+                            <Clock className="w-3 h-3 text-accent-blue" /> Notice: <span className="font-semibold">{candidate.notice_period}</span>
+                          </span>
+                        )}
+                        {candidate.work_authorization && (
+                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-lg text-xs text-text-primary flex items-center gap-1.5">
+                            <ShieldCheck className="w-3 h-3 text-emerald-500" /> Work Auth: <span className="font-semibold">{candidate.work_authorization}</span>
+                          </span>
+                        )}
+                        {candidate.remote_preference && (
+                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-lg text-xs text-text-primary flex items-center gap-1.5">
+                            Mode: <span className="font-semibold">{candidate.remote_preference}</span>
+                          </span>
+                        )}
+                        {candidate.current_ctc && (
+                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-lg text-xs text-text-primary flex items-center gap-1.5">
+                            Current CTC: <span className="font-semibold">{candidate.current_ctc}</span>
+                          </span>
+                        )}
+                        {candidate.expected_ctc && (
+                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-lg text-xs text-text-primary flex items-center gap-1.5">
+                            Expected CTC: <span className="font-semibold">{candidate.expected_ctc}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Lead Source</p>
                     <p className="text-text-primary font-medium">{candidate.lead_source}</p>
@@ -2357,6 +2558,26 @@ export const CandidateDetail: React.FC = () => {
                     <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Experience Years</label>
                     <input type="text" value={educationForm.experience_years || ''} onChange={e => setEducationForm({...educationForm, experience_years: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm" />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Current Role / Title</label>
+                    <input type="text" value={educationForm.current_designation || ''} onChange={e => setEducationForm({...educationForm, current_designation: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm" placeholder="e.g. Senior Software Engineer" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Current Company</label>
+                    <input type="text" value={educationForm.current_company || ''} onChange={e => setEducationForm({...educationForm, current_company: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm" placeholder="e.g. Acme Corp" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Target Role / Job Interest</label>
+                    <input type="text" value={educationForm.job_interest || ''} onChange={e => setEducationForm({...educationForm, job_interest: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm" placeholder="e.g. Full Stack Developer" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Certifications</label>
+                    <input type="text" value={educationForm.certifications || ''} onChange={e => setEducationForm({...educationForm, certifications: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm" placeholder="e.g. AWS SAA, PMP, CKA" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Languages</label>
+                    <input type="text" value={educationForm.languages || ''} onChange={e => setEducationForm({...educationForm, languages: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm" placeholder="e.g. English, Spanish, Hindi" />
+                  </div>
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-[10px] font-bold text-text-muted uppercase">Skills</label>
                     <textarea value={educationForm.skills || ''} onChange={e => setEducationForm({...educationForm, skills: e.target.value})} className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm min-h-[80px]" />
@@ -2376,16 +2597,212 @@ export const CandidateDetail: React.FC = () => {
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Experience</p>
                     <p className="text-text-primary font-medium">{candidate.experience_years ? `${candidate.experience_years} Years` : 'Fresher'}</p>
                   </div>
-                  <div className="space-y-1 md:col-span-2">
-                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Skills</p>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {candidate.skills ? candidate.skills.split(',').map(s => (
-                        <span key={s} className="px-2 py-1 bg-bg-tertiary border border-border-primary rounded text-xs text-text-secondary">
-                          {s.trim()}
-                        </span>
-                      )) : <p className="text-text-muted italic text-sm">No skills listed</p>}
-                    </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Current Position</p>
+                    <p className="text-text-primary font-medium">
+                      {candidate.current_designation || '—'} {candidate.current_company && candidate.current_company !== 'N/A' ? `at ${candidate.current_company}` : ''}
+                    </p>
                   </div>
+                  {(candidate.job_interest || candidate.domain_interested) && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Target Role & Domain</p>
+                      <p className="text-text-primary font-medium">
+                        {candidate.job_interest || '—'} {candidate.domain_interested ? `(${candidate.domain_interested})` : ''}
+                      </p>
+                    </div>
+                  )}
+
+                  {candidate.summary && (
+                    <div className="space-y-1 md:col-span-2 bg-bg-tertiary/60 border border-border-primary/60 rounded-xl p-3.5">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-accent-blue" /> Professional Summary
+                      </p>
+                      <p className="text-xs text-text-secondary leading-relaxed">{candidate.summary}</p>
+                    </div>
+                  )}
+
+                  {candidate.categorized_skills && Object.values(candidate.categorized_skills).some(arr => Array.isArray(arr) && arr.length > 0) ? (
+                    <div className="space-y-3 md:col-span-2">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Skills by Category</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {candidate.categorized_skills.languages && candidate.categorized_skills.languages.length > 0 && (
+                          <div className="bg-bg-tertiary/40 border border-border-primary/50 rounded-xl p-3">
+                            <span className="text-[10px] font-bold text-accent-blue uppercase tracking-wider block mb-1.5">Languages</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.categorized_skills.languages.map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded text-xs text-text-secondary">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.categorized_skills.frameworks && candidate.categorized_skills.frameworks.length > 0 && (
+                          <div className="bg-bg-tertiary/40 border border-border-primary/50 rounded-xl p-3">
+                            <span className="text-[10px] font-bold text-accent-teal uppercase tracking-wider block mb-1.5">Frameworks & Libraries</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.categorized_skills.frameworks.map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded text-xs text-text-secondary">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.categorized_skills.databases && candidate.categorized_skills.databases.length > 0 && (
+                          <div className="bg-bg-tertiary/40 border border-border-primary/50 rounded-xl p-3">
+                            <span className="text-[10px] font-bold text-accent-purple uppercase tracking-wider block mb-1.5">Databases & Storage</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.categorized_skills.databases.map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded text-xs text-text-secondary">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.categorized_skills.cloud_devops && candidate.categorized_skills.cloud_devops.length > 0 && (
+                          <div className="bg-bg-tertiary/40 border border-border-primary/50 rounded-xl p-3">
+                            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block mb-1.5">Cloud & DevOps</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.categorized_skills.cloud_devops.map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded text-xs text-text-secondary">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.categorized_skills.tools && candidate.categorized_skills.tools.length > 0 && (
+                          <div className="bg-bg-tertiary/40 border border-border-primary/50 rounded-xl p-3">
+                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1.5">Tools & Systems</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.categorized_skills.tools.map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded text-xs text-text-secondary">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.categorized_skills.soft_skills && candidate.categorized_skills.soft_skills.length > 0 && (
+                          <div className="bg-bg-tertiary/40 border border-border-primary/50 rounded-xl p-3">
+                            <span className="text-[10px] font-bold text-pink-500 uppercase tracking-wider block mb-1.5">Soft Skills</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.categorized_skills.soft_skills.map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded text-xs text-text-secondary">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 md:col-span-2">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Skills</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {candidate.skills ? candidate.skills.split(',').map(s => (
+                          <span key={s} className="px-2 py-1 bg-bg-tertiary border border-border-primary rounded text-xs text-text-secondary">
+                            {s.trim()}
+                          </span>
+                        )) : <p className="text-text-muted italic text-sm">No skills listed</p>}
+                      </div>
+                    </div>
+                  )}
+
+                  {candidate.certifications && (
+                    <div className="space-y-1 md:col-span-2">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-amber-500" /> Certifications
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {candidate.certifications.split(',').map((cert, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg text-xs font-medium">
+                            {cert.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {candidate.languages && (
+                    <div className="space-y-1 md:col-span-2">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-accent-blue" /> Spoken / Natural Languages
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {candidate.languages.split(',').map((lang, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-blue-500/10 text-accent-blue border border-blue-500/20 rounded-lg text-xs font-medium">
+                            {lang.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {candidate.experience && candidate.experience.length > 0 && (
+                    <div className="space-y-3 md:col-span-2 pt-4 border-t border-border-primary/60">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                        <Briefcase className="w-3.5 h-3.5 text-accent-purple" /> Work History Timeline
+                      </p>
+                      <div className="space-y-3">
+                        {candidate.experience.map((exp, idx) => (
+                          <div key={idx} className="bg-bg-tertiary/40 border border-border-primary/60 rounded-xl p-3.5 space-y-1.5">
+                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                              <div>
+                                <span className="font-semibold text-text-primary text-sm">{exp.title}</span>
+                                <span className="text-text-muted text-xs mx-1.5">•</span>
+                                <span className="font-medium text-accent-blue text-sm">{exp.company}</span>
+                                {exp.location && (
+                                  <span className="text-text-muted text-xs ml-1.5">({exp.location})</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {(exp.start_date || exp.end_date) && (
+                                  <span className="text-xs text-text-muted font-mono bg-bg-secondary px-2 py-0.5 rounded border border-border-primary">
+                                    {exp.start_date || '—'} – {exp.is_current ? 'Present' : (exp.end_date || '—')}
+                                  </span>
+                                )}
+                                {exp.is_current && (
+                                  <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                    Current
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {exp.description && (
+                              <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">{exp.description}</p>
+                            )}
+                            {exp.responsibilities && exp.responsibilities.length > 0 && (
+                              <ul className="list-disc list-inside space-y-0.5 text-xs text-text-secondary pl-1">
+                                {exp.responsibilities.slice(0, 3).map((r, rIdx) => (
+                                  <li key={rIdx} className="leading-relaxed truncate">{r}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {candidate.education_history && candidate.education_history.length > 0 && (
+                    <div className="space-y-3 md:col-span-2 pt-4 border-t border-border-primary/60">
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                        <GraduationCap className="w-3.5 h-3.5 text-accent-purple" /> Academic History
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {candidate.education_history.map((edu, idx) => (
+                          <div key={idx} className="bg-bg-tertiary/40 border border-border-primary/60 rounded-xl p-3 space-y-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-semibold text-text-primary text-xs">
+                                {edu.degree} {edu.specialization ? `in ${edu.specialization}` : ''}
+                              </span>
+                              {edu.graduation_year && (
+                                <span className="text-[10px] font-mono bg-bg-secondary px-1.5 py-0.5 rounded border border-border-primary text-text-muted">
+                                  {edu.graduation_year}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-accent-teal font-medium">{edu.institution}</p>
+                            {edu.gpa && (
+                              <p className="text-[11px] text-text-muted">GPA: <span className="font-semibold text-text-secondary">{edu.gpa}</span></p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2829,11 +3246,21 @@ export const CandidateDetail: React.FC = () => {
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setIsOfferModalOpen(true)}
-                  className="w-full py-3 px-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm font-bold text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center justify-between"
+                  onClick={() => {
+                    if (candidate.current_stage === 'interviewing') {
+                      if (candidate.interview_offer_status === 'pending_approval') {
+                        setIsComplianceApprovalModalOpen(true);
+                      } else {
+                        setIsInterviewCompletionModalOpen(true);
+                      }
+                    } else {
+                      setIsOfferModalOpen(true);
+                    }
+                  }}
+                  className="w-full py-3 px-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm font-bold text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center justify-between cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
-                    <Briefcase className="w-4 h-4" /> Offer Received
+                    <Briefcase className="w-4 h-4" /> {candidate.current_stage === 'interviewing' && candidate.interview_offer_status === 'pending_approval' ? 'Offer (Clearance Pending)' : 'Offer Received'}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>

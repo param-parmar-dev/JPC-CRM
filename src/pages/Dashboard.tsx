@@ -7,14 +7,17 @@ import { TimeZoneClocks } from '../components/TimeZoneClocks';
 import { 
   Users, CheckCircle2, Clock, UserX, ArrowRight, LayoutGrid, Phone, Calendar, 
   ArrowUpRight, AlertCircle, ChevronRight, FileEdit, Video, TrendingUp, Check, 
-  ShieldCheck, X, Zap, Image as ImageIcon, FileText, Download, Filter, BarChart as BarChartIcon, DollarSign, Activity, FileCheck
+  ShieldCheck, X, Zap, Image as ImageIcon, FileText, Download, Filter, BarChart as BarChartIcon, DollarSign, Activity, FileCheck,
+  Mail, Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getEasternDate, isEasternDayOngoing } from '../lib/utils';
-import { Candidate, FollowUp, Notification, ResumeChangeRequest, InterviewSupportRequest, Application, TargetReductionRequest, FeatureAnnouncement, User } from '../types';
+import { isComplianceHead } from '../lib/permissions';
+import { Candidate, FollowUp, Notification, ResumeChangeRequest, InterviewSupportRequest, Application, TargetReductionRequest, FeatureAnnouncement, User, InterviewOfferRequest } from '../types';
 import { CandidateSheet } from '../components/CandidateSheet';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { ThoughtsConfigModal, DEFAULT_QUOTES } from '../components/ThoughtsConfigModal';
+import { SMTPConfigModal } from '../components/SMTPConfigModal';
 import { CelebrationBanner } from '../components/CelebrationBanner';
 import { db, firebaseConfig } from '../firebase';
 import { query, collection, where, limit, doc, getDoc } from 'firebase/firestore';
@@ -62,6 +65,8 @@ export const Dashboard: React.FC = () => {
   const [isThoughtsModalOpen, setIsThoughtsModalOpen] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isExporting, setIsExporting] = useState(false);
+  const [offerRequests, setOfferRequests] = useState<InterviewOfferRequest[]>([]);
+  const [isSMTPModalOpen, setIsSMTPModalOpen] = useState(false);
 
   // CRM Leads & Sales Graph Dashboard State Variables
   const [selectedSourceFilter, setSelectedSourceFilter] = useState('all');
@@ -322,6 +327,10 @@ export const Dashboard: React.FC = () => {
       setFeatureAnnouncements(data.filter(a => a.is_active));
     });
 
+    const unsubOfferRequests = subscribeToCollection<InterviewOfferRequest>('jpc_interview_offer_requests', (data) => {
+      setOfferRequests(data);
+    });
+
     return () => {
       unsubCandidates();
       unsubFollowUps();
@@ -332,6 +341,7 @@ export const Dashboard: React.FC = () => {
       unsubApps();
       unsubUsers();
       unsubAnnouncements();
+      unsubOfferRequests();
     };
   }, [isAuthReady, user]);
 
@@ -391,6 +401,13 @@ export const Dashboard: React.FC = () => {
     }
     return [];
   }, [resumeRequests, user]);
+
+  const pendingOfferApprovals = useMemo(() => {
+    if (isComplianceHead(user)) {
+      return offerRequests.filter(r => r.status === 'pending_compliance_approval');
+    }
+    return [];
+  }, [offerRequests, user]);
 
   const activeInterviews = useMemo(() => {
     const activeStatuses = [
@@ -762,6 +779,16 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && (
+            <button
+              onClick={() => setIsSMTPModalOpen(true)}
+              className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-bg-secondary hover:bg-bg-tertiary border border-border-primary rounded-xl flex items-center gap-2 text-xs sm:text-sm font-bold text-text-primary transition-colors shadow-sm"
+              title="Configure SMTP & Offer Notification Emails"
+            >
+              <Mail className="w-4 h-4 text-accent-blue" />
+              <span className="hidden sm:inline">SMTP & Notifications</span>
+            </button>
+          )}
           <div className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-bg-secondary border border-border-primary rounded-xl flex items-center gap-2">
             <span className="w-2 h-2 bg-accent-green rounded-full animate-pulse" />
             <span className="text-xs sm:text-sm font-bold text-text-primary uppercase tracking-wider">System Live</span>
@@ -1121,6 +1148,55 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
 
+          {pendingOfferApprovals.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                  <Briefcase className="w-5 h-5 text-accent-green" />
+                  Offer Approvals
+                </h2>
+                <span className="px-2.5 py-0.5 text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full animate-pulse">
+                  {pendingOfferApprovals.length} Pending
+                </span>
+              </div>
+              <div className="bg-bg-secondary rounded-3xl border border-border-primary overflow-hidden shadow-sm">
+                <div className="divide-y divide-border-primary">
+                  {pendingOfferApprovals.slice(0, 4).map(req => {
+                    const cand = candidates.find(c => c.id === req.candidate_id);
+                    return (
+                      <button 
+                        key={req.id} 
+                        onClick={() => {
+                          if (cand) {
+                            setSelectedCandidate(cand);
+                            setIsSheetOpen(true);
+                          }
+                        }}
+                        className="w-full text-left p-4 flex items-center gap-4 hover:bg-bg-tertiary transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-accent-green/10 flex items-center justify-center text-accent-green group-hover:scale-105 transition-transform shrink-0">
+                          <Briefcase className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-bold text-text-primary truncate">{req.candidate_name}</p>
+                            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded-full shrink-0">
+                              Needs Approval
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-muted truncate mt-0.5">
+                            {req.interview_details?.company_name || 'Interview'} • {req.interview_details?.job_title || 'Role'} • {req.proxy_person_name ? `Proxy: ${req.proxy_person_name}` : 'No proxy'}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-text-muted shrink-0 group-hover:text-accent-blue transition-colors" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {pendingResumeRequests.length > 0 && (
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
@@ -1283,6 +1359,11 @@ export const Dashboard: React.FC = () => {
         onSaved={(newQuotes) => {
           setQuotesList(newQuotes);
         }}
+      />
+
+      <SMTPConfigModal
+        isOpen={isSMTPModalOpen}
+        onClose={() => setIsSMTPModalOpen(false)}
       />
     </div>
   );

@@ -204,4 +204,23 @@ export function canActAsTLForRequest(user: User | null): boolean {
   return user.role === 'jpc_marketing' || isCSHead(user) || isManagementUser(user);
 }
 
+/**
+ * Checks if a user has Compliance Head authority to approve or reject
+ * interview-to-offer transitions.
+ * - Compliance Head (jpc_cs / Care / Faiz)
+ * - Management (administrator, jpc_sysadmin, jpc_manager)
+ */
+export function isComplianceHead(user: User | null): boolean {
+  if (!user) return false;
+  return (
+    user.role === 'jpc_cs' ||
+    user.role === 'administrator' ||
+    user.role === 'jpc_sysadmin' ||
+    user.role === 'jpc_manager' ||
+    user.username === 'care' ||
+    String(user.display_name).toLowerCase().includes('faiz')
+  );
+}
+
+
 

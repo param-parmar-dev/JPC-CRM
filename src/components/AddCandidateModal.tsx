@@ -15,8 +15,26 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Candidate } from '../types';
 import { cn } from '../lib/utils';
-import { parseResume } from '../services/aiService';
-import { FileText, Upload, Loader2, Sparkles, Brain, Search, CheckCircle } from 'lucide-react';
+import { parseResume, ParsedCandidate } from '../services/aiService';
+import { 
+  FileText, 
+  Upload, 
+  Loader2, 
+  Sparkles, 
+  Brain, 
+  Search, 
+  CheckCircle, 
+  CheckCircle2, 
+  Briefcase, 
+  GraduationCap, 
+  Clock, 
+  ShieldCheck, 
+  X, 
+  ExternalLink,
+  Code,
+  Layers,
+  ChevronRight
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AddCandidateModalProps {
@@ -71,11 +89,53 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
     schedule_call_timezone: 'EST (Eastern Time)'
   });
 
-  const [extraData, setExtraData] = useState({
+  const [parsedPreview, setParsedPreview] = useState<ParsedCandidate | null>(null);
+
+  const [extraData, setExtraData] = useState<{
+    first_name?: string;
+    last_name?: string;
+    degree?: string;
+    university?: string;
+    graduation_year?: string;
+    experience_years?: string;
+    current_company?: string;
+    current_designation?: string;
+    skills?: string;
+    linkedin_url?: string;
+    portfolio_url?: string;
+    github_url?: string;
+    website_url?: string;
+    alternate_phone?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    current_address?: string;
+    notice_period?: string;
+    current_ctc?: string;
+    expected_ctc?: string;
+    work_authorization?: string;
+    remote_preference?: string;
+    certifications?: string;
+    languages?: string;
+    summary?: string;
+    categorized_skills?: {
+      languages?: string[];
+      frameworks?: string[];
+      databases?: string[];
+      cloud_devops?: string[];
+      tools?: string[];
+      soft_skills?: string[];
+    };
+    experience?: any[];
+    education_history?: any[];
+    parsing_metadata?: any;
+    parser_used?: string;
+  }>({
     degree: '',
     university: '',
     graduation_year: '',
     experience_years: '',
+    current_company: '',
     current_designation: '',
     skills: '',
     linkedin_url: ''
@@ -125,25 +185,62 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
               });
               const parsed = await parseResume(base64, file.type);
               if (parsed) {
+                // Non-destructive form update: Never overwrite recruiter manual entries
                 setFormData(prev => ({
                   ...prev,
-                  full_name: parsed.full_name || prev.full_name,
-                  phone: parsed.phone || prev.phone,
-                  email: parsed.email || prev.email,
-                  job_interest: parsed.job_interest || prev.job_interest,
-                  location: parsed.location || prev.location,
-                  education: parsed.education || prev.education,
-                  notes: parsed.notes || prev.notes
+                  full_name: prev.full_name.trim() ? prev.full_name : (parsed.full_name || ''),
+                  phone: prev.phone.trim() ? prev.phone : (parsed.phone || ''),
+                  whatsapp: prev.whatsapp.trim() ? prev.whatsapp : (parsed.whatsapp || ''),
+                  email: prev.email.trim() ? prev.email : (parsed.email || ''),
+                  job_interest: prev.job_interest.trim() ? prev.job_interest : (parsed.job_interest || ''),
+                  domain_interested: prev.domain_interested.trim() ? prev.domain_interested : (parsed.domain_interested || ''),
+                  location: prev.location.trim() ? prev.location : (parsed.location || ''),
+                  education: prev.education.trim() ? prev.education : (parsed.education || ''),
+                  notes: prev.notes.trim() ? prev.notes : (parsed.notes || parsed.summary || '')
                 }));
-                setExtraData({
-                  degree: parsed.degree || '',
-                  university: parsed.university || '',
-                  graduation_year: parsed.graduation_year || '',
-                  experience_years: parsed.experience_years || '',
-                  current_designation: parsed.current_designation || '',
-                  skills: parsed.skills || '',
-                  linkedin_url: parsed.linkedin_url || ''
-                });
+
+                setExtraData(prev => ({
+                  first_name: parsed.first_name || prev.first_name || '',
+                  last_name: parsed.last_name || prev.last_name || '',
+                  degree: parsed.degree || prev.degree || '',
+                  university: parsed.university || prev.university || '',
+                  graduation_year: parsed.graduation_year || prev.graduation_year || '',
+                  experience_years: parsed.experience_years || prev.experience_years || '',
+                  current_company: parsed.current_company || prev.current_company || '',
+                  current_designation: parsed.current_designation || prev.current_designation || '',
+                  skills: parsed.skills || prev.skills || '',
+                  linkedin_url: parsed.linkedin_url || prev.linkedin_url || '',
+                  portfolio_url: parsed.portfolio_url || prev.portfolio_url || '',
+                  github_url: parsed.github_url || prev.github_url || '',
+                  website_url: parsed.website_url || prev.website_url || '',
+                  alternate_phone: parsed.alternate_phone || prev.alternate_phone || '',
+                  city: parsed.city || prev.city || '',
+                  state: parsed.state || prev.state || '',
+                  country: parsed.country || prev.country || '',
+                  current_address: parsed.current_address || prev.current_address || '',
+                  notice_period: parsed.notice_period || prev.notice_period || '',
+                  current_ctc: parsed.current_ctc || prev.current_ctc || '',
+                  expected_ctc: parsed.expected_ctc || prev.expected_ctc || '',
+                  work_authorization: parsed.work_authorization || prev.work_authorization || '',
+                  remote_preference: parsed.remote_preference || prev.remote_preference || '',
+                  certifications: parsed.certifications || prev.certifications || '',
+                  languages: parsed.languages || prev.languages || '',
+                  summary: parsed.summary || prev.summary || '',
+                  categorized_skills: parsed.categorized_skills || prev.categorized_skills || {},
+                  experience: parsed.experience || prev.experience || [],
+                  education_history: parsed.education_history || prev.education_history || [],
+                  parsing_metadata: parsed.confidence ? {
+                    overall: parsed.confidence.overall,
+                    field_scores: parsed.confidence.field_scores,
+                    field_sources: parsed.field_sources,
+                    missing_fields: parsed.missing_fields,
+                    warnings: parsed.warnings,
+                    parsed_at: new Date().toISOString()
+                  } : prev.parsing_metadata,
+                  parser_used: parsed.parser_used || prev.parser_used || 'local'
+                }));
+
+                setParsedPreview(parsed);
                 showToast('Resume parsed successfully!', 'success');
               } else {
                 showToast('Could not extract candidate details from this file. Please verify the document format or enter details manually.', 'error');
@@ -185,11 +282,13 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
       schedule_call_timezone: 'EST (Eastern Time)'
     });
     setResumeData({ base64: null, url: null, filename: null });
+    setParsedPreview(null);
     setExtraData({
       degree: '',
       university: '',
       graduation_year: '',
       experience_years: '',
+      current_company: '',
       current_designation: '',
       skills: '',
       linkedin_url: ''
@@ -237,21 +336,44 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
       const newCandidate: Candidate = {
         id: candidateId,
         full_name: formData.full_name,
+        first_name: extraData.first_name || (formData.full_name ? formData.full_name.split(' ')[0] : ''),
+        last_name: extraData.last_name || (formData.full_name ? formData.full_name.split(' ').slice(1).join(' ') : ''),
         phone: formData.phone,
-        whatsapp: formData.whatsapp,
+        whatsapp: formData.whatsapp || formData.phone,
+        alternate_phone: extraData.alternate_phone || '',
         email: formData.email,
         job_interest: formData.job_interest,
         domain_interested: formData.domain_interested,
         location: formData.location,
+        city: extraData.city || '',
+        state: extraData.state || '',
+        country: extraData.country || '',
+        current_address: extraData.current_address || '',
         education: formData.education,
-        degree: extraData.degree,
-        university: extraData.university,
-        graduation_year: extraData.graduation_year,
-        experience_years: extraData.experience_years,
-        current_company: 'N/A',
-        current_designation: extraData.current_designation,
-        skills: extraData.skills,
-        linkedin_url: extraData.linkedin_url,
+        degree: extraData.degree || '',
+        university: extraData.university || '',
+        graduation_year: extraData.graduation_year || '',
+        experience_years: extraData.experience_years || '',
+        current_company: extraData.current_company || 'N/A',
+        current_designation: extraData.current_designation || '',
+        skills: extraData.skills || '',
+        linkedin_url: extraData.linkedin_url || '',
+        portfolio_url: extraData.portfolio_url || '',
+        github_url: extraData.github_url || '',
+        website_url: extraData.website_url || '',
+        notice_period: extraData.notice_period || '',
+        current_ctc: extraData.current_ctc || '',
+        expected_ctc: extraData.expected_ctc || '',
+        work_authorization: extraData.work_authorization || '',
+        remote_preference: extraData.remote_preference || '',
+        certifications: extraData.certifications || '',
+        languages: extraData.languages || '',
+        summary: extraData.summary || formData.notes || '',
+        categorized_skills: extraData.categorized_skills,
+        experience: extraData.experience,
+        education_history: extraData.education_history,
+        parsing_metadata: extraData.parsing_metadata,
+        parser_used: (extraData.parser_used as any) || 'manual',
         lead_source: formData.lead_source,
         lead_generated_by: user?.id || null,
         assigned_sales: null, // Assigned atomically via round-robin
@@ -482,6 +604,100 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
               animate={{ opacity: 1 }}
               className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full"
             >
+        {parsedPreview && (
+          <div className="md:col-span-2 bg-bg-tertiary/70 border border-border-primary rounded-2xl p-4 space-y-3 relative">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent-blue" />
+                <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Extracted Resume Summary</span>
+                {parsedPreview.parser_used !== 'gemini' ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center gap-1">
+                    ⚡ Zero-Cost Local Engine
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center gap-1">
+                    🤖 AI Fallback
+                  </span>
+                )}
+                {parsedPreview.confidence?.overall ? (
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                    parsedPreview.confidence.overall >= 0.85 
+                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                      : parsedPreview.confidence.overall >= 0.65
+                      ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                      : "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                  )}>
+                    {Math.round(parsedPreview.confidence.overall * 100)}% Confidence
+                  </span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setParsedPreview(null)}
+                className="p-1 hover:bg-bg-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors text-xs"
+                title="Dismiss Preview"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              {(parsedPreview.current_designation || parsedPreview.current_company) && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-primary flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-accent-blue" />
+                  <span className="font-semibold">{parsedPreview.current_designation || 'Role'}</span>
+                  {parsedPreview.current_company && (
+                    <span className="text-text-muted">at {parsedPreview.current_company}</span>
+                  )}
+                </span>
+              )}
+              {parsedPreview.job_interest && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-primary flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-accent-teal">Target:</span>
+                  <span className="font-semibold">{parsedPreview.job_interest}</span>
+                </span>
+              )}
+              {parsedPreview.experience_years && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-primary flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-accent-amber" />
+                  <span>{parsedPreview.experience_years} Yrs Exp</span>
+                </span>
+              )}
+              {(parsedPreview.degree || parsedPreview.education) && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-primary flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 text-accent-purple" />
+                  <span>{parsedPreview.degree || parsedPreview.education}</span>
+                  {parsedPreview.university && <span className="text-text-muted">({parsedPreview.university})</span>}
+                </span>
+              )}
+              {parsedPreview.notice_period && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-primary flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-accent-blue">Notice:</span>
+                  <span>{parsedPreview.notice_period}</span>
+                </span>
+              )}
+              {parsedPreview.work_authorization && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-primary flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>{parsedPreview.work_authorization}</span>
+                </span>
+              )}
+              {parsedPreview.skills && (
+                <span className="px-2.5 py-1 bg-bg-secondary border border-border-primary rounded-lg text-text-secondary flex items-center gap-1.5">
+                  <Code className="w-3.5 h-3.5 text-text-muted" />
+                  <span>{parsedPreview.skills.split(',').filter(Boolean).length} skills extracted</span>
+                </span>
+              )}
+            </div>
+
+            {parsedPreview.missing_fields && parsedPreview.missing_fields.length > 0 && (
+              <p className="text-[11px] text-text-muted italic">
+                ℹ️ Not mentioned in resume: {parsedPreview.missing_fields.join(', ')}
+              </p>
+            )}
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Full Name *</label>
           <input
