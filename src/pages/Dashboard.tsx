@@ -8,7 +8,7 @@ import {
   Users, CheckCircle2, Clock, UserX, ArrowRight, LayoutGrid, Phone, Calendar, 
   ArrowUpRight, AlertCircle, ChevronRight, FileEdit, Video, TrendingUp, Check, 
   ShieldCheck, X, Zap, Image as ImageIcon, FileText, Download, Filter, BarChart as BarChartIcon, DollarSign, Activity, FileCheck,
-  Mail, Briefcase
+  Mail, Briefcase, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getEasternDate, isEasternDayOngoing } from '../lib/utils';
@@ -18,6 +18,7 @@ import { CandidateSheet } from '../components/CandidateSheet';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { ThoughtsConfigModal, DEFAULT_QUOTES } from '../components/ThoughtsConfigModal';
 import { SMTPConfigModal } from '../components/SMTPConfigModal';
+import { ComplianceOfferApprovalModal } from '../components/ComplianceOfferApprovalModal';
 import { CelebrationBanner } from '../components/CelebrationBanner';
 import { db, firebaseConfig } from '../firebase';
 import { query, collection, where, limit, doc, getDoc } from 'firebase/firestore';
@@ -67,6 +68,9 @@ export const Dashboard: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [offerRequests, setOfferRequests] = useState<InterviewOfferRequest[]>([]);
   const [isSMTPModalOpen, setIsSMTPModalOpen] = useState(false);
+  const [approvalCandidate, setApprovalCandidate] = useState<Candidate | null>(null);
+  const [approvalRequest, setApprovalRequest] = useState<InterviewOfferRequest | null>(null);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
 
   // CRM Leads & Sales Graph Dashboard State Variables
   const [selectedSourceFilter, setSelectedSourceFilter] = useState('all');
@@ -858,6 +862,131 @@ export const Dashboard: React.FC = () => {
         ))}
       </div>
 
+      {/* CS Head / Compliance Head: High-Priority Offer Approvals Action Section */}
+      {isComplianceHead(user) && pendingOfferApprovals.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-500/30 rounded-2xl sm:rounded-[32px] p-5 sm:p-7 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0 animate-pulse">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight">
+                    Action Required: Pending Offer Approvals
+                  </h2>
+                  <span className="px-2.5 py-0.5 text-xs font-black bg-amber-500 text-white rounded-full">
+                    {pendingOfferApprovals.length} PENDING
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-text-secondary mt-0.5">
+                  Interview completion reports require CS Head / Compliance review and approval before candidates move to Offer.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pendingOfferApprovals.map(req => {
+              const cand = candidates.find(c => c.id === req.candidate_id);
+              const targetCandidate = cand || ({
+                id: req.candidate_id,
+                full_name: req.candidate_name,
+                email: req.candidate_email,
+                phone: req.candidate_phone,
+                current_stage: 'interviewing',
+                interview_offer_status: 'pending_approval',
+                interview_offer_request_id: req.id,
+                latest_interview_offer_request: req
+              } as Candidate);
+
+              return (
+                <div 
+                  key={req.id}
+                  className="bg-bg-secondary border border-border-primary hover:border-amber-500/50 rounded-2xl p-5 space-y-4 shadow-sm transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-bold text-text-primary truncate">{req.candidate_name}</h3>
+                          <span className="px-2 py-0.5 bg-bg-tertiary text-text-muted text-[10px] font-mono rounded">
+                            {req.candidate_id}
+                          </span>
+                        </div>
+                        <p className="text-xs text-text-muted mt-0.5">
+                          Submitted by <span className="text-text-primary font-semibold">{req.submitted_by_name || 'Recruiter'}</span> • {new Date(req.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-lg shrink-0">
+                        Needs Approval
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-bg-tertiary/50 p-3 rounded-xl border border-border-primary/50">
+                      <div>
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">Company & Role</span>
+                        <span className="font-semibold text-text-primary truncate block">{req.interview_details?.company_name || 'N/A'}</span>
+                        <span className="text-text-secondary text-[11px] truncate block">{req.interview_details?.job_title || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">Round & Mode</span>
+                        <span className="font-semibold text-text-primary truncate block">{req.interview_details?.round_label || 'Interview'}</span>
+                        <span className="text-text-secondary text-[11px] truncate block capitalize">{req.interview_details?.interview_mode || 'Online'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">Offered Package</span>
+                        <span className="font-bold text-accent-green truncate block">{req.interview_details?.offered_package || req.candidate_package || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">Proxy Support</span>
+                        <span className="font-semibold text-text-primary truncate block">
+                          {req.proxy_person_name || 'None'}
+                        </span>
+                        <span className="text-text-muted text-[10px]">Attended: {String(req.proxy_attended || 'N/A').toUpperCase()}</span>
+                      </div>
+                    </div>
+
+                    {req.feedback_and_remarks && (
+                      <div className="bg-bg-tertiary/30 p-2.5 rounded-xl text-xs text-text-secondary border border-border-primary/30">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-0.5">Feedback / Remarks</span>
+                        <p className="line-clamp-2 italic">"{req.feedback_and_remarks}"</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-border-primary/40">
+                    <button
+                      onClick={() => {
+                        setApprovalCandidate(targetCandidate);
+                        setApprovalRequest(req);
+                        setIsApprovalModalOpen(true);
+                      }}
+                      className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-600/20"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      Review & Approve
+                    </button>
+                    {cand && (
+                      <button
+                        onClick={() => {
+                          setSelectedCandidate(cand);
+                          setIsSheetOpen(true);
+                        }}
+                        className="py-2.5 px-3 bg-bg-tertiary hover:bg-border-primary text-text-secondary hover:text-text-primary text-xs font-semibold rounded-xl transition-all"
+                        title="View Candidate Profile"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Application Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         <div className="bg-bg-secondary border border-border-primary rounded-2xl sm:rounded-[32px] p-5 sm:p-8 shadow-sm">
@@ -1202,10 +1331,19 @@ export const Dashboard: React.FC = () => {
                       <button 
                         key={req.id} 
                         onClick={() => {
-                          if (cand) {
-                            setSelectedCandidate(cand);
-                            setIsSheetOpen(true);
-                          }
+                          const targetCand = cand || ({
+                            id: req.candidate_id,
+                            full_name: req.candidate_name,
+                            email: req.candidate_email,
+                            phone: req.candidate_phone,
+                            current_stage: 'interviewing',
+                            interview_offer_status: 'pending_approval',
+                            interview_offer_request_id: req.id,
+                            latest_interview_offer_request: req
+                          } as Candidate);
+                          setApprovalCandidate(targetCand);
+                          setApprovalRequest(req);
+                          setIsApprovalModalOpen(true);
                         }}
                         className="w-full text-left p-4 flex items-center gap-4 hover:bg-bg-tertiary transition-colors group"
                       >
@@ -1400,6 +1538,25 @@ export const Dashboard: React.FC = () => {
         isOpen={isSMTPModalOpen}
         onClose={() => setIsSMTPModalOpen(false)}
       />
+
+      {/* Compliance Offer Approval Modal */}
+      {isApprovalModalOpen && approvalCandidate && (
+        <ComplianceOfferApprovalModal
+          isOpen={isApprovalModalOpen}
+          onClose={() => {
+            setIsApprovalModalOpen(false);
+            setApprovalCandidate(null);
+            setApprovalRequest(null);
+          }}
+          candidate={approvalCandidate}
+          request={approvalRequest}
+          onSuccess={() => {
+            setIsApprovalModalOpen(false);
+            setApprovalCandidate(null);
+            setApprovalRequest(null);
+          }}
+        />
+      )}
     </div>
   );
 };

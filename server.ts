@@ -830,6 +830,209 @@ ${request?.compliance_remarks || 'Approved for Offer stage.'}
   }
 });
 
+app.post('/api/candidate/notify-offer-submitted', async (req, res) => {
+  const { candidate, request, submitterName, csHeadEmails } = req.body;
+  try {
+    const settings = await getSMTPSettings();
+    if (!settings || !settings.host) {
+      console.warn('[Offer Request Email] SMTP settings not configured. Notification skipped.');
+      return res.status(200).json({ success: true, note: 'SMTP not configured' });
+    }
+
+    const recipientSet = new Set<string>();
+
+    if (Array.isArray(csHeadEmails)) {
+      csHeadEmails.forEach(e => {
+        if (e && typeof e === 'string' && e.includes('@')) {
+          recipientSet.add(e.trim().toLowerCase());
+        }
+      });
+    }
+
+    try {
+      const usersSnap = await db.collection('jpc_users').get();
+      usersSnap.forEach(doc => {
+        const u = doc.data();
+        if (
+          u && u.email && (
+            u.role === 'jpc_cs' ||
+            u.role === 'jpc_compliance_person' ||
+            u.username === 'care' ||
+            String(u.display_name).toLowerCase().includes('faiz') ||
+            String(u.email).toLowerCase() === 'care@auriic.co'
+          )
+        ) {
+          recipientSet.add(String(u.email).trim().toLowerCase());
+        }
+      });
+    } catch (dbErr) {
+      console.warn('[Offer Request Email] Could not query CS users from DB:', dbErr);
+    }
+
+    if (settings.offer_notification_emails && Array.isArray(settings.offer_notification_emails)) {
+      settings.offer_notification_emails.forEach((e: string) => {
+        if (e && typeof e === 'string' && e.includes('@')) {
+          recipientSet.add(e.trim().toLowerCase());
+        }
+      });
+    }
+
+    // Default fallback if set is empty
+    if (recipientSet.size === 0) {
+      recipientSet.add('care@auriic.co');
+    }
+
+    const recipients = Array.from(recipientSet);
+
+    const transporter = nodemailer.createTransport({
+      host: settings.host,
+      port: Number(settings.port),
+      secure: !!settings.secure,
+      auth: { user: settings.user, pass: settings.pass },
+      tls: { rejectUnauthorized: false }
+    });
+
+    const candidateName = candidate?.full_name || 'Candidate';
+    const candidateId = candidate?.id || '';
+    const companyName = request?.interview_details?.company_name || 'Client Company';
+    const subject = `[Action Required: Offer Approval] ${candidateName} - CS Head Please Check for Approval`;
+
+    const textContent = `
+ACTION REQUIRED: Compliance Head & CS Head Approval Needed
+-----------------------------------------------------------
+Candidate: ${candidateName} (${candidateId})
+Stage: Interview Completed -> Pending Offer Approval
+Submitted By: ${submitterName || request?.submitted_by_name || 'Recruiter'}
+Submitted At: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} EST
+
+Message:
+A candidate has completed their interview and an Interview Completion Report has been submitted.
+CS Head, please check your CRM Dashboard to review details and approve or reject moving this candidate to the Offer stage.
+
+Interview Details:
+- Company / Client: ${companyName}
+- Job Title / Role: ${request?.interview_details?.job_title || 'N/A'}
+- Interview Round: ${request?.interview_details?.round_label || 'N/A'}
+- Interview Date: ${request?.interview_details?.interview_date || 'N/A'} ${request?.interview_details?.interview_time || ''}
+- Mode: ${request?.interview_details?.interview_mode || 'N/A'}
+- Offered / Target Package: ${request?.interview_details?.offered_package || 'N/A'}
+- Expected Joining: ${request?.interview_details?.expected_joining_date || 'N/A'}
+- Work Location: ${request?.interview_details?.offered_location || 'N/A'}
+
+Proxy Support Information:
+- Proxy Person: ${request?.proxy_person_name || 'None / Not Applicable'}
+- Proxy Attended: ${request?.proxy_attended ? String(request.proxy_attended).toUpperCase() : 'N/A'}
+- Proxy Notes: ${request?.proxy_support_notes || 'N/A'}
+
+Interview Feedback & Remarks:
+${request?.feedback_and_remarks || 'N/A'}
+
+Questions Asked:
+${request?.questions_asked || 'N/A'}
+
+Technical Remarks:
+${request?.technical_remarks || 'N/A'}
+
+Please log into your CRM Dashboard to review & approve:
+https://auriic-crm.web.app/#dashboard
+    `.trim();
+
+    const htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; color: #1e293b;">
+        <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 24px; color: white;">
+          <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.1em; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 9999px;">Action Required &bull; CS Head Approval</span>
+          <h1 style="margin: 12px 0 4px 0; font-size: 22px; font-weight: 800;">CS Head: Please Check for Offer Approval</h1>
+          <p style="margin: 0; font-size: 14px; opacity: 0.95;">An interview report has been submitted for <strong>${candidateName}</strong> to transition to the Offer stage.</p>
+        </div>
+        
+        <div style="padding: 24px; line-height: 1.6;">
+          <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
+            <p style="margin: 0; font-size: 13px; font-weight: 600; color: #92400e;">
+              Attention CS Head / Compliance: Please review the interview feedback, proxy details, and terms below. You can approve or reject this request directly from your CRM Dashboard.
+            </p>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b; width: 35%;">Candidate Name:</td>
+              <td style="padding: 8px 0; font-size: 14px; font-weight: bold; color: #0f172a;">${candidateName} (${candidateId})</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Submitted By:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;"><strong>${submitterName || request?.submitted_by_name || 'Recruiter'}</strong></td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Hiring Company:</td>
+              <td style="padding: 8px 0; font-size: 14px; font-weight: bold; color: #0f172a;">${companyName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Job Title / Role:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;">${request?.interview_details?.job_title || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Interview Round & Date:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;">${request?.interview_details?.round_label || 'Round'} &bull; ${request?.interview_details?.interview_date || 'N/A'} ${request?.interview_details?.interview_time || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Offered / Target Package:</td>
+              <td style="padding: 8px 0; font-size: 14px; font-weight: bold; color: #059669;">${request?.interview_details?.offered_package || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Location / Joining:</td>
+              <td style="padding: 8px 0; font-size: 13px; color: #0f172a;">${request?.interview_details?.offered_location || 'N/A'} | Joining: ${request?.interview_details?.expected_joining_date || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; font-size: 13px; color: #64748b;">Proxy Support:</td>
+              <td style="padding: 8px 0; font-size: 13px; font-weight: bold; color: #0f172a;">${request?.proxy_person_name || 'None'} (Attended: ${request?.proxy_attended ? String(request.proxy_attended).toUpperCase() : 'N/A'})</td>
+            </tr>
+          </table>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Interview Feedback & Remarks</h4>
+            <p style="margin: 0; font-size: 13px; color: #1e293b; white-space: pre-line;">${request?.feedback_and_remarks || 'No feedback entered.'}</p>
+          </div>
+
+          ${request?.questions_asked ? `
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Questions Asked</h4>
+            <p style="margin: 0; font-size: 13px; color: #1e293b; white-space: pre-line;">${request.questions_asked}</p>
+          </div>` : ''}
+
+          ${request?.technical_remarks ? `
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Technical Remarks</h4>
+            <p style="margin: 0; font-size: 13px; color: #1e293b; white-space: pre-line;">${request.technical_remarks}</p>
+          </div>` : ''}
+
+          <div style="text-align: center; margin: 28px 0 16px 0;">
+            <a href="https://auriic-crm.web.app/#dashboard" style="display: inline-block; background: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14px;">
+              Open CRM Dashboard &bull; Review & Approve
+            </a>
+          </div>
+
+          <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+            This is an automated notification sent via Auriic CRM SMTP System.
+          </div>
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `${settings.from_name || 'Auriic CRM'} <${settings.from_email}>`,
+      to: recipients.join(', '),
+      subject,
+      text: textContent,
+      html: htmlContent
+    });
+
+    console.log(`[Offer Request Email] Successfully sent notification to ${recipients.length} recipients: ${recipients.join(', ')}`);
+    res.json({ success: true, recipientsCount: recipients.length });
+  } catch (error: any) {
+    console.error('[Offer Request Email Error]:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==========================================
 // INTERVIEW OFFER REQUESTS BACKEND API
 // (Firebase Admin SDK bypasses client security rules)

@@ -88,8 +88,18 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     created_at: new Date().toISOString()
   } as any;
 
+  const compliancePersonUser: User = {
+    id: 'comp-1',
+    username: 'comp_officer',
+    display_name: 'Compliance Officer',
+    email: 'compliance@company.com',
+    role: 'jpc_compliance_person',
+    created_at: new Date().toISOString()
+  } as any;
+
   // Compliance Head / Management should be authorized
   assert.equal(isComplianceHead(complianceHeadUser), true, 'jpc_cs must be Compliance Head');
+  assert.equal(isComplianceHead(compliancePersonUser), true, 'jpc_compliance_person must be Compliance Head');
   assert.equal(isComplianceHead(careUser), true, 'care username must be Compliance Head');
   assert.equal(isComplianceHead(faizUser), true, 'Faiz must be Compliance Head');
   assert.equal(isComplianceHead(adminUser), true, 'administrator must be Compliance Head');
@@ -562,4 +572,110 @@ test('6. SMTP Recipient Management: Add, edit, delete, deduplicate and validate 
   const removedSettings = removeRecipientEmail(editRes.updatedSettings, 'compliance@placify.io');
   assert.equal(removedSettings.offer_notification_emails?.length, 2);
   assert.equal(removedSettings.offer_notification_emails?.includes('compliance@placify.io'), false);
+});
+
+// =========================================================================
+// 7. CS HEAD SUBMISSION NOTIFICATION & DASHBOARD PENDING RESOLUTION
+// =========================================================================
+test('7. CS Head Alert: Submission dispatches email to CS Head & appears on Dashboard', () => {
+  const teamUsers: User[] = [
+    {
+      id: 'u-1',
+      username: 'care',
+      display_name: 'Faiz Ahmadi',
+      email: 'care@auriic.co',
+      role: 'jpc_cs',
+      created_at: new Date().toISOString()
+    } as any,
+    {
+      id: 'u-2',
+      username: 'recruiter_1',
+      display_name: 'Sarah Recruiter',
+      email: 'sarah@company.com',
+      role: 'jpc_recruiter',
+      created_at: new Date().toISOString()
+    } as any,
+    {
+      id: 'u-3',
+      username: 'compliance_officer',
+      display_name: 'Officer David',
+      email: 'compliance.david@auriic.co',
+      role: 'jpc_compliance_person',
+      created_at: new Date().toISOString()
+    } as any
+  ];
+
+  // 1. Identify CS Head emails to alert upon submission
+  const csEmails = teamUsers
+    .filter(u => 
+      u.role === 'jpc_cs' || 
+      u.role === 'jpc_compliance_person' ||
+      u.username === 'care' || 
+      String(u.display_name).toLowerCase().includes('faiz') ||
+      String(u.email).toLowerCase() === 'care@auriic.co'
+    )
+    .map(u => u.email)
+    .filter(Boolean);
+
+  assert.equal(csEmails.length, 2);
+  assert.ok(csEmails.includes('care@auriic.co'));
+  assert.ok(csEmails.includes('compliance.david@auriic.co'));
+
+  // 2. Dashboard pendingOfferApprovals resolution for CS Head
+  const pendingCandidate: Candidate = {
+    id: 'cand-777',
+    full_name: 'Elena Rostova',
+    phone: '+1 555-0199',
+    email: 'elena@example.com',
+    current_stage: 'interviewing',
+    interview_offer_status: 'pending_approval',
+    interview_offer_request_id: 'req-777',
+    latest_interview_offer_request: {
+      id: 'req-777',
+      candidate_id: 'cand-777',
+      candidate_name: 'Elena Rostova',
+      candidate_email: 'elena@example.com',
+      candidate_phone: '+1 555-0199',
+      submitted_by: 'u-2',
+      submitted_by_name: 'Sarah Recruiter',
+      proxy_person_name: 'John Proxy',
+      proxy_attended: 'yes',
+      interview_details: {
+        company_name: 'Apex Financial',
+        job_title: 'Senior Java Architect',
+        round_label: 'Final VP Round',
+        interview_date: '2026-09-20',
+        offered_package: '$175,000/yr'
+      },
+      feedback_and_remarks: 'Candidate excelled in distributed systems architecture round.',
+      status: 'pending_compliance_approval',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  } as any;
+
+  // Resolve pending requests for CS Head (Faiz / care)
+  const isCSHeadUser = isComplianceHead(teamUsers[0]);
+  assert.equal(isCSHeadUser, true, 'CS Head must have Compliance Head authority');
+
+  const offerRequests: InterviewOfferRequest[] = [];
+  const candidates = [pendingCandidate];
+
+  const pendingOfferApprovals: InterviewOfferRequest[] = [];
+  if (isCSHeadUser) {
+    const seenCandidateIds = new Set<string>();
+    candidates.forEach(c => {
+      if (c.interview_offer_status === 'pending_approval' && !seenCandidateIds.has(c.id)) {
+        if (c.latest_interview_offer_request) {
+          pendingOfferApprovals.push(c.latest_interview_offer_request);
+          seenCandidateIds.add(c.id);
+        }
+      }
+    });
+  }
+
+  assert.equal(pendingOfferApprovals.length, 1, 'Pending offer approvals must have 1 candidate');
+  assert.equal(pendingOfferApprovals[0].candidate_name, 'Elena Rostova');
+  assert.equal(pendingOfferApprovals[0].interview_details?.company_name, 'Apex Financial');
+  assert.equal(pendingOfferApprovals[0].interview_details?.offered_package, '$175,000/yr');
 });

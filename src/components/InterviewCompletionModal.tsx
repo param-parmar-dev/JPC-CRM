@@ -231,6 +231,33 @@ export const InterviewCompletionModal: React.FC<InterviewCompletionModalProps> =
         }
       }
 
+      // 5. Send automated email alert to CS Head & Notification Admins
+      try {
+        const csEmails = teamUsers
+          .filter(u => 
+            u.role === 'jpc_cs' || 
+            u.role === 'jpc_compliance_person' ||
+            u.username === 'care' || 
+            String(u.display_name).toLowerCase().includes('faiz') ||
+            String(u.email).toLowerCase() === 'care@auriic.co'
+          )
+          .map(u => u.email)
+          .filter(Boolean);
+
+        await fetch('/api/candidate/notify-offer-submitted', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidate,
+            request: newRequest,
+            submitterName: user?.display_name || user?.username || 'Recruiter',
+            csHeadEmails: csEmails
+          })
+        });
+      } catch (emailErr) {
+        console.warn('Could not send offer submission notification email:', emailErr);
+      }
+
       showToast('Interview completion report submitted! Sent to Compliance Head for approval.', 'success');
       onSuccess();
       onClose();
