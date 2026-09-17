@@ -152,6 +152,11 @@ export const subscribeToQuery = <T>(q: any, callback: (data: T[]) => void, colle
     const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
     callback(data);
   }, (error) => {
+    if (collectionName === 'jpc_interview_offer_requests') {
+      console.warn('Direct Firestore onSnapshot unavailable for jpc_interview_offer_requests in query:', error.message);
+      callback([]);
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, collectionName);
   });
 };
