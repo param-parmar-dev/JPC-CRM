@@ -557,7 +557,7 @@ export const saveCandidate = async (candidate: Candidate, userId: string | null)
         finalCandidate.assigned_cs = faizId;
       }
     }
-    const data = { ...finalCandidate, updated_at: new Date().toISOString() };
+    const data = sanitizeForFirestore({ ...finalCandidate, updated_at: new Date().toISOString() });
     await setDoc(doc(db, 'jpc_candidates', finalCandidate.id), data);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `jpc_candidates/${candidate.id}`);
@@ -603,7 +603,7 @@ export const updateCandidate = async (id: string, updates: Partial<Candidate>) =
       }
     }
 
-    const data = { ...finalUpdates, updated_at: new Date().toISOString() };
+    const data = sanitizeForFirestore({ ...finalUpdates, updated_at: new Date().toISOString() });
     await updateDoc(doc(db, 'jpc_candidates', id), data);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `jpc_candidates/${id}`);

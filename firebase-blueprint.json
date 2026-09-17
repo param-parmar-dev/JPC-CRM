@@ -172,6 +172,10 @@
     "jpc_idempotency_keys": {
       "schema": "object",
       "description": "Durable idempotency keys to prevent duplicate lead submissions"
+    },
+    "jpc_interview_offer_requests": {
+      "schema": "object",
+      "description": "Interview offer requests and compliance approvals"
     }
   }
 }
