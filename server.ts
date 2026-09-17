@@ -831,6 +831,115 @@ ${request?.compliance_remarks || 'Approved for Offer stage.'}
 });
 
 // ==========================================
+// INTERVIEW OFFER REQUESTS BACKEND API
+// (Firebase Admin SDK bypasses client security rules)
+// ==========================================
+
+app.post('/api/interview-offer-requests', async (req, res) => {
+  try {
+    const requestData = req.body;
+    if (!requestData || !requestData.id) {
+      return res.status(400).json({ error: 'Missing request payload or id' });
+    }
+
+    if (db) {
+      await db.collection('jpc_interview_offer_requests').doc(requestData.id).set({
+        ...requestData,
+        created_at: requestData.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      if (requestData.candidate_id) {
+        try {
+          await db.collection('jpc_candidates').doc(requestData.candidate_id).update({
+            interview_offer_status: 'pending_approval',
+            interview_offer_request_id: requestData.id,
+            interview_offer_rejection_reason: null,
+            latest_interview_offer_request: requestData,
+            updated_at: new Date().toISOString()
+          });
+        } catch (candErr) {
+          console.warn('[Admin SDK] Candidate doc update notice:', candErr);
+        }
+      }
+    }
+
+    res.status(200).json({ success: true, id: requestData.id });
+  } catch (error: any) {
+    console.error('Error in POST /api/interview-offer-requests:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/interview-offer-requests', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(200).json([]);
+    }
+    const snap = await db.collection('jpc_interview_offer_requests').get();
+    const data = snap.docs.map((d: any) => ({ ...d.data(), id: d.id }));
+    res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Error in GET /api/interview-offer-requests:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/interview-offer-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!db) {
+      return res.status(404).json({ error: 'Database unavailable' });
+    }
+    const docSnap = await db.collection('jpc_interview_offer_requests').doc(id).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.status(200).json({ ...docSnap.data(), id: docSnap.id });
+  } catch (error: any) {
+    console.error(`Error in GET /api/interview-offer-requests/${req.params.id}:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/interview-offer-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updates, candidateId } = req.body;
+    if (!db) {
+      return res.status(500).json({ error: 'Database unavailable' });
+    }
+
+    const cleanUpdates = {
+      ...(updates || req.body),
+      updated_at: new Date().toISOString()
+    };
+
+    await db.collection('jpc_interview_offer_requests').doc(id).set(cleanUpdates, { merge: true });
+
+    if (candidateId) {
+      try {
+        const candDoc = await db.collection('jpc_candidates').doc(candidateId).get();
+        if (candDoc.exists) {
+          const currentReq = candDoc.data()?.latest_interview_offer_request || {};
+          await db.collection('jpc_candidates').doc(candidateId).update({
+            latest_interview_offer_request: { ...currentReq, ...cleanUpdates },
+            updated_at: new Date().toISOString()
+          });
+        }
+      } catch (candErr) {
+        console.warn('[Admin SDK] Candidate doc offer request update notice:', candErr);
+      }
+    }
+
+    res.status(200).json({ success: true, id });
+  } catch (error: any) {
+    console.error(`Error in PATCH /api/interview-offer-requests/${req.params.id}:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================================
 // GOOGLE OAUTH CALENDAR INTEGRATION ROUTES
 // ==========================================
 

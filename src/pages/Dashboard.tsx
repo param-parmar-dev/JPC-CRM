@@ -403,11 +403,46 @@ export const Dashboard: React.FC = () => {
   }, [resumeRequests, user]);
 
   const pendingOfferApprovals = useMemo(() => {
-    if (isComplianceHead(user)) {
-      return offerRequests.filter(r => r.status === 'pending_compliance_approval');
-    }
-    return [];
-  }, [offerRequests, user]);
+    if (!isComplianceHead(user)) return [];
+
+    const reqs: InterviewOfferRequest[] = [...offerRequests.filter(r => r.status === 'pending_compliance_approval')];
+    const seenCandidateIds = new Set(reqs.map(r => r.candidate_id));
+
+    candidates.forEach(c => {
+      if (c.interview_offer_status === 'pending_approval' && !seenCandidateIds.has(c.id)) {
+        if (c.latest_interview_offer_request) {
+          reqs.push(c.latest_interview_offer_request);
+          seenCandidateIds.add(c.id);
+        } else {
+          reqs.push({
+            id: c.interview_offer_request_id || `offer_req_${c.id}`,
+            candidate_id: c.id,
+            candidate_name: c.full_name,
+            candidate_email: c.email || '',
+            candidate_phone: c.phone || '',
+            candidate_package: c.package_name || c.package_amount || '',
+            submitted_by: c.assigned_recruiter || 'unknown',
+            submitted_by_name: 'Recruiter',
+            proxy_person_name: 'Interview Proxy',
+            proxy_attended: 'yes',
+            interview_details: {
+              company_name: c.current_company || 'Client Interview',
+              job_title: c.current_designation || c.job_interest || 'Role',
+              round_label: 'Final Round',
+              interview_date: new Date().toISOString().split('T')[0]
+            },
+            feedback_and_remarks: 'Interview completed. Pending Compliance Head review.',
+            status: 'pending_compliance_approval',
+            created_at: c.updated_at || c.created_at || new Date().toISOString(),
+            updated_at: c.updated_at || new Date().toISOString()
+          });
+          seenCandidateIds.add(c.id);
+        }
+      }
+    });
+
+    return reqs;
+  }, [offerRequests, candidates, user]);
 
   const activeInterviews = useMemo(() => {
     const activeStatuses = [

@@ -68,19 +68,25 @@ export const ComplianceOfferApprovalModal: React.FC<ComplianceOfferApprovalModal
       const reviewerName = user?.display_name || user?.username || 'Compliance Head';
 
       // 1. Update request status to 'approved'
-      await updateInterviewOfferRequest(request.id, {
+      const updatedOfferData: Partial<InterviewOfferRequest> = {
         status: 'approved',
         compliance_reviewer_id: user?.id || null,
         compliance_reviewer_name: reviewerName,
         compliance_reviewed_at: nowTimestamp,
         compliance_remarks: approvalNotes.trim() || 'Approved for placement and Offer stage transition.'
-      });
+      };
+
+      await updateInterviewOfferRequest(request.id, updatedOfferData, candidate.id);
 
       // 2. Update Candidate: transition stage to 'offer' and mark status as 'approved'
       await updateCandidate(candidate.id, {
         current_stage: 'offer',
         interview_offer_status: 'approved',
-        interview_offer_rejection_reason: null
+        interview_offer_rejection_reason: null,
+        latest_interview_offer_request: {
+          ...request,
+          ...updatedOfferData
+        } as InterviewOfferRequest
       });
 
       // 3. Trigger SMTP Email Notification to all configured Admin recipients
@@ -158,18 +164,24 @@ export const ComplianceOfferApprovalModal: React.FC<ComplianceOfferApprovalModal
       const reviewerName = user?.display_name || user?.username || 'Compliance Head';
 
       // 1. Update request status to 'rejected'
-      await updateInterviewOfferRequest(request.id, {
+      const updatedOfferData: Partial<InterviewOfferRequest> = {
         status: 'rejected',
         compliance_reviewer_id: user?.id || null,
         compliance_reviewer_name: reviewerName,
         compliance_reviewed_at: nowTimestamp,
         compliance_remarks: rejectionReason.trim()
-      });
+      };
+
+      await updateInterviewOfferRequest(request.id, updatedOfferData, candidate.id);
 
       // 2. Update Candidate: remains in Interviewing stage, status set to 'rejected'
       await updateCandidate(candidate.id, {
         interview_offer_status: 'rejected',
-        interview_offer_rejection_reason: rejectionReason.trim()
+        interview_offer_rejection_reason: rejectionReason.trim(),
+        latest_interview_offer_request: {
+          ...request,
+          ...updatedOfferData
+        } as InterviewOfferRequest
       });
 
       // 3. Log Activity

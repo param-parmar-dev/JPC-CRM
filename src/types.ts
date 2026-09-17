@@ -161,6 +161,7 @@ export interface Candidate {
   interview_offer_status?: 'pending_approval' | 'approved' | 'rejected' | null;
   interview_offer_request_id?: string | null;
   interview_offer_rejection_reason?: string | null;
+  latest_interview_offer_request?: InterviewOfferRequest | null;
 }
 
 export interface ResumeVersion {

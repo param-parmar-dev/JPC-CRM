@@ -13,9 +13,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'Compliance Officer',
     email: 'cs@company.com',
     role: 'jpc_cs',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const careUser: User = {
     id: 'care-1',
@@ -23,9 +22,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'Customer Support Care',
     email: 'care@company.com',
     role: 'jpc_cs',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const faizUser: User = {
     id: 'faiz-1',
@@ -33,9 +31,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'Faiz Khan',
     email: 'faiz@company.com',
     role: 'jpc_cs',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const adminUser: User = {
     id: 'admin-1',
@@ -43,9 +40,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'System Admin',
     email: 'admin@company.com',
     role: 'administrator',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const sysAdminUser: User = {
     id: 'sysadmin-1',
@@ -53,9 +49,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'IT SysAdmin',
     email: 'sysadmin@company.com',
     role: 'jpc_sysadmin',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const managerUser: User = {
     id: 'manager-1',
@@ -63,9 +58,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'Ops Manager',
     email: 'manager@company.com',
     role: 'jpc_manager',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const recruiterUser: User = {
     id: 'rec-1',
@@ -73,9 +67,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'John Recruiter',
     email: 'recruiter@company.com',
     role: 'jpc_recruiter',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const salesUser: User = {
     id: 'sales-1',
@@ -83,9 +76,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'Jane Sales',
     email: 'sales@company.com',
     role: 'jpc_sales',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const leadGenUser: User = {
     id: 'leadgen-1',
@@ -93,9 +85,8 @@ test('1. Role-Based Authority: isComplianceHead correctly identifies authorized 
     display_name: 'Bob LeadGen',
     email: 'lead@company.com',
     role: 'jpc_lead_gen',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   // Compliance Head / Management should be authorized
   assert.equal(isComplianceHead(complianceHeadUser), true, 'jpc_cs must be Compliance Head');
@@ -125,7 +116,7 @@ test('2. Clearance Interception: Candidate in interviewing cannot move directly 
     interview_offer_status: undefined,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
-  };
+  } as any;
 
   // Function simulating stage transition check
   function canDirectlyTransitionStage(candidate: Candidate, targetStage: string): { allowed: boolean; reason?: string } {
@@ -173,7 +164,7 @@ test('3. Form Submission: Collects complete details and sets candidate pending_a
     current_stage: 'interviewing',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
-  };
+  } as any;
 
   const recruiter: User = {
     id: 'rec-10',
@@ -181,9 +172,8 @@ test('3. Form Submission: Collects complete details and sets candidate pending_a
     display_name: 'Sam Recruiter',
     email: 'sam@company.com',
     role: 'jpc_recruiter',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   const interviewDetails: InterviewOfferDetails = {
     company_name: 'Datadog Inc',
@@ -232,7 +222,8 @@ test('3. Form Submission: Collects complete details and sets candidate pending_a
       questions_asked: formData.questions_asked,
       recommendation_status: formData.recommendation_status,
       status: 'pending_compliance_approval',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
     const updatedCandidate: Candidate = {
@@ -240,6 +231,7 @@ test('3. Form Submission: Collects complete details and sets candidate pending_a
       interview_offer_status: 'pending_approval',
       interview_offer_request_id: requestId,
       interview_offer_rejection_reason: undefined,
+      latest_interview_offer_request: newRequest,
       updated_at: new Date().toISOString()
     };
 
@@ -261,6 +253,7 @@ test('3. Form Submission: Collects complete details and sets candidate pending_a
   assert.equal(updatedCandidate.current_stage, 'interviewing', 'Candidate must remain in interviewing stage during review');
   assert.equal(updatedCandidate.interview_offer_status, 'pending_approval');
   assert.equal(updatedCandidate.interview_offer_request_id, newRequest.id);
+  assert.ok(updatedCandidate.latest_interview_offer_request);
 
   // Verify request properties
   assert.equal(newRequest.status, 'pending_compliance_approval');
@@ -284,7 +277,7 @@ test('4. Approval Workflow: Compliance Head approves request, candidate moves to
     interview_offer_request_id: 'req-999',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
-  };
+  } as any;
 
   const existingRequest: InterviewOfferRequest = {
     id: 'req-999',
@@ -304,7 +297,8 @@ test('4. Approval Workflow: Compliance Head approves request, candidate moves to
     },
     feedback_and_remarks: 'Exceptional feedback across all 4 rounds.',
     status: 'pending_compliance_approval',
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   };
 
   const complianceHeadUser: User = {
@@ -313,9 +307,8 @@ test('4. Approval Workflow: Compliance Head approves request, candidate moves to
     display_name: 'Faiz Ahmed',
     email: 'faiz@placify.io',
     role: 'jpc_cs',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   let emailDispatched = false;
   let emailPayload: any = null;
@@ -343,6 +336,7 @@ test('4. Approval Workflow: Compliance Head approves request, candidate moves to
       current_stage: 'offer',
       interview_offer_status: 'approved',
       interview_offer_rejection_reason: undefined,
+      latest_interview_offer_request: updatedRequest,
       updated_at: new Date().toISOString()
     };
 
@@ -395,7 +389,7 @@ test('5. Rejection Workflow: Compliance Head rejects request, candidate remains 
     interview_offer_request_id: 'req-1001',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
-  };
+  } as any;
 
   const existingRequest: InterviewOfferRequest = {
     id: 'req-1001',
@@ -413,7 +407,8 @@ test('5. Rejection Workflow: Compliance Head rejects request, candidate remains 
     },
     feedback_and_remarks: 'Candidate was unsure about several fundamentals.',
     status: 'pending_compliance_approval',
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   };
 
   const complianceHeadUser: User = {
@@ -422,9 +417,8 @@ test('5. Rejection Workflow: Compliance Head rejects request, candidate remains 
     display_name: 'Chief Compliance Officer',
     email: 'compliance@placify.io',
     role: 'administrator',
-    is_active: true,
     created_at: new Date().toISOString()
-  };
+  } as any;
 
   function handleComplianceRejection(
     cand: Candidate,
@@ -449,6 +443,7 @@ test('5. Rejection Workflow: Compliance Head rejects request, candidate remains 
       current_stage: 'interviewing', // Remains in interviewing
       interview_offer_status: 'rejected',
       interview_offer_rejection_reason: rejectionReason,
+      latest_interview_offer_request: updatedRequest,
       updated_at: new Date().toISOString()
     };
 
@@ -478,6 +473,7 @@ test('5. Rejection Workflow: Compliance Head rejects request, candidate remains 
 // =========================================================================
 test('6. SMTP Recipient Management: Add, edit, delete, deduplicate and validate multiple notification emails', () => {
   const initialSettings: SMTPSettings = {
+    id: 'global_smtp',
     host: 'smtp.gmail.com',
     port: 587,
     secure: false,

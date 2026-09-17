@@ -191,9 +191,15 @@ export const CandidateDetail: React.FC = () => {
       setInterviews(snap.docs.map(d => d.data() as InterviewSupportRequest));
     });
 
-    const unsubOfferRequests = onSnapshot(query(collection(db, 'jpc_interview_offer_requests'), where('candidate_id', '==', id)), (snap) => {
-      setInterviewOfferRequests(snap.docs.map(d => d.data() as InterviewOfferRequest).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-    });
+    const unsubOfferRequests = onSnapshot(
+      query(collection(db, 'jpc_interview_offer_requests'), where('candidate_id', '==', id)), 
+      (snap) => {
+        setInterviewOfferRequests(snap.docs.map(d => d.data() as InterviewOfferRequest).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      },
+      (error) => {
+        console.warn('Direct listener on jpc_interview_offer_requests unavailable:', error.message);
+      }
+    );
 
     const unsubUsers = subscribeToCollection<User>('jpc_users', (data) => {
       setAllUsers(data);
@@ -262,7 +268,7 @@ export const CandidateDetail: React.FC = () => {
   const resumeUsers = allUsers.filter(u => u.role === 'jpc_resume' && !u.is_on_leave);
   const marketingLeaders = allUsers.filter(u => u.role === 'jpc_marketing' && !u.is_on_leave);
   const marketingUsers = allUsers.filter(u => (u.role === 'jpc_marketing_support' || u.role === 'jpc_marketing') && !u.is_on_leave);
-  const latestOfferRequest = interviewOfferRequests[0] || null;
+  const latestOfferRequest = candidate?.latest_interview_offer_request || interviewOfferRequests[0] || null;
 
   // Edit states
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);

@@ -166,23 +166,24 @@ export const InterviewCompletionModal: React.FC<InterviewCompletionModalProps> =
         proxy_user_id: selectedProxyId && selectedProxyId !== 'custom' && selectedProxyId !== 'none' ? selectedProxyId : null,
         proxy_person_name: proxyPersonName.trim(),
         proxy_attended: proxyAttended,
-        proxy_support_notes: proxySupportNotes.trim() || undefined,
+        proxy_support_notes: proxySupportNotes.trim() || '',
         interview_details: {
           company_name: companyName.trim(),
           job_title: jobTitle.trim(),
           round_label: roundLabel.trim(),
           interview_date: interviewDate,
-          interview_time: interviewTime.trim() || undefined,
-          interview_mode: interviewMode.trim() || undefined,
-          offered_package: offeredPackage.trim() || undefined,
-          offered_location: offeredLocation.trim() || undefined,
-          expected_joining_date: expectedJoiningDate || undefined,
+          interview_time: interviewTime.trim() || '',
+          interview_mode: interviewMode.trim() || 'video',
+          offered_package: offeredPackage.trim() || '',
+          offered_role: jobTitle.trim(),
+          offered_location: offeredLocation.trim() || '',
+          expected_joining_date: expectedJoiningDate || '',
         },
         feedback_and_remarks: feedbackAndRemarks.trim(),
-        questions_asked: questionsAsked.trim() || undefined,
-        technical_remarks: technicalRemarks.trim() || undefined,
+        questions_asked: questionsAsked.trim() || '',
+        technical_remarks: technicalRemarks.trim() || '',
         recommendation_status: recommendationStatus,
-        additional_interview_notes: additionalNotes.trim() || undefined,
+        additional_interview_notes: additionalNotes.trim() || '',
         status: 'pending_compliance_approval',
         created_at: nowTimestamp,
         updated_at: nowTimestamp
@@ -195,7 +196,8 @@ export const InterviewCompletionModal: React.FC<InterviewCompletionModalProps> =
       await updateCandidate(candidate.id, {
         interview_offer_status: 'pending_approval',
         interview_offer_request_id: requestId,
-        interview_offer_rejection_reason: null
+        interview_offer_rejection_reason: null,
+        latest_interview_offer_request: newRequest
       });
 
       // 3. Log Activity
