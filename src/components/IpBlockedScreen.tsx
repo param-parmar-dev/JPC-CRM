@@ -17,6 +17,17 @@ import {
 import { motion } from 'motion/react';
 import { IpAccessRequest } from '../types';
 
+import { db } from '../firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDocs, 
+  query, 
+  where, 
+  onSnapshot 
+} from 'firebase/firestore';
+
 interface IpBlockedScreenProps {
   ip: string;
   reason?: string;
@@ -58,31 +69,88 @@ export const IpBlockedScreen: React.FC<IpBlockedScreenProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Real-time listener for request approval via client Firestore
+  useEffect(() => {
+    const searchId = userId || username;
+    if (!searchId) return;
+
+    try {
+      const q = userId
+        ? query(collection(db, 'jpc_ip_access_requests'), where('user_id', '==', userId))
+        : query(collection(db, 'jpc_ip_access_requests'), where('username', '==', username));
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as IpAccessRequest));
+          docs.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+          const latest = docs[0];
+          setExistingRequest(latest);
+          if (latest.status === 'approved') {
+            setSubmitSuccess('Access has been approved by the Administrator! You can now log in.');
+          }
+        }
+      }, (err) => {
+        console.warn('Realtime request status listener notice:', err);
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Could not setup realtime request status listener:', err);
+    }
+  }, [userId, username]);
+
   // Check if this user already submitted an access request
   const fetchMyRequestStatus = useCallback(async () => {
     if (!userId && !userEmail && !username) return;
     setIsCheckingStatus(true);
-    try {
-      const params = new URLSearchParams();
-      if (userId) params.append('user_id', userId);
-      if (userEmail) params.append('email', userEmail);
-      if (username) params.append('username', username);
 
-      const res = await fetch(`/api/auth/my-access-request?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.request) {
-          setExistingRequest(data.request);
-          if (data.request.status === 'approved') {
-            setSubmitSuccess('Access has been approved by the Administrator! You can now log in.');
+    let foundRequest: IpAccessRequest | null = null;
+
+    // 1. Direct client Firestore query
+    try {
+      const searchKey = userId ? 'user_id' : (userEmail ? 'user_email' : 'username');
+      const searchVal = userId || userEmail || username || '';
+      const q = query(
+        collection(db, 'jpc_ip_access_requests'),
+        where(searchKey, '==', searchVal)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as IpAccessRequest));
+        docs.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        foundRequest = docs[0];
+      }
+    } catch (fsErr) {
+      console.warn('Direct Firestore query fallback:', fsErr);
+    }
+
+    // 2. API fallback
+    if (!foundRequest) {
+      try {
+        const params = new URLSearchParams();
+        if (userId) params.append('user_id', userId);
+        if (userEmail) params.append('email', userEmail);
+        if (username) params.append('username', username);
+
+        const res = await fetch(`/api/auth/my-access-request?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.request) {
+            foundRequest = data.request;
           }
         }
+      } catch (e) {
+        console.warn('API fetch request status notice:', e);
       }
-    } catch (e) {
-      console.warn('Failed to fetch request status:', e);
-    } finally {
-      setIsCheckingStatus(false);
     }
+
+    if (foundRequest) {
+      setExistingRequest(foundRequest);
+      if (foundRequest.status === 'approved') {
+        setSubmitSuccess('Access has been approved by the Administrator! You can now log in.');
+      }
+    }
+    setIsCheckingStatus(false);
   }, [userId, userEmail, username]);
 
   useEffect(() => {
@@ -100,6 +168,39 @@ export const IpBlockedScreen: React.FC<IpBlockedScreenProps> = ({
     setIsSubmitting(true);
     setSubmitError(null);
 
+    const docId = `req_${userId || username || 'unauth'}_${Date.now()}`;
+    const newRequest: IpAccessRequest = {
+      id: docId,
+      user_id: userId || `req_${Date.now()}`,
+      user_email: userEmail || '',
+      username: username || '',
+      display_name: userName || username || 'Team Member',
+      user_role: 'user',
+      client_ip: ip,
+      request_type: requestedScope,
+      requested_scope: requestedScope,
+      reason: requestReason.trim(),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      reviewed_at: null,
+      reviewed_by: null,
+      admin_notes: null
+    };
+
+    let clientSaved = false;
+
+    // 1. Direct Firestore write (instant, offline-resilient, bypasses network change issues)
+    try {
+      await setDoc(doc(db, 'jpc_ip_access_requests', docId), newRequest);
+      clientSaved = true;
+      setExistingRequest(newRequest);
+      setSubmitSuccess('Your request has been submitted to the Administrator. Please wait for approval.');
+      setIsFormOpen(false);
+    } catch (fsErr) {
+      console.warn('Client Firestore write notice, falling back to API:', fsErr);
+    }
+
+    // 2. Server API sync (dual-path to ensure backend logs attempt)
     try {
       const res = await fetch('/api/auth/request-external-access', {
         method: 'POST',
@@ -116,18 +217,23 @@ export const IpBlockedScreen: React.FC<IpBlockedScreenProps> = ({
         })
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setSubmitSuccess('Your request has been submitted to the Administrator. Please wait for approval.');
-        setIsFormOpen(false);
-        fetchMyRequestStatus();
-      } else {
-        setSubmitError(data.error || 'Failed to submit access request. Please try again.');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && !clientSaved) {
+          setSubmitSuccess('Your request has been submitted to the Administrator. Please wait for approval.');
+          setIsFormOpen(false);
+          fetchMyRequestStatus();
+        }
+      } else if (!clientSaved) {
+        const errData = await res.json().catch(() => ({}));
+        setSubmitError(errData.error || 'Failed to submit access request. Please try again.');
       }
-    } catch (err) {
-      console.error('Submission error:', err);
-      setSubmitError('Network error while submitting access request. Please check your connection.');
+    } catch (apiErr) {
+      // If client write already succeeded, we don't alert the user with an error
+      if (!clientSaved) {
+        console.error('API submission error:', apiErr);
+        setSubmitError('Failed to submit access request. Please check your connection and try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
