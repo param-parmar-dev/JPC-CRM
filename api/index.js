@@ -2642,11 +2642,22 @@ function extractClientIp(req) {
   if (req.socket?.remoteAddress) return normalizeIp(req.socket.remoteAddress);
   return "127.0.0.1";
 }
+var DEFAULT_OFFICE_IPS = [
+  {
+    id: "office-static-main",
+    ip: "14.102.161.54",
+    label: "Placify Office (Static IP)",
+    description: "Primary office static IP",
+    is_active: true,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    created_by: "system"
+  }
+];
 async function getIpAccessSettings(targetDb = db) {
   try {
     if (!targetDb || typeof targetDb.collection !== "function") {
       return {
-        office_ips: [],
+        office_ips: DEFAULT_OFFICE_IPS,
         enforce_ip_control: true,
         admin_lockout_prevention: true,
         updated_at: (/* @__PURE__ */ new Date()).toISOString(),
@@ -2656,18 +2667,30 @@ async function getIpAccessSettings(targetDb = db) {
     const settingsDoc = await targetDb.collection("jpc_settings").doc("ip_access_control").get();
     if (settingsDoc && settingsDoc.exists) {
       const data = settingsDoc.data();
+      const officeIps = Array.isArray(data.office_ips) && data.office_ips.length > 0 ? data.office_ips : DEFAULT_OFFICE_IPS;
       return {
-        office_ips: data.office_ips || [],
+        office_ips: officeIps,
         enforce_ip_control: data.enforce_ip_control !== false,
         admin_lockout_prevention: data.admin_lockout_prevention !== false,
         updated_at: data.updated_at || (/* @__PURE__ */ new Date()).toISOString(),
         updated_by: data.updated_by || "system"
       };
+    } else {
+      const initialSettings = {
+        office_ips: DEFAULT_OFFICE_IPS,
+        enforce_ip_control: true,
+        admin_lockout_prevention: true,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+        updated_by: "system"
+      };
+      targetDb.collection("jpc_settings").doc("ip_access_control").set(initialSettings, { merge: true }).catch(() => {
+      });
+      return initialSettings;
     }
   } catch (e) {
   }
   return {
-    office_ips: [],
+    office_ips: DEFAULT_OFFICE_IPS,
     enforce_ip_control: true,
     admin_lockout_prevention: true,
     updated_at: (/* @__PURE__ */ new Date()).toISOString(),
@@ -4213,6 +4236,7 @@ if (process.env.NODE_ENV !== "test" && !isServerless) {
 }
 var server_default = app;
 export {
+  DEFAULT_OFFICE_IPS,
   assignLeadRoundRobinTransaction,
   server_default as default,
   enforceIpAccess,

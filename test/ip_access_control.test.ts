@@ -439,4 +439,36 @@ test('5. Backend Request Helpers: extractClientIp and logIpAccessAttempt', async
     assert.equal(loggedDocs[0].username, 'recruiter.b');
     assert.ok(loggedDocs[0].timestamp);
   });
+
+  await t.test('Static office IP 14.102.161.54 is recognized and allowed as approved office network', async () => {
+    const settings = await getIpAccessSettings({
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: false })
+        })
+      })
+    });
+
+    assert.ok(settings.office_ips.some(o => o.ip === '14.102.161.54'));
+
+    const anyUser = {
+      id: 'test-user-static',
+      username: 'office.worker',
+      role: 'jpc_sales',
+      external_access_enabled: false
+    };
+
+    const result = evaluateIpAccess({
+      clientIp: '14.102.161.54',
+      user: anyUser,
+      officeIps: settings.office_ips,
+      enforceIpControl: true
+    });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.reason, 'office_ip');
+    assert.equal(result.isOfficeIp, true);
+    assert.match(result.message, /Placify Office/);
+  });
 });
+

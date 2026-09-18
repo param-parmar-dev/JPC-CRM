@@ -36,6 +36,18 @@ import { isIpInCidr, normalizeIp } from '../lib/ipMatcher';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
 
+const DEFAULT_OFFICE_IPS: OfficeIpConfig[] = [
+  {
+    id: 'office-static-main',
+    ip: '14.102.161.54',
+    label: 'Placify Office (Static IP)',
+    description: 'Primary office static IP',
+    is_active: true,
+    created_at: new Date().toISOString(),
+    created_by: 'system'
+  }
+];
+
 export const IPAccessManagement: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -47,7 +59,7 @@ export const IPAccessManagement: React.FC = () => {
 
   // Settings State
   const [settings, setSettings] = useState<IpAccessControlSettings>({
-    office_ips: [],
+    office_ips: DEFAULT_OFFICE_IPS,
     enforce_ip_control: true,
     admin_lockout_prevention: true,
     updated_at: new Date().toISOString()
@@ -109,8 +121,11 @@ export const IPAccessManagement: React.FC = () => {
       });
       if (res.ok) {
         const data = await res.json();
+        const officeList = Array.isArray(data.office_ips) && data.office_ips.length > 0 
+          ? data.office_ips 
+          : DEFAULT_OFFICE_IPS;
         setSettings({
-          office_ips: data.office_ips || [],
+          office_ips: officeList,
           enforce_ip_control: data.enforce_ip_control !== false,
           admin_lockout_prevention: data.admin_lockout_prevention !== false,
           updated_at: data.updated_at || new Date().toISOString(),
