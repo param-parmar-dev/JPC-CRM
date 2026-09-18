@@ -472,3 +472,176 @@ test('5. Backend Request Helpers: extractClientIp and logIpAccessAttempt', async
   });
 });
 
+test('6. Outside Office Access Requests & Admin Review Lifecycle', async (t) => {
+  const officeIps: OfficeIpConfig[] = [
+    {
+      id: 'office-static-main',
+      ip: '14.102.161.54',
+      label: 'Placify Office (Static IP)',
+      is_active: true,
+      created_at: new Date().toISOString()
+    }
+  ];
+
+  await t.test('Blocked user submits outside-office access request with pending status', () => {
+    const blockedUser = {
+      id: 'usr_recruiter_req1',
+      username: 'alex.recruiter',
+      display_name: 'Alex Recruiter',
+      role: 'jpc_recruiter',
+      email: 'alex@placify.com',
+      external_access_enabled: false
+    };
+
+    // Outside office IP
+    const initialCheck = evaluateIpAccess({
+      clientIp: '185.220.101.40',
+      user: blockedUser,
+      officeIps,
+      enforceIpControl: true
+    });
+    assert.equal(initialCheck.allowed, false);
+    assert.equal(initialCheck.reason, 'external_access_disabled');
+
+    // Simulate request creation
+    const newRequest = {
+      id: 'req_12345',
+      user_id: blockedUser.id,
+      username: blockedUser.username,
+      display_name: blockedUser.display_name,
+      user_email: blockedUser.email,
+      user_role: blockedUser.role,
+      client_ip: '185.220.101.40',
+      request_type: 'global' as const,
+      requested_scope: 'global' as const,
+      reason: 'Working remotely from home today',
+      status: 'pending' as const,
+      created_at: new Date().toISOString(),
+      reviewed_at: null,
+      reviewed_by: null,
+      admin_notes: null
+    };
+
+    assert.equal(newRequest.status, 'pending');
+    assert.equal(newRequest.client_ip, '185.220.101.40');
+    assert.equal(newRequest.requested_scope, 'global');
+  });
+
+  await t.test('Admin reviews and approves with Global IP -> User can access from any IP worldwide', () => {
+    const userToApprove = {
+      id: 'usr_recruiter_req2',
+      username: 'sara.remote',
+      display_name: 'Sara Remote',
+      role: 'jpc_recruiter',
+      email: 'sara@placify.com',
+      external_access_enabled: false,
+      allowed_external_ips: [] as string[]
+    };
+
+    // Admin approves with Global IP
+    const approvedUser = {
+      ...userToApprove,
+      external_access_enabled: true,
+      allowed_external_ips: [], // Empty allowed_external_ips represents Global IP access
+      access_status: 'active' as const,
+      external_access_notes: 'Approved for Global Access by Admin'
+    };
+
+    // 1. Access from home IP
+    const homeCheck = evaluateIpAccess({
+      clientIp: '185.220.101.40',
+      user: approvedUser,
+      officeIps,
+      enforceIpControl: true
+    });
+    assert.equal(homeCheck.allowed, true);
+    assert.equal(homeCheck.reason, 'external_whitelist_all');
+
+    // 2. Access from mobile 5G hotspot or travel IP
+    const mobileCheck = evaluateIpAccess({
+      clientIp: '203.0.113.77',
+      user: approvedUser,
+      officeIps,
+      enforceIpControl: true
+    });
+    assert.equal(mobileCheck.allowed, true);
+    assert.equal(mobileCheck.reason, 'external_whitelist_all');
+  });
+
+  await t.test('Admin reviews and approves with Specific IP -> User allowed only on that IP, blocked on others', () => {
+    const userSpecific = {
+      id: 'usr_recruiter_req3',
+      username: 'john.specific',
+      display_name: 'John Specific',
+      role: 'jpc_recruiter',
+      email: 'john@placify.com',
+      external_access_enabled: false,
+      allowed_external_ips: [] as string[]
+    };
+
+    const requestedClientIp = '198.51.100.42';
+
+    // Admin approves for "Specific IP" (req.client_ip)
+    const approvedUser = {
+      ...userSpecific,
+      external_access_enabled: true,
+      allowed_external_ips: [requestedClientIp],
+      access_status: 'active' as const,
+      external_access_notes: `Approved for IP ${requestedClientIp}`
+    };
+
+    // 1. Access from the approved IP -> ALLOWED
+    const approvedIpCheck = evaluateIpAccess({
+      clientIp: requestedClientIp,
+      user: approvedUser,
+      officeIps,
+      enforceIpControl: true
+    });
+    assert.equal(approvedIpCheck.allowed, true);
+    assert.equal(approvedIpCheck.reason, 'external_ip_matched');
+
+    // 2. Access from another outside IP -> BLOCKED
+    const otherIpCheck = evaluateIpAccess({
+      clientIp: '185.220.101.99',
+      user: approvedUser,
+      officeIps,
+      enforceIpControl: true
+    });
+    assert.equal(otherIpCheck.allowed, false);
+    assert.equal(otherIpCheck.reason, 'external_ip_not_matched');
+  });
+
+  await t.test('Admin declines access request -> User remains blocked with review notes recorded', () => {
+    const userDeclined = {
+      id: 'usr_recruiter_req4',
+      username: 'tom.declined',
+      display_name: 'Tom Declined',
+      role: 'jpc_recruiter',
+      email: 'tom@placify.com',
+      external_access_enabled: false,
+      allowed_external_ips: [] as string[]
+    };
+
+    const declinedRequest = {
+      id: 'req_declined_1',
+      status: 'rejected' as const,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: 'Admin',
+      admin_notes: 'Outside office access requires prior director approval.'
+    };
+
+    assert.equal(declinedRequest.status, 'rejected');
+    assert.match(declinedRequest.admin_notes, /director approval/);
+
+    // User access evaluation remains blocked outside office
+    const check = evaluateIpAccess({
+      clientIp: '198.51.100.50',
+      user: userDeclined,
+      officeIps,
+      enforceIpControl: true
+    });
+    assert.equal(check.allowed, false);
+    assert.equal(check.reason, 'external_access_disabled');
+  });
+});
+

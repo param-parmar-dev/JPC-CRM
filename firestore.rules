@@ -279,6 +279,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     
+    match /jpc_ip_access_requests/{requestId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+    
     match /jpc_lead_locks/{lockId} {
       allow read, write: if isSignedIn();
     }

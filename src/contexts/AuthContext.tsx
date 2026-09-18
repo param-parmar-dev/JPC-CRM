@@ -18,6 +18,11 @@ export interface IpAccessBlockedInfo {
   ip: string;
   reason: string;
   message: string;
+  user_id?: string;
+  user_email?: string;
+  user_name?: string;
+  username?: string;
+  user_role?: string;
 }
 
 interface AuthContextType {
@@ -57,12 +62,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json().catch(() => ({}));
 
       if (res.status === 403 || data.allowed === false) {
-        console.warn('[AuthContext] IP Access Blocked for user:', fUser.email, data);
+        const username = fUser.email ? fUser.email.split('@')[0] : 'user';
+        const displayName = fUser.displayName || username;
         setIpBlocked({
           blocked: true,
           ip: data.ip || 'Unknown IP',
           reason: data.reason || 'external_access_disabled',
-          message: data.message || 'Access denied. Outside office network and external access is not enabled.'
+          message: data.message || 'Access denied. Outside office network and external access is not enabled.',
+          user_id: fUser.uid,
+          user_email: fUser.email || '',
+          user_name: displayName,
+          username: username,
+          user_role: (fUser as any).role || 'user'
         });
         try {
           localStorage.removeItem(`jpc_user_cache_${fUser.uid}`);

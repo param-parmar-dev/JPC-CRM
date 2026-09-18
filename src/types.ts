@@ -569,6 +569,25 @@ export interface IpAccessLog {
   endpoint?: string;
 }
 
+export interface IpAccessRequest {
+  id: string;
+  user_id: string;
+  user_email: string;
+  username: string;
+  display_name: string;
+  user_role?: string;
+  client_ip: string;
+  request_type: 'global' | 'specific_ip';
+  requested_scope?: 'global' | 'specific_ip';
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  admin_notes?: string | null;
+  granted_scope?: 'global' | 'specific_ip' | null;
+}
+
 
 export interface LeadRoundRobinAssignment {
   candidate_id: string;

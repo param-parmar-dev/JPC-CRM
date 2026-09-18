@@ -91,6 +91,10 @@ const AppContent: React.FC = () => {
         ip={ipBlocked.ip}
         reason={ipBlocked.reason}
         message={ipBlocked.message}
+        userId={ipBlocked.user_id}
+        userEmail={ipBlocked.user_email}
+        userName={ipBlocked.user_name}
+        username={ipBlocked.username}
         onRetry={clearIpBlocked}
       />
     );

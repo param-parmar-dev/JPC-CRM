@@ -2656,6 +2656,258 @@ app.get(['/api/admin/ip-access/logs', '/admin/ip-access/logs'], verifyAdmin, asy
   }
 });
 
+/**
+ * Submits an access request from outside the office.
+ * Accessible even when the user is blocked from internal CRM routes.
+ */
+app.post(['/api/auth/request-external-access', '/auth/request-external-access'], async (req, res) => {
+  try {
+    const clientIp = extractClientIp(req);
+    const {
+      user_id,
+      user_email,
+      username,
+      display_name,
+      request_type = 'global',
+      reason
+    } = req.body;
+
+    if (!user_id && !user_email && !username) {
+      return res.status(400).json({ error: 'User identity is required to submit an access request' });
+    }
+
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      return res.status(400).json({ error: 'Please provide a reason for requesting outside-office access' });
+    }
+
+    // Try to resolve user document in jpc_users
+    let matchedUser: any = null;
+    let finalUserId = user_id;
+    if (user_id) {
+      const uDoc = await db.collection('jpc_users').doc(user_id).get();
+      if (uDoc.exists) matchedUser = { id: uDoc.id, ...uDoc.data() };
+    }
+    if (!matchedUser && user_email) {
+      const snap = await db.collection('jpc_users').where('email', '==', user_email).limit(1).get();
+      if (!snap.empty) matchedUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    }
+    if (!matchedUser && username) {
+      const snap = await db.collection('jpc_users').where('username', '==', username).limit(1).get();
+      if (!snap.empty) matchedUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    }
+
+    finalUserId = matchedUser ? matchedUser.id : (user_id || `req_${Date.now()}`);
+    const finalEmail = matchedUser?.email || user_email || '';
+    const finalUsername = matchedUser?.username || username || finalEmail.split('@')[0] || 'unknown';
+    const finalDisplayName = matchedUser?.display_name || display_name || finalUsername;
+    const finalRole = matchedUser?.role || 'user';
+
+    // Check if an existing pending request exists for this user
+    const existingSnap = await db.collection('jpc_ip_access_requests')
+      .where('user_id', '==', finalUserId)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
+    const requestData: Record<string, any> = {
+      user_id: finalUserId,
+      user_email: finalEmail,
+      username: finalUsername,
+      display_name: finalDisplayName,
+      user_role: finalRole,
+      client_ip: clientIp,
+      request_type: ['global', 'specific_ip'].includes(request_type) ? request_type : 'global',
+      reason: reason.trim(),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      reviewed_at: null,
+      reviewed_by: null,
+      admin_notes: null
+    };
+
+    let docId = '';
+    if (!existingSnap.empty) {
+      docId = existingSnap.docs[0].id;
+      await db.collection('jpc_ip_access_requests').doc(docId).update(requestData);
+    } else {
+      const newRef = db.collection('jpc_ip_access_requests').doc();
+      docId = newRef.id;
+      await newRef.set({ id: docId, ...requestData });
+    }
+
+    console.log(`[IP Access Request] New request submitted by ${finalDisplayName} (${finalUsername}) from ${clientIp}: ${reason.trim()}`);
+    res.json({
+      success: true,
+      request_id: docId,
+      status: 'pending',
+      client_ip: clientIp,
+      message: 'Access request submitted successfully. Awaiting Administrator review.'
+    });
+  } catch (err: any) {
+    console.error('Error submitting IP access request:', err);
+    res.status(500).json({ error: 'Failed to submit access request' });
+  }
+});
+
+/**
+ * Checks the status of the current user's latest access request.
+ */
+app.get(['/api/auth/my-access-request', '/auth/my-access-request'], async (req, res) => {
+  try {
+    const userId = req.query.user_id as string;
+    const userEmail = req.query.email as string;
+    const username = req.query.username as string;
+
+    if (!userId && !userEmail && !username) {
+      return res.json({ request: null });
+    }
+
+    let snap: any = null;
+    if (userId) {
+      snap = await db.collection('jpc_ip_access_requests').where('user_id', '==', userId).orderBy('created_at', 'desc').limit(1).get();
+    } else if (userEmail) {
+      snap = await db.collection('jpc_ip_access_requests').where('user_email', '==', userEmail).orderBy('created_at', 'desc').limit(1).get();
+    } else if (username) {
+      snap = await db.collection('jpc_ip_access_requests').where('username', '==', username).orderBy('created_at', 'desc').limit(1).get();
+    }
+
+    if (!snap || snap.empty) {
+      return res.json({ request: null });
+    }
+
+    const doc = snap.docs[0];
+    res.json({
+      request: {
+        id: doc.id,
+        ...doc.data()
+      }
+    });
+  } catch (err: any) {
+    console.error('Error checking my access request:', err);
+    res.status(500).json({ error: 'Failed to check access request' });
+  }
+});
+
+/**
+ * Lists all external access requests for Admin review.
+ */
+app.get(['/api/admin/ip-access/requests', '/admin/ip-access/requests'], verifyAdmin, async (req, res) => {
+  try {
+    const statusFilter = req.query.status as string; // 'pending', 'approved', 'rejected', or undefined
+    let query = db.collection('jpc_ip_access_requests').orderBy('created_at', 'desc');
+
+    if (statusFilter && ['pending', 'approved', 'rejected'].includes(statusFilter)) {
+      query = query.where('status', '==', statusFilter);
+    }
+
+    const snapshot = await query.limit(200).get();
+    const requests = snapshot.docs.map((doc: any) => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    // Calculate pending count
+    const pendingSnap = await db.collection('jpc_ip_access_requests').where('status', '==', 'pending').get();
+    const pendingCount = pendingSnap.size;
+
+    res.json({ requests, pending_count: pendingCount });
+  } catch (err: any) {
+    console.error('Error fetching IP access requests:', err);
+    res.status(500).json({ error: 'Failed to fetch access requests' });
+  }
+});
+
+/**
+ * Admin reviews (approves or rejects) an access request.
+ * Approving can grant Global IP access OR restrict to request IP.
+ */
+app.post(['/api/admin/ip-access/requests/:id/review', '/admin/ip-access/requests/:id/review'], verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      action,
+      approved_scope = 'global',
+      admin_notes = ''
+    } = req.body;
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action. Must be "approve" or "reject"' });
+    }
+
+    const reqRef = db.collection('jpc_ip_access_requests').doc(id);
+    const reqDoc = await reqRef.get();
+
+    if (!reqDoc.exists) {
+      return res.status(404).json({ error: 'Access request not found' });
+    }
+
+    const reqData = reqDoc.data();
+    const reviewerName = (req as any).user?.display_name || (req as any).user?.username || 'Admin';
+
+    if (action === 'approve') {
+      const userRef = db.collection('jpc_users').doc(reqData.user_id);
+      const userDoc = await userRef.get();
+
+      const isGlobal = approved_scope === 'global';
+      const cleanIps = isGlobal ? [] : [reqData.client_ip].filter(Boolean);
+
+      const userUpdatePayload: Record<string, any> = {
+        external_access_enabled: true,
+        allowed_external_ips: cleanIps,
+        access_status: 'active',
+        external_access_notes: admin_notes ? admin_notes.trim() : (isGlobal ? 'Approved for Global Access' : `Approved for IP ${reqData.client_ip}`),
+        external_access_updated_at: new Date().toISOString(),
+        external_access_updated_by: reviewerName
+      };
+
+      if (userDoc.exists) {
+        await userRef.update(userUpdatePayload);
+      } else {
+        const userByEmail = await db.collection('jpc_users').where('email', '==', reqData.user_email).limit(1).get();
+        if (!userByEmail.empty) {
+          await userByEmail.docs[0].ref.update(userUpdatePayload);
+        }
+      }
+
+      await reqRef.update({
+        status: 'approved',
+        granted_scope: approved_scope,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: reviewerName,
+        admin_notes: admin_notes ? admin_notes.trim() : 'Approved by Administrator'
+      });
+
+      await logIpAccessAttempt(db, {
+        ip: reqData.client_ip,
+        userId: reqData.user_id,
+        username: reqData.username,
+        userDisplayName: reqData.display_name,
+        userRole: reqData.user_role || 'user',
+        userEmail: reqData.user_email,
+        result: 'allowed',
+        reason: 'access_request_approved',
+        matchedRule: isGlobal ? 'Global Access (Approved by Admin)' : `Specific IP ${reqData.client_ip} (Approved by Admin)`
+      });
+
+      console.log(`[IP Access Request] Request ${id} APPROVED by ${reviewerName} with scope ${approved_scope} for user ${reqData.username}`);
+      return res.json({ success: true, message: `Access approved with ${isGlobal ? 'Global IP' : `IP ${reqData.client_ip}`} access.` });
+    } else {
+      await reqRef.update({
+        status: 'rejected',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: reviewerName,
+        admin_notes: admin_notes ? admin_notes.trim() : 'Access request declined by Administrator'
+      });
+
+      console.log(`[IP Access Request] Request ${id} REJECTED by ${reviewerName} for user ${reqData.username}`);
+      return res.json({ success: true, message: 'Access request rejected.' });
+    }
+  } catch (err: any) {
+    console.error('Error reviewing IP access request:', err);
+    res.status(500).json({ error: 'Failed to review access request' });
+  }
+});
+
 function generateHeuristicAudit(data: {
   recruiterName: string;
   selectedRange: string;

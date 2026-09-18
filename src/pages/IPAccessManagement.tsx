@@ -26,12 +26,14 @@ import {
   Clock,
   Download,
   SlidersHorizontal,
-  ChevronRight
+  ChevronRight,
+  Inbox,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal } from '../components/Modal';
 import { List } from 'react-window';
-import { OfficeIpConfig, IpAccessControlSettings, IpAccessLog, User, UserRole } from '../types';
+import { OfficeIpConfig, IpAccessControlSettings, IpAccessLog, IpAccessRequest, User, UserRole } from '../types';
 import { isIpInCidr, normalizeIp } from '../lib/ipMatcher';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
@@ -52,7 +54,7 @@ export const IPAccessManagement: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'office_ips' | 'external_users' | 'audit_logs'>('office_ips');
+  const [activeTab, setActiveTab] = useState<'office_ips' | 'external_users' | 'access_requests' | 'audit_logs'>('office_ips');
   const [isLoading, setIsLoading] = useState(true);
   const [currentClientIp, setCurrentClientIp] = useState<string>('');
   const [ipCopied, setIpCopied] = useState(false);
@@ -71,6 +73,17 @@ export const IPAccessManagement: React.FC = () => {
   const [userSearch, setUserSearch] = useState('');
   const debouncedUserSearch = useDebounce(userSearch, 300);
   const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'global' | 'specific_ips' | 'office_only'>('all');
+
+  // Access Requests State
+  const [requests, setRequests] = useState<IpAccessRequest[]>([]);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [requestSearch, setRequestSearch] = useState('');
+  const debouncedRequestSearch = useDebounce(requestSearch, 300);
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
+  const [rejectModalRequest, setRejectModalRequest] = useState<IpAccessRequest | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
 
   // Logs State
   const [logs, setLogs] = useState<IpAccessLog[]>([]);
@@ -175,6 +188,71 @@ export const IPAccessManagement: React.FC = () => {
     }
   }, [logFilter]);
 
+  // Fetch access requests
+  const fetchRequests = useCallback(async () => {
+    setRequestsLoading(true);
+    try {
+      const token = await (window as any).firebaseAuthToken?.() || localStorage.getItem('token');
+      const res = await fetch('/api/admin/ip-access/requests', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRequests(data.requests || []);
+        setPendingRequestsCount(data.pending_count || 0);
+      }
+    } catch (e) {
+      console.error('Failed to fetch access requests:', e);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, []);
+
+  // Review access request (approve or reject)
+  const handleReviewRequest = async (
+    targetRequest: IpAccessRequest,
+    action: 'approve' | 'reject',
+    approvedScope: 'global' | 'specific_ip' = 'global',
+    notes: string = ''
+  ) => {
+    setReviewingRequestId(targetRequest.id);
+    try {
+      const token = await (window as any).firebaseAuthToken?.() || localStorage.getItem('token');
+      const res = await fetch(`/api/admin/ip-access/requests/${targetRequest.id}/review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          action,
+          approved_scope: approvedScope,
+          admin_notes: notes
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        showToast(
+          action === 'approve'
+            ? `Access approved for ${targetRequest.display_name} (${approvedScope === 'global' ? 'Global Access' : `IP ${targetRequest.client_ip}`})`
+            : `Request for ${targetRequest.display_name} rejected`,
+          action === 'approve' ? 'success' : 'info'
+        );
+        setRejectModalRequest(null);
+        setRejectNote('');
+        await Promise.all([fetchRequests(), fetchUsers()]);
+      } else {
+        showToast(data.error || 'Failed to update request status', 'error');
+      }
+    } catch (e) {
+      showToast('Error reviewing request', 'error');
+    } finally {
+      setReviewingRequestId(null);
+    }
+  };
+
   // Initial load
   useEffect(() => {
     const loadAll = async () => {
@@ -183,12 +261,13 @@ export const IPAccessManagement: React.FC = () => {
         fetchMyIp(),
         fetchSettings(),
         fetchUsers(),
+        fetchRequests(),
         fetchLogs('blocked')
       ]);
       setIsLoading(false);
     };
     loadAll();
-  }, [fetchMyIp, fetchSettings, fetchUsers, fetchLogs]);
+  }, [fetchMyIp, fetchSettings, fetchUsers, fetchRequests, fetchLogs]);
 
   // Copy detected IP
   const handleCopyIp = () => {
@@ -598,6 +677,29 @@ export const IPAccessManagement: React.FC = () => {
     });
   }, [users, userStatusFilter, debouncedUserSearch]);
 
+  // Filtered Requests List
+  const filteredRequests = useMemo(() => {
+    return requests.filter(req => {
+      // Status filter
+      if (requestStatusFilter !== 'all' && req.status !== requestStatusFilter) {
+        return false;
+      }
+
+      // Search filter
+      if (debouncedRequestSearch) {
+        const q = debouncedRequestSearch.toLowerCase();
+        const matchesName = (req.display_name || '').toLowerCase().includes(q);
+        const matchesUsername = (req.username || '').toLowerCase().includes(q);
+        const matchesEmail = (req.user_email || '').toLowerCase().includes(q);
+        const matchesIp = (req.client_ip || '').toLowerCase().includes(q);
+        const matchesReason = (req.reason || '').toLowerCase().includes(q);
+        return matchesName || matchesUsername || matchesEmail || matchesIp || matchesReason;
+      }
+
+      return true;
+    });
+  }, [requests, requestStatusFilter, debouncedRequestSearch]);
+
   // Filtered Logs List
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
@@ -808,6 +910,34 @@ export const IPAccessManagement: React.FC = () => {
             )}>
               {stats.externalEnabledCount}
             </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('access_requests');
+              fetchRequests();
+            }}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer relative",
+              activeTab === 'access_requests'
+                ? "bg-accent-blue text-white shadow-md shadow-accent-blue/20"
+                : "bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary"
+            )}
+          >
+            <Inbox className="w-4 h-4" />
+            <span>Access Requests</span>
+            {pendingRequestsCount > 0 ? (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-accent-red text-white animate-pulse">
+                {pendingRequestsCount} new
+              </span>
+            ) : (
+              <span className={cn(
+                "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+                activeTab === 'access_requests' ? "bg-white/20 text-white" : "bg-bg-tertiary text-text-muted"
+              )}>
+                {requests.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -1228,7 +1358,223 @@ export const IPAccessManagement: React.FC = () => {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 3: AUDIT & BLOCKED LOGS */}
+      {/* TAB 3: ACCESS REQUESTS */}
+      {/* ========================================================= */}
+      {activeTab === 'access_requests' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-accent-blue/5 border border-accent-blue/20 rounded-2xl flex items-start gap-3">
+            <Inbox className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
+            <div className="text-xs text-text-secondary leading-relaxed">
+              <span className="font-bold text-text-primary">Outside-Office Access Requests:</span> When staff members are blocked from outside the office, they can submit an access request with their detected IP and justification. Review, approve (granting Global Login or Current IP access), or reject their requests below.
+            </div>
+          </div>
+
+          {/* Search & Status Filters */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+              <input
+                type="text"
+                value={requestSearch}
+                onChange={e => setRequestSearch(e.target.value)}
+                placeholder="Search requests by user, email, IP, or reason..."
+                className="w-full bg-bg-secondary border border-border-primary rounded-xl pl-10 pr-4 py-2 text-xs text-text-primary focus:outline-none focus:border-accent-blue transition-colors"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+              <div className="flex bg-bg-secondary border border-border-primary rounded-xl p-1 text-xs shrink-0">
+                {(['pending', 'all', 'approved', 'rejected'] as const).map((mode) => {
+                  const count = mode === 'all' 
+                    ? requests.length 
+                    : requests.filter(r => r.status === mode).length;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => setRequestStatusFilter(mode)}
+                      className={cn(
+                        "px-3 py-1 rounded-lg font-medium transition-all cursor-pointer capitalize flex items-center gap-1.5",
+                        requestStatusFilter === mode
+                          ? "bg-accent-blue text-white shadow-sm font-bold"
+                          : "text-text-secondary hover:text-text-primary"
+                      )}
+                    >
+                      <span>{mode}</span>
+                      <span className={cn(
+                        "px-1.5 py-0.2 rounded-full text-[9px]",
+                        requestStatusFilter === mode ? "bg-white/20 text-white" : "bg-bg-tertiary text-text-muted"
+                      )}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={fetchRequests}
+                disabled={requestsLoading}
+                className="p-2 bg-bg-secondary border border-border-primary hover:bg-bg-tertiary rounded-xl text-text-muted hover:text-text-primary transition-all cursor-pointer shrink-0"
+                title="Refresh requests"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", requestsLoading && "animate-spin")} />
+              </button>
+            </div>
+          </div>
+
+          {/* Requests Table */}
+          <div className="bg-bg-secondary border border-border-primary rounded-3xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-bg-tertiary/50 border-b border-border-primary text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4">Requester</th>
+                    <th className="px-6 py-4">Requested Scope</th>
+                    <th className="px-6 py-4">Detected IP</th>
+                    <th className="px-6 py-4">Reason / Notes</th>
+                    <th className="px-6 py-4">Submitted At</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-secondary/50">
+                  {filteredRequests.map((req) => {
+                    const isPending = req.status === 'pending';
+                    const isApproved = req.status === 'approved';
+                    const isRejected = req.status === 'rejected';
+
+                    return (
+                      <tr key={req.id} className="hover:bg-bg-tertiary/30 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-accent-blue/10 flex items-center justify-center text-accent-blue font-bold text-xs ring-1 ring-accent-blue/20 shrink-0">
+                              {(req.display_name || req.username || 'U').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-text-primary truncate">{req.display_name || req.username}</div>
+                              <div className="text-[11px] text-text-muted truncate">{req.user_email || `@${req.username}`}</div>
+                              {req.user_role && (
+                                <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 bg-bg-tertiary rounded text-text-secondary border border-border-secondary">
+                                  {req.user_role}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          {req.request_type === 'global' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-accent-green/10 text-accent-green border border-accent-green/30">
+                              <Globe className="w-3 h-3" />
+                              <span>Global Access</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-accent-blue/10 text-accent-blue border border-accent-blue/30">
+                              <Network className="w-3 h-3" />
+                              <span>This IP Only</span>
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 font-mono font-bold text-text-primary whitespace-nowrap">
+                          {req.client_ip}
+                        </td>
+
+                        <td className="px-6 py-4 max-w-xs">
+                          <p className="text-xs text-text-secondary italic line-clamp-2" title={req.reason}>
+                            "{req.reason || 'No justification provided'}"
+                          </p>
+                          {req.admin_notes && (
+                            <div className="text-[10px] text-text-muted mt-1">
+                              <strong>Admin:</strong> {req.admin_notes}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-text-muted whitespace-nowrap">
+                          <div className="text-[11px] font-semibold text-text-primary">
+                            {req.created_at ? new Date(req.created_at).toLocaleDateString() : '—'}
+                          </div>
+                          <div className="text-[10px] text-text-muted">
+                            {req.created_at ? new Date(req.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                            isPending && "bg-amber-500/10 text-amber-600 border border-amber-500/30",
+                            isApproved && "bg-accent-green/10 text-accent-green border border-accent-green/30",
+                            isRejected && "bg-accent-red/10 text-accent-red border border-accent-red/30"
+                          )}>
+                            {isPending && <Clock className="w-3 h-3 animate-pulse" />}
+                            {isApproved && <CheckCircle2 className="w-3 h-3" />}
+                            {isRejected && <XCircle className="w-3 h-3" />}
+                            <span>{req.status}</span>
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 text-right">
+                          {isPending ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleReviewRequest(req, 'approve', 'global')}
+                                disabled={reviewingRequestId === req.id}
+                                className="px-2.5 py-1.5 bg-accent-green hover:bg-accent-green/90 text-white font-bold rounded-xl text-xs transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                title="Approve with Global IP (Login from anywhere worldwide)"
+                              >
+                                <Globe className="w-3 h-3" />
+                                <span>Allow Global IP</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleReviewRequest(req, 'approve', 'specific_ip')}
+                                disabled={reviewingRequestId === req.id}
+                                className="px-2.5 py-1.5 bg-accent-blue/10 hover:bg-accent-blue/20 text-accent-blue border border-accent-blue/30 font-bold rounded-xl text-xs transition-all cursor-pointer inline-flex items-center gap-1 disabled:opacity-50"
+                                title={`Approve for IP ${req.client_ip} only`}
+                              >
+                                <Network className="w-3 h-3" />
+                                <span>Allow This IP</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setRejectModalRequest(req);
+                                  setRejectNote('');
+                                }}
+                                disabled={reviewingRequestId === req.id}
+                                className="p-1.5 bg-bg-tertiary hover:bg-accent-red/10 hover:text-accent-red hover:border-accent-red/30 border border-border-secondary text-text-muted rounded-xl transition-all cursor-pointer"
+                                title="Decline Request"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-text-muted italic">
+                              Reviewed by {req.reviewed_by || 'Admin'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredRequests.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-text-muted">
+                        No access requests match the selected filter.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 4: AUDIT & BLOCKED LOGS */}
       {/* ========================================================= */}
       {activeTab === 'audit_logs' && (
         <div className="space-y-4">
@@ -1678,6 +2024,82 @@ export const IPAccessManagement: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Decline Access Request Modal */}
+      <Modal
+        isOpen={Boolean(rejectModalRequest)}
+        onClose={() => {
+          setRejectModalRequest(null);
+          setRejectNote('');
+        }}
+        title="Decline Outside-Office Access Request"
+      >
+        {rejectModalRequest && (
+          <div className="space-y-4">
+            <div className="p-3.5 bg-accent-red/5 border border-accent-red/20 rounded-2xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-accent-red shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <div className="font-bold text-text-primary">
+                  Decline request from {rejectModalRequest.display_name} (@{rejectModalRequest.username})
+                </div>
+                <div className="text-text-secondary">
+                  The user will remain restricted to office networks. You can optionally provide a reason or instruction.
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-bg-tertiary/50 border border-border-primary rounded-xl text-xs space-y-1">
+              <div className="text-text-muted flex justify-between">
+                <span>Requested Scope:</span>
+                <span className="font-semibold text-text-primary uppercase tracking-wider text-[10px]">
+                  {(rejectModalRequest.requested_scope || rejectModalRequest.request_type) === 'global' ? 'Global Access' : `Specific IP (${rejectModalRequest.client_ip})`}
+                </span>
+              </div>
+              {rejectModalRequest.reason && (
+                <div className="text-text-muted flex flex-col gap-0.5 pt-1 border-t border-border-primary/50">
+                  <span className="text-[10px]">User's Reason:</span>
+                  <span className="text-text-secondary italic">"{rejectModalRequest.reason}"</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-text-primary uppercase tracking-wider block">
+                Decline Reason / Admin Note (Optional)
+              </label>
+              <textarea
+                rows={3}
+                value={rejectNote}
+                onChange={e => setRejectNote(e.target.value)}
+                placeholder="e.g. Outside-office access requires manager pre-approval. Please contact IT."
+                className="w-full bg-bg-primary border border-border-primary rounded-xl p-3 text-xs text-text-primary focus:outline-none focus:border-accent-blue resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border-primary">
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectModalRequest(null);
+                  setRejectNote('');
+                }}
+                className="px-4 py-2 bg-bg-tertiary text-text-secondary rounded-xl text-xs font-bold hover:bg-bg-tertiary/80 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={reviewingRequestId === rejectModalRequest.id}
+                onClick={() => handleReviewRequest(rejectModalRequest, 'reject', 'global', rejectNote)}
+                className="px-5 py-2 bg-accent-red text-white rounded-xl text-xs font-bold hover:brightness-110 shadow-md shadow-accent-red/20 transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>Confirm Decline</span>
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
