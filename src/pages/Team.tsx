@@ -707,18 +707,6 @@ export const Team: React.FC = () => {
             Live Stats
           </span>
         </button>
-        {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin') && (
-          <a
-            href="#ip-access"
-            className="pb-4 px-1 text-sm font-bold tracking-tight border-b-2 border-transparent text-text-secondary hover:text-accent-blue transition-all flex items-center gap-2 whitespace-nowrap"
-          >
-            <ShieldCheck className="w-4 h-4 text-accent-blue" />
-            <span>IP Access Control</span>
-            <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
-              Security
-            </span>
-          </a>
-        )}
       </div>
 
       {activeTab === 'members' ? (

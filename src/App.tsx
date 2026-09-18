@@ -36,8 +36,6 @@ const InterviewSupportDashboard = lazy(() => import('./pages/InterviewSupport/Da
 const ProxyDashboard = lazy(() => import('./pages/InterviewSupport/ProxyDashboard').then(m => ({ default: m.ProxyDashboard })));
 const BookingPage = lazy(() => import('./pages/InterviewSupport/BookingPage').then(m => ({ default: m.BookingPage })));
 const CRMDashboard = lazy(() => import('./pages/CRMDashboard').then(m => ({ default: m.CRMDashboard })));
-const IPAccessManagement = lazy(() => import('./pages/IPAccessManagement').then(m => ({ default: m.IPAccessManagement })));
-import { IpBlockedScreen } from './components/IpBlockedScreen';
 
 const PageLoader = () => (
   <div className="flex-1 flex items-center justify-center p-20">
@@ -46,7 +44,7 @@ const PageLoader = () => (
 );
 
 const AppContent: React.FC = () => {
-  const { user, isLoading, isAuthReady, ipBlocked, clearIpBlocked } = useAuth();
+  const { user, isLoading, isAuthReady } = useAuth();
   const [currentHash, setCurrentHash] = useState(window.location.hash || '#dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -84,21 +82,6 @@ const AppContent: React.FC = () => {
       }
     }
   }, [isAuthReady, user]);
-
-  if (ipBlocked) {
-    return (
-      <IpBlockedScreen
-        ip={ipBlocked.ip}
-        reason={ipBlocked.reason}
-        message={ipBlocked.message}
-        userId={ipBlocked.user_id}
-        userEmail={ipBlocked.user_email}
-        userName={ipBlocked.user_name}
-        username={ipBlocked.username}
-        onRetry={clearIpBlocked}
-      />
-    );
-  }
 
   if (isLoading) {
     return (
@@ -187,9 +170,6 @@ const AppContent: React.FC = () => {
       case '#interviews-proxy':
         if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin' && user?.role !== 'jpc_manager' && user?.role !== 'jpc_cs' && user?.role !== 'jpc_compliance_person' && !isProxyUser(user)) return <Dashboard />;
         return <ProxyDashboard />;
-      case '#ip-access':
-        if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin') return <Dashboard />;
-        return <IPAccessManagement />;
       default:
         if (hash.startsWith('#book-interview')) {
           return <BookingPage />;
@@ -220,7 +200,6 @@ const AppContent: React.FC = () => {
       case '#not-interested': return 'Not Interested';
       case '#not-eligible': return 'Not Eligible';
       case '#team': return 'Team';
-      case '#ip-access': return 'IP Access Control';
       default: return 'Auriic CRM';
     }
   };

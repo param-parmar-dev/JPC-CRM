@@ -13,18 +13,6 @@ import { doc, getDoc, setDoc, getDocs, query, collection, where, deleteDoc } fro
 import { User, Candidate } from '../types';
 import { handleFirestoreError, OperationType } from '../services/storage';
 
-export interface IpAccessBlockedInfo {
-  blocked: boolean;
-  ip: string;
-  reason: string;
-  message: string;
-  user_id?: string;
-  user_email?: string;
-  user_name?: string;
-  username?: string;
-  user_role?: string;
-}
-
 interface AuthContextType {
   user: User | null;
   firebaseUser: FirebaseUser | null;
@@ -34,9 +22,6 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthReady: boolean;
-  ipBlocked: IpAccessBlockedInfo | null;
-  verifyCurrentIp: () => Promise<boolean>;
-  clearIpBlocked: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,75 +31,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [ipBlocked, setIpBlocked] = useState<IpAccessBlockedInfo | null>(null);
-
-  const checkIpAccess = async (fUser: FirebaseUser): Promise<boolean> => {
-    try {
-      const token = await fUser.getIdToken();
-      const res = await fetch('/api/auth/verify-ip', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.status === 403 || data.allowed === false) {
-        const username = fUser.email ? fUser.email.split('@')[0] : 'user';
-        const displayName = fUser.displayName || username;
-        setIpBlocked({
-          blocked: true,
-          ip: data.ip || 'Unknown IP',
-          reason: data.reason || 'external_access_disabled',
-          message: data.message || 'Access denied. Outside office network and external access is not enabled.',
-          user_id: fUser.uid,
-          user_email: fUser.email || '',
-          user_name: displayName,
-          username: username,
-          user_role: (fUser as any).role || 'user'
-        });
-        try {
-          localStorage.removeItem(`jpc_user_cache_${fUser.uid}`);
-        } catch (e) {}
-        await signOut(auth);
-        setUser(null);
-        setFirebaseUser(null);
-        return false;
-      }
-
-      setIpBlocked(null);
-      return true;
-    } catch (err) {
-      console.warn('[AuthContext] IP verification request error:', err);
-      return true;
-    }
-  };
-
-  const verifyCurrentIp = async (): Promise<boolean> => {
-    if (firebaseUser) {
-      return checkIpAccess(firebaseUser);
-    }
-    return true;
-  };
-
-  const clearIpBlocked = () => {
-    setIpBlocked(null);
-  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fUser) => {
       setFirebaseUser(fUser);
       
       if (fUser) {
-        // Enforce IP verification before populating profile and loading application
-        const isAllowed = await checkIpAccess(fUser);
-        if (!isAllowed) {
-          setIsLoading(false);
-          setIsAuthReady(true);
-          return;
-        }
         let fallbackUser: User = {
           id: fUser.uid,
           username: fUser.email?.split('@')[0] || 'user',
@@ -206,43 +128,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Background periodic IP re-verification
-  useEffect(() => {
-    if (!firebaseUser || ipBlocked) return;
-
-    const interval = setInterval(() => {
-      if (firebaseUser) {
-        checkIpAccess(firebaseUser);
-      }
-    }, 5 * 60 * 1000); // Check every 5 minutes
-
-    const onFocus = () => {
-      if (firebaseUser) {
-        checkIpAccess(firebaseUser);
-      }
-    };
-
-    window.addEventListener('focus', onFocus);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [firebaseUser, ipBlocked]);
-
   const logout = async () => {
-    setIpBlocked(null);
     await signOut(auth);
   };
 
   const login = async (email: string, pass: string) => {
-    setIpBlocked(null);
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
-    if (cred.user) {
-      const isAllowed = await checkIpAccess(cred.user);
-      if (!isAllowed) {
-        throw new Error('Access denied: Your IP address is not authorized for CRM access.');
-      }
-    }
+    await signInWithEmailAndPassword(auth, email, pass);
   };
 
   const signup = async (email: string, pass: string, displayName: string) => {
@@ -291,11 +182,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signup,
     resetPassword,
     logout,
-    isAuthReady,
-    ipBlocked,
-    verifyCurrentIp,
-    clearIpBlocked
-  }), [user, firebaseUser, isLoading, isAuthReady, ipBlocked]);
+    isAuthReady
+  }), [user, firebaseUser, isLoading, isAuthReady]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -40,12 +40,6 @@ export interface User {
   sales_availability_status?: 'Active' | 'Deactive';
   sales_activated_at?: string | null;
   sales_deactivated_at?: string | null;
-  external_access_enabled?: boolean;
-  allowed_external_ips?: string[];
-  access_status?: 'active' | 'suspended' | 'revoked';
-  external_access_notes?: string;
-  external_access_updated_at?: string;
-  external_access_updated_by?: string;
 }
 
 export type Stage = 
@@ -528,66 +522,9 @@ export interface ResumePrepRequest {
 export interface IPVerifyResponse {
   allowed: boolean;
   ip: string;
-  reason?: string;
   error?: string;
   message?: string;
-  isOfficeIp?: boolean;
-  matchedRule?: string;
 }
-
-export interface OfficeIpConfig {
-  id: string;
-  ip: string;
-  label: string;
-  description?: string;
-  is_active: boolean;
-  created_at: string;
-  created_by?: string;
-}
-
-export interface IpAccessControlSettings {
-  office_ips: OfficeIpConfig[];
-  enforce_ip_control: boolean;
-  admin_lockout_prevention: boolean;
-  updated_at: string;
-  updated_by?: string;
-}
-
-export interface IpAccessLog {
-  id: string;
-  timestamp: string;
-  ip: string;
-  user_id: string;
-  username: string;
-  user_display_name: string;
-  user_role: string;
-  user_email?: string;
-  result: 'allowed' | 'blocked';
-  reason: string;
-  matched_rule?: string;
-  user_agent?: string;
-  endpoint?: string;
-}
-
-export interface IpAccessRequest {
-  id: string;
-  user_id: string;
-  user_email: string;
-  username: string;
-  display_name: string;
-  user_role?: string;
-  client_ip: string;
-  request_type: 'global' | 'specific_ip';
-  requested_scope?: 'global' | 'specific_ip';
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected';
-  created_at: string;
-  reviewed_at?: string | null;
-  reviewed_by?: string | null;
-  admin_notes?: string | null;
-  granted_scope?: 'global' | 'specific_ip' | null;
-}
-
 
 export interface LeadRoundRobinAssignment {
   candidate_id: string;
