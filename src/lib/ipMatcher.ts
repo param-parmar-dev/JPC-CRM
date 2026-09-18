@@ -303,7 +303,7 @@ export function evaluateIpAccess(params: EvaluateIpAccessParams): IpAccessResult
       message: 'Access granted via user external access whitelist.',
       clientIp,
       isOfficeIp: false,
-      matchedRule: 'User External Whitelist'
+      matchedRule: 'Global Access (Any IP)'
     };
   }
 

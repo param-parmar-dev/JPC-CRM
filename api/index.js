@@ -1435,7 +1435,7 @@ function evaluateIpAccess(params) {
       message: "Access granted via user external access whitelist.",
       clientIp,
       isOfficeIp: false,
-      matchedRule: "User External Whitelist"
+      matchedRule: "Global Access (Any IP)"
     };
   }
   const isUserIpMatch = isIpMatchingList(clientIp, allowedIps);

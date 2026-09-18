@@ -70,7 +70,7 @@ export const IPAccessManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const debouncedUserSearch = useDebounce(userSearch, 300);
-  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'specific_ips'>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'global' | 'specific_ips' | 'office_only'>('all');
 
   // Logs State
   const [logs, setLogs] = useState<IpAccessLog[]>([]);
@@ -93,6 +93,7 @@ export const IPAccessManagement: React.FC = () => {
   const [isUserConfigModalOpen, setIsUserConfigModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFormData, setUserFormData] = useState({
+    access_mode: 'office_only' as 'global' | 'restricted' | 'office_only',
     external_access_enabled: false,
     allowed_external_ips_text: '',
     access_status: 'active' as 'active' | 'suspended' | 'revoked',
@@ -375,13 +376,88 @@ export const IPAccessManagement: React.FC = () => {
   // Open User External Access Modal
   const handleOpenUserModal = (targetUser: User) => {
     setEditingUser(targetUser);
+    const isEnabled = Boolean(targetUser.external_access_enabled);
+    const rawIps = (targetUser.allowed_external_ips || []).filter(ip => Boolean(ip && ip.trim()));
+    
+    let mode: 'global' | 'restricted' | 'office_only' = 'office_only';
+    if (isEnabled) {
+      mode = rawIps.length > 0 ? 'restricted' : 'global';
+    }
+
     setUserFormData({
-      external_access_enabled: Boolean(targetUser.external_access_enabled),
-      allowed_external_ips_text: (targetUser.allowed_external_ips || []).join('\n'),
+      access_mode: mode,
+      external_access_enabled: isEnabled,
+      allowed_external_ips_text: rawIps.join('\n'),
       access_status: targetUser.access_status || 'active',
       external_access_notes: targetUser.external_access_notes || ''
     });
     setIsUserConfigModalOpen(true);
+  };
+
+  // 1-Click Set User to Global Login (Anywhere in the world)
+  const handleSetUserGlobalAccess = async (targetUser: User) => {
+    try {
+      const token = await (window as any).firebaseAuthToken?.() || localStorage.getItem('token');
+      const res = await fetch(`/api/admin/ip-access/users/${targetUser.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          external_access_enabled: true,
+          allowed_external_ips: [],
+          access_status: targetUser.access_status || 'active',
+          external_access_notes: targetUser.external_access_notes || ''
+        })
+      });
+
+      if (res.ok) {
+        setUsers(prev => prev.map(u => 
+          u.id === targetUser.id 
+            ? { ...u, external_access_enabled: true, allowed_external_ips: [] } 
+            : u
+        ));
+        showToast(`🌍 Global login enabled for ${targetUser.display_name || targetUser.username}`, 'success');
+      } else {
+        showToast('Failed to enable global access', 'error');
+      }
+    } catch (e) {
+      showToast('Error setting global access', 'error');
+    }
+  };
+
+  // 1-Click Set User to Office Only (Denied outside office)
+  const handleSetUserOfficeOnly = async (targetUser: User) => {
+    try {
+      const token = await (window as any).firebaseAuthToken?.() || localStorage.getItem('token');
+      const res = await fetch(`/api/admin/ip-access/users/${targetUser.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          external_access_enabled: false,
+          allowed_external_ips: targetUser.allowed_external_ips || [],
+          access_status: targetUser.access_status || 'active',
+          external_access_notes: targetUser.external_access_notes || ''
+        })
+      });
+
+      if (res.ok) {
+        setUsers(prev => prev.map(u => 
+          u.id === targetUser.id 
+            ? { ...u, external_access_enabled: false } 
+            : u
+        ));
+        showToast(`🏢 Office-only access set for ${targetUser.display_name || targetUser.username}`, 'info');
+      } else {
+        showToast('Failed to update access', 'error');
+      }
+    } catch (e) {
+      showToast('Error setting office-only access', 'error');
+    }
   };
 
   // Quick Toggle User External Access
@@ -421,10 +497,28 @@ export const IPAccessManagement: React.FC = () => {
     e.preventDefault();
     if (!editingUser) return;
 
-    const rawIps = userFormData.allowed_external_ips_text
-      .split(/[\n,]+/)
-      .map(ip => ip.trim())
-      .filter(ip => ip.length > 0);
+    let finalEnabled = false;
+    let finalIps: string[] = [];
+
+    if (userFormData.access_mode === 'global') {
+      finalEnabled = true;
+      finalIps = [];
+    } else if (userFormData.access_mode === 'restricted') {
+      finalEnabled = true;
+      finalIps = userFormData.allowed_external_ips_text
+        .split(/[\n,]+/)
+        .map(ip => ip.trim())
+        .filter(ip => ip.length > 0);
+
+      if (finalIps.length === 0) {
+        showToast('Please enter at least one IP/CIDR or switch to "Global Access" mode.', 'error');
+        return;
+      }
+    } else {
+      // office_only
+      finalEnabled = false;
+      finalIps = [];
+    }
 
     try {
       const token = await (window as any).firebaseAuthToken?.() || localStorage.getItem('token');
@@ -435,8 +529,8 @@ export const IPAccessManagement: React.FC = () => {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          external_access_enabled: userFormData.external_access_enabled,
-          allowed_external_ips: rawIps,
+          external_access_enabled: finalEnabled,
+          allowed_external_ips: finalIps,
           access_status: userFormData.access_status,
           external_access_notes: userFormData.external_access_notes
         })
@@ -447,14 +541,14 @@ export const IPAccessManagement: React.FC = () => {
           u.id === editingUser.id 
             ? { 
                 ...u, 
-                external_access_enabled: userFormData.external_access_enabled,
-                allowed_external_ips: rawIps,
+                external_access_enabled: finalEnabled,
+                allowed_external_ips: finalIps,
                 access_status: userFormData.access_status,
                 external_access_notes: userFormData.external_access_notes
               } 
             : u
         ));
-        showToast(`IP Access policy for ${editingUser.display_name} updated successfully`, 'success');
+        showToast(`Access rules for ${editingUser.display_name || editingUser.username} saved successfully`, 'success');
         setIsUserConfigModalOpen(false);
       } else {
         showToast('Failed to update user access configuration', 'error');
@@ -481,10 +575,13 @@ export const IPAccessManagement: React.FC = () => {
       // Role filter - candidate role is not CRM employee
       if (u.role === 'candidate' || u.role === 'jpc_candidate') return false;
 
+      const isEnabled = Boolean(u.external_access_enabled);
+      const hasIps = (u.allowed_external_ips || []).length > 0;
+
       // Status filter
-      if (userStatusFilter === 'enabled' && !u.external_access_enabled) return false;
-      if (userStatusFilter === 'disabled' && u.external_access_enabled) return false;
-      if (userStatusFilter === 'specific_ips' && (!u.external_access_enabled || !u.allowed_external_ips || u.allowed_external_ips.length === 0)) return false;
+      if (userStatusFilter === 'global' && (!isEnabled || hasIps)) return false;
+      if (userStatusFilter === 'specific_ips' && (!isEnabled || !hasIps)) return false;
+      if (userStatusFilter === 'office_only' && isEnabled) return false;
 
       // Search filter
       if (debouncedUserSearch) {
@@ -927,7 +1024,7 @@ export const IPAccessManagement: React.FC = () => {
           <div className="p-4 bg-accent-purple/5 border border-accent-purple/20 rounded-2xl flex items-start gap-3">
             <Laptop className="w-5 h-5 text-accent-purple shrink-0 mt-0.5" />
             <div className="text-xs text-text-secondary leading-relaxed">
-              <span className="font-bold text-text-primary">Outside Office Rule:</span> Access is denied by default. Grant external access to specific team members below. You can leave Allowed External IPs empty to permit any external IP (e.g. Recruiter A), or restrict to specific external IPs/CIDRs (e.g. Manager C).
+              <span className="font-bold text-text-primary">Outside Office Access:</span> Access is denied by default for all users outside the office. You can select any team member below and enable <strong>Global Login</strong> (permits login from any IP worldwide) or restrict access to specific static IPs / CIDRs.
             </div>
           </div>
 
@@ -944,21 +1041,39 @@ export const IPAccessManagement: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Filter className="w-3.5 h-3.5 text-text-muted" />
-              <div className="flex bg-bg-secondary border border-border-primary rounded-xl p-1 text-xs">
-                {(['all', 'enabled', 'disabled', 'specific_ips'] as const).map((filterVal) => (
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+              <Filter className="w-3.5 h-3.5 text-text-muted shrink-0" />
+              <div className="flex bg-bg-secondary border border-border-primary rounded-xl p-1 text-xs shrink-0">
+                {(['all', 'global', 'specific_ips', 'office_only'] as const).map((filterVal) => (
                   <button
                     key={filterVal}
                     onClick={() => setUserStatusFilter(filterVal)}
                     className={cn(
-                      "px-3 py-1 rounded-lg font-medium transition-all cursor-pointer capitalize",
+                      "px-3 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5",
                       userStatusFilter === filterVal
                         ? "bg-accent-blue text-white shadow-sm font-bold"
                         : "text-text-secondary hover:text-text-primary"
                     )}
                   >
-                    {filterVal === 'specific_ips' ? 'Specific IPs' : filterVal}
+                    {filterVal === 'all' && <span>All ({users.filter(u => u.role !== 'candidate' && u.role !== 'jpc_candidate').length})</span>}
+                    {filterVal === 'global' && (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-accent-green" />
+                        <span>Global Login</span>
+                      </>
+                    )}
+                    {filterVal === 'specific_ips' && (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-accent-blue" />
+                        <span>Restricted IPs</span>
+                      </>
+                    )}
+                    {filterVal === 'office_only' && (
+                      <>
+                        <Building className="w-3.5 h-3.5 text-text-muted" />
+                        <span>Office Only</span>
+                      </>
+                    )}
                   </button>
                 ))}
               </div>
@@ -973,16 +1088,19 @@ export const IPAccessManagement: React.FC = () => {
                   <tr>
                     <th className="px-6 py-4">Team Member</th>
                     <th className="px-6 py-4">Role</th>
-                    <th className="px-6 py-4">External Access</th>
-                    <th className="px-6 py-4">Allowed External IPs</th>
-                    <th className="px-6 py-4">Access Status</th>
-                    <th className="px-6 py-4 text-right">Configure</th>
+                    <th className="px-6 py-4">Outside Office Access</th>
+                    <th className="px-6 py-4">Allowed External IP(s)</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-secondary/50">
                   {filteredUsers.map((u) => {
                     const isEnabled = Boolean(u.external_access_enabled);
-                    const hasSpecificIps = u.allowed_external_ips && u.allowed_external_ips.length > 0;
+                    const specificIps = (u.allowed_external_ips || []).filter(ip => Boolean(ip && ip.trim()));
+                    const isGlobal = isEnabled && specificIps.length === 0;
+                    const isRestricted = isEnabled && specificIps.length > 0;
+                    const isOfficeOnly = !isEnabled;
                     const isSuspended = u.access_status === 'suspended' || u.access_status === 'revoked';
 
                     return (
@@ -1006,40 +1124,47 @@ export const IPAccessManagement: React.FC = () => {
                         </td>
 
                         <td className="px-6 py-4">
-                          <button
-                            onClick={() => handleQuickToggleUserAccess(u)}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer",
-                              isEnabled
-                                ? "bg-accent-green/10 text-accent-green border border-accent-green/30"
-                                : "bg-bg-tertiary text-text-muted border border-border-secondary"
-                            )}
-                          >
-                            {isEnabled ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                            <span>{isEnabled ? 'Enabled' : 'Disabled'}</span>
-                          </button>
+                          {isGlobal && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-accent-green/10 text-accent-green border border-accent-green/30">
+                              <Globe className="w-3.5 h-3.5 shrink-0" />
+                              <span>Global Login</span>
+                            </span>
+                          )}
+                          {isRestricted && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-accent-blue/10 text-accent-blue border border-accent-blue/30">
+                              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                              <span>Restricted ({specificIps.length} IPs)</span>
+                            </span>
+                          )}
+                          {isOfficeOnly && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-bg-tertiary text-text-muted border border-border-secondary">
+                              <Building className="w-3.5 h-3.5 shrink-0" />
+                              <span>Office Only</span>
+                            </span>
+                          )}
                         </td>
 
                         <td className="px-6 py-4 max-w-xs">
-                          {isEnabled ? (
-                            hasSpecificIps ? (
-                              <div className="flex flex-wrap gap-1">
-                                {u.allowed_external_ips!.map((ip, idx) => (
-                                  <span 
-                                    key={idx} 
-                                    className="font-mono text-[10px] bg-bg-tertiary border border-border-secondary px-1.5 py-0.5 rounded text-text-primary font-semibold"
-                                  >
-                                    {ip}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] font-semibold text-accent-blue">
-                                Any External IP (No restriction)
-                              </span>
-                            )
-                          ) : (
-                            <span className="text-text-muted text-[11px]">Denied outside office</span>
+                          {isGlobal && (
+                            <div className="flex items-center gap-1.5 text-accent-green text-[11px] font-semibold">
+                              <Globe className="w-3.5 h-3.5 shrink-0" />
+                              <span>Worldwide (Any External IP)</span>
+                            </div>
+                          )}
+                          {isRestricted && (
+                            <div className="flex flex-wrap gap-1">
+                              {specificIps.map((ip, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className="font-mono text-[10px] bg-bg-tertiary border border-border-secondary px-1.5 py-0.5 rounded text-text-primary font-semibold"
+                                >
+                                  {ip}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {isOfficeOnly && (
+                            <span className="text-text-muted text-[11px]">Denied outside office (14.102.161.54)</span>
                           )}
                         </td>
 
@@ -1055,13 +1180,35 @@ export const IPAccessManagement: React.FC = () => {
                         </td>
 
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => handleOpenUserModal(u)}
-                            className="px-3 py-1.5 bg-bg-tertiary hover:bg-accent-blue hover:text-white rounded-xl text-xs font-bold text-text-primary transition-all cursor-pointer inline-flex items-center gap-1"
-                          >
-                            <SlidersHorizontal className="w-3 h-3" />
-                            <span>Configure</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {isOfficeOnly ? (
+                              <button
+                                onClick={() => handleSetUserGlobalAccess(u)}
+                                className="px-2.5 py-1.5 bg-accent-green/10 hover:bg-accent-green/20 text-accent-green border border-accent-green/30 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                title="1-Click: Allow Global Login from anywhere"
+                              >
+                                <Globe className="w-3.5 h-3.5" />
+                                <span>Set Global</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleSetUserOfficeOnly(u)}
+                                className="px-2.5 py-1.5 bg-bg-tertiary hover:bg-accent-red/10 hover:text-accent-red hover:border-accent-red/30 border border-border-secondary rounded-xl text-xs font-bold text-text-muted transition-all cursor-pointer inline-flex items-center gap-1"
+                                title="Set to Office Only (Denied outside)"
+                              >
+                                <Building className="w-3.5 h-3.5" />
+                                <span>Office Only</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleOpenUserModal(u)}
+                              className="px-3 py-1.5 bg-bg-tertiary hover:bg-accent-blue hover:text-white rounded-xl text-xs font-bold text-text-primary transition-all cursor-pointer inline-flex items-center gap-1"
+                              title="Configure access scope, specific IPs, or notes"
+                            >
+                              <SlidersHorizontal className="w-3 h-3" />
+                              <span>Configure</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1329,63 +1476,161 @@ export const IPAccessManagement: React.FC = () => {
             </span>
           </div>
 
-          {/* Enable External Access: Yes/No */}
-          <div className="space-y-1.5">
+          {/* Access Policy Mode Selection */}
+          <div className="space-y-2">
             <label className="text-xs font-bold text-text-primary uppercase tracking-wider block">
-              Enable External Access
+              Access Scope Outside Office
             </label>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs font-semibold text-text-primary cursor-pointer">
-                <input
-                  type="radio"
-                  name="external_access_enabled"
-                  checked={userFormData.external_access_enabled === true}
-                  onChange={() => setUserFormData(prev => ({ ...prev, external_access_enabled: true }))}
-                  className="w-4 h-4 text-accent-blue"
-                />
-                <span>Yes (Allowed outside office)</span>
-              </label>
-              <label className="flex items-center gap-2 text-xs font-semibold text-text-primary cursor-pointer">
-                <input
-                  type="radio"
-                  name="external_access_enabled"
-                  checked={userFormData.external_access_enabled === false}
-                  onChange={() => setUserFormData(prev => ({ ...prev, external_access_enabled: false }))}
-                  className="w-4 h-4 text-accent-blue"
-                />
-                <span>No (Denied outside office)</span>
-              </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Option 1: Global Access */}
+              <button
+                type="button"
+                onClick={() => setUserFormData(prev => ({ ...prev, access_mode: 'global', external_access_enabled: true }))}
+                className={cn(
+                  "p-3 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between",
+                  userFormData.access_mode === 'global'
+                    ? "bg-accent-green/10 border-accent-green text-text-primary shadow-sm ring-1 ring-accent-green/40"
+                    : "bg-bg-primary border-border-primary text-text-secondary hover:border-border-secondary"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className={cn(
+                      "p-1.5 rounded-xl",
+                      userFormData.access_mode === 'global' ? "bg-accent-green text-white" : "bg-bg-tertiary text-text-muted"
+                    )}>
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    {userFormData.access_mode === 'global' && (
+                      <span className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
+                    )}
+                  </div>
+                  <div className="font-bold text-xs text-text-primary">Global Access</div>
+                  <p className="text-[10px] text-text-muted mt-0.5 leading-relaxed">
+                    Log in from any network worldwide without restrictions.
+                  </p>
+                </div>
+                <div className="mt-2 text-[9px] font-bold text-accent-green uppercase tracking-wider">
+                  Any IP Allowed
+                </div>
+              </button>
+
+              {/* Option 2: Restricted IPs */}
+              <button
+                type="button"
+                onClick={() => setUserFormData(prev => ({ ...prev, access_mode: 'restricted', external_access_enabled: true }))}
+                className={cn(
+                  "p-3 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between",
+                  userFormData.access_mode === 'restricted'
+                    ? "bg-accent-blue/10 border-accent-blue text-text-primary shadow-sm ring-1 ring-accent-blue/40"
+                    : "bg-bg-primary border-border-primary text-text-secondary hover:border-border-secondary"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className={cn(
+                      "p-1.5 rounded-xl",
+                      userFormData.access_mode === 'restricted' ? "bg-accent-blue text-white" : "bg-bg-tertiary text-text-muted"
+                    )}>
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    {userFormData.access_mode === 'restricted' && (
+                      <span className="w-2 h-2 rounded-full bg-accent-blue" />
+                    )}
+                  </div>
+                  <div className="font-bold text-xs text-text-primary">Restricted IPs</div>
+                  <p className="text-[10px] text-text-muted mt-0.5 leading-relaxed">
+                    Only allowed from specified static IPs or CIDR subnets.
+                  </p>
+                </div>
+                <div className="mt-2 text-[9px] font-bold text-accent-blue uppercase tracking-wider">
+                  Specific IPs Only
+                </div>
+              </button>
+
+              {/* Option 3: Office Only */}
+              <button
+                type="button"
+                onClick={() => setUserFormData(prev => ({ ...prev, access_mode: 'office_only', external_access_enabled: false }))}
+                className={cn(
+                  "p-3 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between",
+                  userFormData.access_mode === 'office_only'
+                    ? "bg-bg-tertiary border-border-secondary text-text-primary shadow-sm ring-1 ring-border-secondary"
+                    : "bg-bg-primary border-border-primary text-text-secondary hover:border-border-secondary"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className={cn(
+                      "p-1.5 rounded-xl",
+                      userFormData.access_mode === 'office_only' ? "bg-text-muted text-white" : "bg-bg-tertiary text-text-muted"
+                    )}>
+                      <Building className="w-4 h-4" />
+                    </div>
+                    {userFormData.access_mode === 'office_only' && (
+                      <span className="w-2 h-2 rounded-full bg-text-muted" />
+                    )}
+                  </div>
+                  <div className="font-bold text-xs text-text-primary">Office Only</div>
+                  <p className="text-[10px] text-text-muted mt-0.5 leading-relaxed">
+                    Strictly denied outside office network (14.102.161.54).
+                  </p>
+                </div>
+                <div className="mt-2 text-[9px] font-bold text-text-muted uppercase tracking-wider">
+                  No Outside Access
+                </div>
+              </button>
             </div>
           </div>
 
-          {/* Allowed External IPs */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                Allowed External IP(s) / CIDRs (Optional)
-              </label>
-              {currentClientIp && (
-                <button
-                  type="button"
-                  onClick={handleAddCurrentIpToUser}
-                  className="text-[10px] font-bold text-accent-blue hover:underline"
-                >
-                  + Add Current IP ({currentClientIp})
-                </button>
-              )}
+          {/* Mode Guidance & Configuration */}
+          {userFormData.access_mode === 'global' && (
+            <div className="p-3.5 bg-accent-green/5 border border-accent-green/20 rounded-xl flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-accent-green shrink-0 mt-0.5" />
+              <div className="text-xs text-text-secondary leading-relaxed">
+                <span className="font-bold text-accent-green">Global Login Enabled:</span> This user will be allowed to log in from <strong>any IP address worldwide</strong> (home Wi-Fi, 4G/5G mobile hotspot, or travel). No IP restrictions will be applied.
+              </div>
             </div>
-            <textarea
-              rows={3}
-              value={userFormData.allowed_external_ips_text}
-              onChange={e => setUserFormData({ ...userFormData, allowed_external_ips_text: e.target.value })}
-              placeholder="Leave empty to permit any external IP, OR enter specific IPs/CIDRs (one per line or comma-separated):&#10;203.0.113.50&#10;198.51.100.0/24"
-              className="w-full bg-bg-primary border border-border-primary rounded-xl p-3 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-blue resize-none"
-            />
-            <p className="text-[10px] text-text-muted">
-              • <strong>Empty</strong> = User can log in from <em>any</em> outside IP.<br />
-              • <strong>Configured IPs</strong> = User can <em>only</em> log in from matching IPs or CIDRs.
-            </p>
-          </div>
+          )}
+
+          {userFormData.access_mode === 'office_only' && (
+            <div className="p-3.5 bg-bg-tertiary/50 border border-border-primary rounded-xl flex items-start gap-2.5">
+              <Lock className="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+              <div className="text-xs text-text-secondary leading-relaxed">
+                <span className="font-bold text-text-primary">Office-Only Access:</span> This user can only log in when connected to the approved office network (<strong>14.102.161.54</strong>). Any access attempt from outside will be blocked immediately.
+              </div>
+            </div>
+          )}
+
+          {userFormData.access_mode === 'restricted' && (
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                  Allowed External IP(s) / CIDRs <span className="text-accent-red">*</span>
+                </label>
+                {currentClientIp && (
+                  <button
+                    type="button"
+                    onClick={handleAddCurrentIpToUser}
+                    className="text-[10px] font-bold text-accent-blue hover:underline cursor-pointer"
+                  >
+                    + Add Current IP ({currentClientIp})
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={3}
+                required={userFormData.access_mode === 'restricted'}
+                value={userFormData.allowed_external_ips_text}
+                onChange={e => setUserFormData({ ...userFormData, allowed_external_ips_text: e.target.value })}
+                placeholder="Enter specific allowed external IPs/CIDRs (one per line or comma-separated):&#10;203.0.113.50&#10;198.51.100.0/24"
+                className="w-full bg-bg-primary border border-border-primary rounded-xl p-3 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-blue resize-none"
+              />
+              <p className="text-[10px] text-text-muted">
+                User will only be permitted to access from these specific IP addresses or subnets.
+              </p>
+            </div>
+          )}
 
           {/* Access Status */}
           <div className="space-y-1">
