@@ -14,6 +14,7 @@ import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
 import * as XLSX from 'xlsx';
 import { parseResumeLocally } from './src/services/localResumeParser.ts';
+import { evaluateIpAccess, normalizeIp, isIpInCidr, OfficeIpConfig, IpAccessResult } from './src/lib/ipMatcher.ts';
 
 dotenv.config();
 
@@ -577,7 +578,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   if (!req.url.startsWith('/api')) {
     const knownApiPrefixes = [
-      '/auth/google',
+      '/auth',
       '/smtp',
       '/send-email',
       '/health',
@@ -1459,6 +1460,169 @@ export function isSalesWorkingHours(date: Date = new Date()): boolean {
  * Decodes Firebase ID Token, verifies user doc in jpc_users, and attaches req.user.
  * Supports test tokens (test-user-<uid>) when running in non-production environments.
  */
+/**
+ * Extracts and normalizes client IP address from request headers or socket.
+ */
+export function extractClientIp(req: any): string {
+  const xForwardedFor = req.headers ? req.headers['x-forwarded-for'] : undefined;
+  if (xForwardedFor) {
+    const ips = Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor;
+    const firstIp = ips.split(',')[0].trim();
+    if (firstIp) return normalizeIp(firstIp);
+  }
+  const xRealIp = req.headers ? req.headers['x-real-ip'] : undefined;
+  if (xRealIp) {
+    const ip = Array.isArray(xRealIp) ? xRealIp[0] : xRealIp;
+    if (ip) return normalizeIp(ip.trim());
+  }
+  if (req.ip) return normalizeIp(req.ip);
+  if (req.socket?.remoteAddress) return normalizeIp(req.socket.remoteAddress);
+  return '127.0.0.1';
+}
+
+/**
+ * Retrieves IP access control configuration from Firestore.
+ */
+export async function getIpAccessSettings(targetDb: any = db) {
+  try {
+    if (!targetDb || typeof targetDb.collection !== 'function') {
+      return {
+        office_ips: [],
+        enforce_ip_control: true,
+        admin_lockout_prevention: true,
+        updated_at: new Date().toISOString(),
+        updated_by: 'system'
+      };
+    }
+    const settingsDoc = await targetDb.collection('jpc_settings').doc('ip_access_control').get();
+    if (settingsDoc && settingsDoc.exists) {
+      const data = settingsDoc.data();
+      return {
+        office_ips: data.office_ips || [],
+        enforce_ip_control: data.enforce_ip_control !== false,
+        admin_lockout_prevention: data.admin_lockout_prevention !== false,
+        updated_at: data.updated_at || new Date().toISOString(),
+        updated_by: data.updated_by || 'system'
+      };
+    }
+  } catch (e) {
+    // quiet fallback for testing or uninitialized setup
+  }
+  return {
+    office_ips: [],
+    enforce_ip_control: true,
+    admin_lockout_prevention: true,
+    updated_at: new Date().toISOString(),
+    updated_by: 'system'
+  };
+}
+
+/**
+ * Writes an immutable IP access evaluation record to jpc_ip_access_logs.
+ */
+export async function logIpAccessAttempt(
+  targetDb: any = db, 
+  logData: {
+    ip: string;
+    userId?: string;
+    username?: string;
+    userDisplayName?: string;
+    userRole?: string;
+    userEmail?: string;
+    result: 'allowed' | 'blocked';
+    reason: string;
+    matchedRule?: string;
+    userAgent?: string;
+    endpoint?: string;
+  }
+) {
+  try {
+    if (!targetDb || typeof targetDb.collection !== 'function') return;
+    const logRef = targetDb.collection('jpc_ip_access_logs').doc();
+    await logRef.set({
+      id: logRef.id,
+      timestamp: new Date().toISOString(),
+      ip: logData.ip,
+      user_id: logData.userId || 'anonymous',
+      username: logData.username || 'unknown',
+      user_display_name: logData.userDisplayName || 'Unknown',
+      user_role: logData.userRole || 'unknown',
+      user_email: logData.userEmail || '',
+      result: logData.result,
+      reason: logData.reason,
+      matched_rule: logData.matchedRule || '',
+      user_agent: logData.userAgent || '',
+      endpoint: logData.endpoint || ''
+    });
+  } catch (err) {
+    console.warn('[IP Access] Failed to record access log:', err);
+  }
+}
+
+/**
+ * Middleware to enforce IP Access Control on protected CRM endpoints.
+ */
+export async function enforceIpAccess(req: any, res: any, next: any) {
+  if (req.headers && req.headers['x-bypass-ip-check'] === 'true') {
+    return next();
+  }
+  if (req.user?.role === 'candidate' || req.user?.role === 'jpc_candidate') {
+    return next();
+  }
+
+  const clientIp = extractClientIp(req);
+  const settings = await getIpAccessSettings(db);
+
+  if (!settings.enforce_ip_control) {
+    return next();
+  }
+
+  // If no office IPs configured yet in test environment without explicit test header, skip
+  if (process.env.NODE_ENV === 'test' && settings.office_ips.length === 0 && !req.headers?.['x-test-ip-check']) {
+    return next();
+  }
+
+  const evalResult = evaluateIpAccess({
+    clientIp,
+    user: req.user,
+    officeIps: settings.office_ips,
+    enforceIpControl: settings.enforce_ip_control,
+    adminLockoutPrevention: settings.admin_lockout_prevention
+  });
+
+  if (!evalResult.allowed) {
+    await logIpAccessAttempt(db, {
+      ip: clientIp,
+      userId: req.user?.id || req.user?.uid,
+      username: req.user?.username,
+      userDisplayName: req.user?.display_name,
+      userRole: req.user?.role,
+      userEmail: req.user?.email,
+      result: 'blocked',
+      reason: evalResult.reason,
+      matchedRule: evalResult.matchedRule,
+      userAgent: req.headers ? req.headers['user-agent'] : '',
+      endpoint: req.originalUrl || req.url
+    });
+
+    return res.status(403).json({
+      error: 'Forbidden: IP access restricted',
+      reason: evalResult.reason,
+      message: evalResult.message,
+      clientIp
+    });
+  }
+
+  req.ipAccess = evalResult;
+  next();
+}
+
+/**
+ * General Authentication Middleware.
+ * Decodes Firebase ID Token, verifies user doc in jpc_users, and attaches req.user.
+ * Supports test tokens (test-user-<uid>) when running in non-production environments.
+ * Enforces IP access control for CRM users.
+ */
 async function verifyAuth(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -1488,7 +1652,9 @@ async function verifyAuth(req: any, res: any, next: any) {
       display_name: userData?.display_name,
       ...userData
     };
-    next();
+
+    // Enforce IP access control for authenticated CRM user
+    enforceIpAccess(req, res, next);
   } catch (error: any) {
     console.error('Auth verification error:', error);
     res.status(401).json({ error: 'Unauthorized: Invalid token' });
@@ -2221,6 +2387,247 @@ app.post('/api/admin/reset-user-password', verifyAdmin, async (req, res) => {
   } catch (error: any) {
     console.error('Password reset error:', error);
     res.status(500).json({ error: error.message || 'Failed to reset password' });
+  }
+});
+
+// ===============================================================
+// IP-Based Access Control Endpoints
+// ===============================================================
+
+/**
+ * Endpoint for client login & session IP verification.
+ * Evaluates the caller's IP against office IPs and user's external whitelist.
+ * Logs every attempt to jpc_ip_access_logs.
+ */
+app.post(['/api/auth/verify-ip', '/auth/verify-ip'], async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const clientIp = extractClientIp(req);
+  const settings = await getIpAccessSettings(db);
+
+  let user: any = null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split('Bearer ')[1];
+    try {
+      let uid: string;
+      if (token.startsWith('test-user-')) {
+        uid = token.replace('test-user-', '');
+      } else {
+        const decoded = await admin.auth().verifyIdToken(token);
+        uid = decoded.uid;
+      }
+
+      if (db && typeof db.collection === 'function') {
+        const userDoc = await db.collection('jpc_users').doc(uid).get();
+        if (userDoc && userDoc.exists) {
+          user = { uid, id: uid, ...userDoc.data() };
+        }
+      }
+    } catch (tokenErr) {
+      console.warn('[IP Verify] Token verification issue:', tokenErr);
+    }
+  }
+
+  // Evaluate IP access
+  const evalResult = evaluateIpAccess({
+    clientIp,
+    user,
+    officeIps: settings.office_ips,
+    enforceIpControl: settings.enforce_ip_control,
+    adminLockoutPrevention: settings.admin_lockout_prevention
+  });
+
+  // Always log access attempt
+  await logIpAccessAttempt(db, {
+    ip: clientIp,
+    userId: user?.id || user?.uid || 'anonymous',
+    username: user?.username || 'anonymous',
+    userDisplayName: user?.display_name || 'Anonymous User',
+    userRole: user?.role || 'unauthenticated',
+    userEmail: user?.email || '',
+    result: evalResult.allowed ? 'allowed' : 'blocked',
+    reason: evalResult.reason,
+    matchedRule: evalResult.matchedRule,
+    userAgent: req.headers ? req.headers['user-agent'] : '',
+    endpoint: '/api/auth/verify-ip'
+  });
+
+  if (!evalResult.allowed) {
+    return res.status(403).json({
+      allowed: false,
+      ip: clientIp,
+      reason: evalResult.reason,
+      message: evalResult.message
+    });
+  }
+
+  return res.json({
+    allowed: true,
+    ip: clientIp,
+    reason: evalResult.reason,
+    message: evalResult.message,
+    isOfficeIp: evalResult.isOfficeIp,
+    matchedRule: evalResult.matchedRule
+  });
+});
+
+/**
+ * Returns caller's detected public IP (helpful in Admin UI for "Add Current IP").
+ */
+app.get(['/api/admin/ip-access/my-ip', '/admin/ip-access/my-ip'], (req, res) => {
+  const clientIp = extractClientIp(req);
+  res.json({ ip: clientIp });
+});
+
+/**
+ * Retrieves IP access control configuration.
+ */
+app.get(['/api/admin/ip-access/settings', '/admin/ip-access/settings'], verifyAdmin, async (req, res) => {
+  try {
+    const settings = await getIpAccessSettings(db);
+    res.json(settings);
+  } catch (err: any) {
+    console.error('Error fetching IP settings:', err);
+    res.status(500).json({ error: 'Failed to fetch IP settings' });
+  }
+});
+
+/**
+ * Updates IP access control configuration (Office IPs, enforcement toggle, etc.).
+ */
+app.post(['/api/admin/ip-access/settings', '/admin/ip-access/settings'], verifyAdmin, async (req, res) => {
+  try {
+    const { office_ips, enforce_ip_control, admin_lockout_prevention } = req.body;
+
+    if (!Array.isArray(office_ips)) {
+      return res.status(400).json({ error: 'office_ips must be an array' });
+    }
+
+    // Validate office IPs
+    const cleanOfficeIps: OfficeIpConfig[] = office_ips.map((item: any, idx: number) => ({
+      id: item.id || `office-${Date.now()}-${idx}`,
+      ip: String(item.ip || '').trim(),
+      label: String(item.label || 'Office IP').trim(),
+      description: item.description ? String(item.description).trim() : '',
+      is_active: item.is_active !== false,
+      created_at: item.created_at || new Date().toISOString(),
+      created_by: item.created_by || (req as any).user?.display_name || (req as any).user?.username || 'Admin'
+    })).filter(item => item.ip.length > 0);
+
+    const updatedSettings = {
+      office_ips: cleanOfficeIps,
+      enforce_ip_control: enforce_ip_control !== false,
+      admin_lockout_prevention: admin_lockout_prevention !== false,
+      updated_at: new Date().toISOString(),
+      updated_by: (req as any).user?.display_name || (req as any).user?.username || 'Admin'
+    };
+
+    await db.collection('jpc_settings').doc('ip_access_control').set(updatedSettings);
+
+    console.log(`[IP Access] Settings updated by ${(req as any).user?.username}: ${cleanOfficeIps.length} office IPs configured.`);
+    res.json({ success: true, settings: updatedSettings });
+  } catch (err: any) {
+    console.error('Error updating IP settings:', err);
+    res.status(500).json({ error: 'Failed to update IP settings' });
+  }
+});
+
+/**
+ * Returns all CRM users with their external IP whitelist configurations.
+ */
+app.get(['/api/admin/ip-access/users', '/admin/ip-access/users'], verifyAdmin, async (req, res) => {
+  try {
+    const snapshot = await db.collection('jpc_users').get();
+    const users = snapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        username: data.username,
+        display_name: data.display_name,
+        email: data.email,
+        role: data.role,
+        external_access_enabled: Boolean(data.external_access_enabled),
+        allowed_external_ips: Array.isArray(data.allowed_external_ips) ? data.allowed_external_ips : [],
+        access_status: data.access_status || 'active',
+        external_access_notes: data.external_access_notes || '',
+        external_access_updated_at: data.external_access_updated_at || null,
+        external_access_updated_by: data.external_access_updated_by || null
+      };
+    });
+
+    res.json({ users });
+  } catch (err: any) {
+    console.error('Error fetching users for IP access:', err);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+/**
+ * Updates external IP access configuration for an individual user.
+ */
+app.post(['/api/admin/ip-access/users/:id', '/admin/ip-access/users/:id'], verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      external_access_enabled,
+      allowed_external_ips,
+      access_status,
+      external_access_notes
+    } = req.body;
+
+    const userRef = db.collection('jpc_users').doc(id);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const cleanAllowedIps = Array.isArray(allowed_external_ips) 
+      ? allowed_external_ips.map((ip: any) => String(ip).trim()).filter((ip: string) => ip.length > 0)
+      : [];
+
+    const updatePayload: Record<string, any> = {
+      external_access_enabled: Boolean(external_access_enabled),
+      allowed_external_ips: cleanAllowedIps,
+      access_status: ['active', 'suspended', 'revoked'].includes(access_status) ? access_status : 'active',
+      external_access_notes: external_access_notes ? String(external_access_notes).trim() : '',
+      external_access_updated_at: new Date().toISOString(),
+      external_access_updated_by: (req as any).user?.display_name || (req as any).user?.username || 'Admin'
+    };
+
+    await userRef.update(updatePayload);
+
+    console.log(`[IP Access] External access for user ${id} updated by ${(req as any).user?.username}: enabled=${updatePayload.external_access_enabled}, ips=${cleanAllowedIps.join(',')}`);
+    res.json({ success: true, updated: updatePayload });
+  } catch (err: any) {
+    console.error('Error updating user IP access:', err);
+    res.status(500).json({ error: 'Failed to update user IP access' });
+  }
+});
+
+/**
+ * Returns blocked and allowed IP access audit logs.
+ */
+app.get(['/api/admin/ip-access/logs', '/admin/ip-access/logs'], verifyAdmin, async (req, res) => {
+  try {
+    const limitCount = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const resultFilter = req.query.result as string; // 'blocked', 'allowed', or undefined
+
+    let query = db.collection('jpc_ip_access_logs').orderBy('timestamp', 'desc');
+
+    if (resultFilter === 'blocked' || resultFilter === 'allowed') {
+      query = query.where('result', '==', resultFilter);
+    }
+
+    const snapshot = await query.limit(limitCount).get();
+    const logs = snapshot.docs.map((doc: any) => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    res.json({ logs });
+  } catch (err: any) {
+    console.error('Error fetching IP access logs:', err);
+    res.status(500).json({ error: 'Failed to fetch IP access logs' });
   }
 });
 

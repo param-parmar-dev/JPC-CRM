@@ -20,7 +20,8 @@ import {
   User as UserIcon,
   Zap,
   TrendingUp,
-  FolderTree
+  FolderTree,
+  Network
 } from 'lucide-react';
 import { cn, isSalesWorkingHours } from '../lib/utils';
 import { subscribeToCollection, updateSalesAvailability } from '../services/storage';
@@ -210,6 +211,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
       hash: '#team', 
       icon: Shield, 
       visible: (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_marketing' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person')
+    },
+    { 
+      label: 'IP Access Control', 
+      hash: '#ip-access', 
+      icon: Network, 
+      visible: (user?.role === 'administrator' || user?.role === 'jpc_sysadmin')
     },
     { 
       label: 'Feature Alerts', 

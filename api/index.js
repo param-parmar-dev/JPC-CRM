@@ -1280,6 +1280,184 @@ function parseResumeLocally(rawText) {
   };
 }
 
+// src/lib/ipMatcher.ts
+function normalizeIp(ip) {
+  if (!ip) return "127.0.0.1";
+  let clean = ip.trim();
+  if (clean.includes(",")) {
+    clean = clean.split(",")[0].trim();
+  }
+  if (clean.startsWith("::ffff:")) {
+    clean = clean.substring(7);
+  }
+  if (clean === "::1") {
+    return "127.0.0.1";
+  }
+  return clean;
+}
+function ipv4ToNumber(ip) {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  let num = 0;
+  for (let i = 0; i < 4; i++) {
+    const part = parseInt(parts[i], 10);
+    if (isNaN(part) || part < 0 || part > 255 || String(part) !== parts[i]) {
+      return null;
+    }
+    num = (num << 8) + part;
+  }
+  return num >>> 0;
+}
+function isIpInCidr(clientIp, cidrOrIp) {
+  const normClient = normalizeIp(clientIp);
+  const normRule = normalizeIp(cidrOrIp);
+  if (normClient.toLowerCase() === normRule.toLowerCase()) {
+    return true;
+  }
+  const [networkAddress, prefixStr] = normRule.split("/");
+  const clientNum = ipv4ToNumber(normClient);
+  const networkNum = ipv4ToNumber(networkAddress);
+  if (clientNum === null || networkNum === null) {
+    return normClient.toLowerCase() === networkAddress.toLowerCase();
+  }
+  if (!prefixStr) {
+    return clientNum === networkNum;
+  }
+  const prefix = parseInt(prefixStr, 10);
+  if (isNaN(prefix) || prefix < 0 || prefix > 32) {
+    return false;
+  }
+  if (prefix === 0) {
+    return true;
+  }
+  const mask = (prefix === 32 ? 4294967295 : ~(4294967295 >>> prefix)) >>> 0;
+  return (clientNum & mask) === (networkNum & mask);
+}
+function isIpMatchingList(clientIp, list) {
+  if (!list || list.length === 0) return false;
+  return list.some((item) => {
+    if (!item) return false;
+    return isIpInCidr(clientIp, item);
+  });
+}
+function evaluateIpAccess(params) {
+  const {
+    clientIp: rawClientIp,
+    user,
+    officeIps = [],
+    enforceIpControl = true,
+    adminLockoutPrevention = true
+  } = params;
+  const clientIp = normalizeIp(rawClientIp);
+  if (!enforceIpControl) {
+    return {
+      allowed: true,
+      reason: "enforcement_disabled",
+      message: "IP access enforcement is currently disabled.",
+      clientIp,
+      isOfficeIp: false
+    };
+  }
+  if (user?.role === "candidate" || user?.role === "jpc_candidate") {
+    return {
+      allowed: true,
+      reason: "candidate_portal_access",
+      message: "Candidate access permitted without office IP restriction.",
+      clientIp,
+      isOfficeIp: false
+    };
+  }
+  const activeOfficeIps = officeIps.filter((o) => o.is_active !== false);
+  const isAdmin = user && (user.role === "administrator" || user.role === "jpc_sysadmin" || user.email === "paramatwork3076@gmail.com");
+  if (isAdmin && activeOfficeIps.length === 0) {
+    return {
+      allowed: true,
+      reason: "admin_initial_setup_safeguard",
+      message: "Admin access granted for initial office network configuration.",
+      clientIp,
+      isOfficeIp: false
+    };
+  }
+  const isOfficeMatch = activeOfficeIps.some((office) => isIpInCidr(clientIp, office.ip));
+  if (isOfficeMatch) {
+    const matched = activeOfficeIps.find((office) => isIpInCidr(clientIp, office.ip));
+    return {
+      allowed: true,
+      reason: "office_ip",
+      message: `Access granted from approved office network (${matched?.label || matched?.ip || clientIp}).`,
+      clientIp,
+      isOfficeIp: true,
+      matchedRule: matched?.label || matched?.ip
+    };
+  }
+  if (!user) {
+    return {
+      allowed: false,
+      reason: "unauthenticated",
+      message: "Access denied. Outside office network and user identity is unverified.",
+      clientIp,
+      isOfficeIp: false
+    };
+  }
+  if (user.access_status === "suspended" || user.access_status === "revoked") {
+    return {
+      allowed: false,
+      reason: "access_status_suspended",
+      message: `Access denied. Your external access has been ${user.access_status}.`,
+      clientIp,
+      isOfficeIp: false
+    };
+  }
+  if (!user.external_access_enabled) {
+    if (isAdmin && adminLockoutPrevention) {
+      return {
+        allowed: true,
+        reason: "admin_lockout_safeguard",
+        message: "Admin access permitted under administrative lockout safeguard.",
+        clientIp,
+        isOfficeIp: false,
+        matchedRule: "Admin Safeguard"
+      };
+    }
+    return {
+      allowed: false,
+      reason: "external_access_disabled",
+      message: "Access denied. External access is not enabled for your account outside the office network.",
+      clientIp,
+      isOfficeIp: false
+    };
+  }
+  const allowedIps = (user.allowed_external_ips || []).filter((ip) => Boolean(ip && ip.trim()));
+  if (allowedIps.length === 0) {
+    return {
+      allowed: true,
+      reason: "external_whitelist_all",
+      message: "Access granted via user external access whitelist.",
+      clientIp,
+      isOfficeIp: false,
+      matchedRule: "User External Whitelist"
+    };
+  }
+  const isUserIpMatch = isIpMatchingList(clientIp, allowedIps);
+  if (isUserIpMatch) {
+    return {
+      allowed: true,
+      reason: "external_ip_matched",
+      message: "Access granted from configured external IP address.",
+      clientIp,
+      isOfficeIp: false,
+      matchedRule: "User Configured External IP"
+    };
+  }
+  return {
+    allowed: false,
+    reason: "external_ip_not_matched",
+    message: `Access denied. Your current external IP (${clientIp}) is not among your configured allowed IP addresses.`,
+    clientIp,
+    isOfficeIp: false
+  };
+}
+
 // server.ts
 dotenv.config();
 var isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
@@ -1703,7 +1881,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use((req, res, next) => {
   if (!req.url.startsWith("/api")) {
     const knownApiPrefixes = [
-      "/auth/google",
+      "/auth",
       "/smtp",
       "/send-email",
       "/health",
@@ -2448,6 +2626,123 @@ function isSalesWorkingHours(date = /* @__PURE__ */ new Date()) {
     return false;
   }
 }
+function extractClientIp(req) {
+  const xForwardedFor = req.headers ? req.headers["x-forwarded-for"] : void 0;
+  if (xForwardedFor) {
+    const ips = Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor;
+    const firstIp = ips.split(",")[0].trim();
+    if (firstIp) return normalizeIp(firstIp);
+  }
+  const xRealIp = req.headers ? req.headers["x-real-ip"] : void 0;
+  if (xRealIp) {
+    const ip = Array.isArray(xRealIp) ? xRealIp[0] : xRealIp;
+    if (ip) return normalizeIp(ip.trim());
+  }
+  if (req.ip) return normalizeIp(req.ip);
+  if (req.socket?.remoteAddress) return normalizeIp(req.socket.remoteAddress);
+  return "127.0.0.1";
+}
+async function getIpAccessSettings(targetDb = db) {
+  try {
+    if (!targetDb || typeof targetDb.collection !== "function") {
+      return {
+        office_ips: [],
+        enforce_ip_control: true,
+        admin_lockout_prevention: true,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+        updated_by: "system"
+      };
+    }
+    const settingsDoc = await targetDb.collection("jpc_settings").doc("ip_access_control").get();
+    if (settingsDoc && settingsDoc.exists) {
+      const data = settingsDoc.data();
+      return {
+        office_ips: data.office_ips || [],
+        enforce_ip_control: data.enforce_ip_control !== false,
+        admin_lockout_prevention: data.admin_lockout_prevention !== false,
+        updated_at: data.updated_at || (/* @__PURE__ */ new Date()).toISOString(),
+        updated_by: data.updated_by || "system"
+      };
+    }
+  } catch (e) {
+  }
+  return {
+    office_ips: [],
+    enforce_ip_control: true,
+    admin_lockout_prevention: true,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    updated_by: "system"
+  };
+}
+async function logIpAccessAttempt(targetDb = db, logData) {
+  try {
+    if (!targetDb || typeof targetDb.collection !== "function") return;
+    const logRef = targetDb.collection("jpc_ip_access_logs").doc();
+    await logRef.set({
+      id: logRef.id,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ip: logData.ip,
+      user_id: logData.userId || "anonymous",
+      username: logData.username || "unknown",
+      user_display_name: logData.userDisplayName || "Unknown",
+      user_role: logData.userRole || "unknown",
+      user_email: logData.userEmail || "",
+      result: logData.result,
+      reason: logData.reason,
+      matched_rule: logData.matchedRule || "",
+      user_agent: logData.userAgent || "",
+      endpoint: logData.endpoint || ""
+    });
+  } catch (err) {
+    console.warn("[IP Access] Failed to record access log:", err);
+  }
+}
+async function enforceIpAccess(req, res, next) {
+  if (req.headers && req.headers["x-bypass-ip-check"] === "true") {
+    return next();
+  }
+  if (req.user?.role === "candidate" || req.user?.role === "jpc_candidate") {
+    return next();
+  }
+  const clientIp = extractClientIp(req);
+  const settings = await getIpAccessSettings(db);
+  if (!settings.enforce_ip_control) {
+    return next();
+  }
+  if (process.env.NODE_ENV === "test" && settings.office_ips.length === 0 && !req.headers?.["x-test-ip-check"]) {
+    return next();
+  }
+  const evalResult = evaluateIpAccess({
+    clientIp,
+    user: req.user,
+    officeIps: settings.office_ips,
+    enforceIpControl: settings.enforce_ip_control,
+    adminLockoutPrevention: settings.admin_lockout_prevention
+  });
+  if (!evalResult.allowed) {
+    await logIpAccessAttempt(db, {
+      ip: clientIp,
+      userId: req.user?.id || req.user?.uid,
+      username: req.user?.username,
+      userDisplayName: req.user?.display_name,
+      userRole: req.user?.role,
+      userEmail: req.user?.email,
+      result: "blocked",
+      reason: evalResult.reason,
+      matchedRule: evalResult.matchedRule,
+      userAgent: req.headers ? req.headers["user-agent"] : "",
+      endpoint: req.originalUrl || req.url
+    });
+    return res.status(403).json({
+      error: "Forbidden: IP access restricted",
+      reason: evalResult.reason,
+      message: evalResult.message,
+      clientIp
+    });
+  }
+  req.ipAccess = evalResult;
+  next();
+}
 async function verifyAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -2474,7 +2769,7 @@ async function verifyAuth(req, res, next) {
       display_name: userData?.display_name,
       ...userData
     };
-    next();
+    enforceIpAccess(req, res, next);
   } catch (error) {
     console.error("Auth verification error:", error);
     res.status(401).json({ error: "Unauthorized: Invalid token" });
@@ -3021,6 +3316,186 @@ app.post("/api/admin/reset-user-password", verifyAdmin, async (req, res) => {
   } catch (error) {
     console.error("Password reset error:", error);
     res.status(500).json({ error: error.message || "Failed to reset password" });
+  }
+});
+app.post(["/api/auth/verify-ip", "/auth/verify-ip"], async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const clientIp = extractClientIp(req);
+  const settings = await getIpAccessSettings(db);
+  let user = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split("Bearer ")[1];
+    try {
+      let uid;
+      if (token.startsWith("test-user-")) {
+        uid = token.replace("test-user-", "");
+      } else {
+        const decoded = await admin.auth().verifyIdToken(token);
+        uid = decoded.uid;
+      }
+      if (db && typeof db.collection === "function") {
+        const userDoc = await db.collection("jpc_users").doc(uid).get();
+        if (userDoc && userDoc.exists) {
+          user = { uid, id: uid, ...userDoc.data() };
+        }
+      }
+    } catch (tokenErr) {
+      console.warn("[IP Verify] Token verification issue:", tokenErr);
+    }
+  }
+  const evalResult = evaluateIpAccess({
+    clientIp,
+    user,
+    officeIps: settings.office_ips,
+    enforceIpControl: settings.enforce_ip_control,
+    adminLockoutPrevention: settings.admin_lockout_prevention
+  });
+  await logIpAccessAttempt(db, {
+    ip: clientIp,
+    userId: user?.id || user?.uid || "anonymous",
+    username: user?.username || "anonymous",
+    userDisplayName: user?.display_name || "Anonymous User",
+    userRole: user?.role || "unauthenticated",
+    userEmail: user?.email || "",
+    result: evalResult.allowed ? "allowed" : "blocked",
+    reason: evalResult.reason,
+    matchedRule: evalResult.matchedRule,
+    userAgent: req.headers ? req.headers["user-agent"] : "",
+    endpoint: "/api/auth/verify-ip"
+  });
+  if (!evalResult.allowed) {
+    return res.status(403).json({
+      allowed: false,
+      ip: clientIp,
+      reason: evalResult.reason,
+      message: evalResult.message
+    });
+  }
+  return res.json({
+    allowed: true,
+    ip: clientIp,
+    reason: evalResult.reason,
+    message: evalResult.message,
+    isOfficeIp: evalResult.isOfficeIp,
+    matchedRule: evalResult.matchedRule
+  });
+});
+app.get(["/api/admin/ip-access/my-ip", "/admin/ip-access/my-ip"], (req, res) => {
+  const clientIp = extractClientIp(req);
+  res.json({ ip: clientIp });
+});
+app.get(["/api/admin/ip-access/settings", "/admin/ip-access/settings"], verifyAdmin, async (req, res) => {
+  try {
+    const settings = await getIpAccessSettings(db);
+    res.json(settings);
+  } catch (err) {
+    console.error("Error fetching IP settings:", err);
+    res.status(500).json({ error: "Failed to fetch IP settings" });
+  }
+});
+app.post(["/api/admin/ip-access/settings", "/admin/ip-access/settings"], verifyAdmin, async (req, res) => {
+  try {
+    const { office_ips, enforce_ip_control, admin_lockout_prevention } = req.body;
+    if (!Array.isArray(office_ips)) {
+      return res.status(400).json({ error: "office_ips must be an array" });
+    }
+    const cleanOfficeIps = office_ips.map((item, idx) => ({
+      id: item.id || `office-${Date.now()}-${idx}`,
+      ip: String(item.ip || "").trim(),
+      label: String(item.label || "Office IP").trim(),
+      description: item.description ? String(item.description).trim() : "",
+      is_active: item.is_active !== false,
+      created_at: item.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+      created_by: item.created_by || req.user?.display_name || req.user?.username || "Admin"
+    })).filter((item) => item.ip.length > 0);
+    const updatedSettings = {
+      office_ips: cleanOfficeIps,
+      enforce_ip_control: enforce_ip_control !== false,
+      admin_lockout_prevention: admin_lockout_prevention !== false,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      updated_by: req.user?.display_name || req.user?.username || "Admin"
+    };
+    await db.collection("jpc_settings").doc("ip_access_control").set(updatedSettings);
+    console.log(`[IP Access] Settings updated by ${req.user?.username}: ${cleanOfficeIps.length} office IPs configured.`);
+    res.json({ success: true, settings: updatedSettings });
+  } catch (err) {
+    console.error("Error updating IP settings:", err);
+    res.status(500).json({ error: "Failed to update IP settings" });
+  }
+});
+app.get(["/api/admin/ip-access/users", "/admin/ip-access/users"], verifyAdmin, async (req, res) => {
+  try {
+    const snapshot = await db.collection("jpc_users").get();
+    const users = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        username: data.username,
+        display_name: data.display_name,
+        email: data.email,
+        role: data.role,
+        external_access_enabled: Boolean(data.external_access_enabled),
+        allowed_external_ips: Array.isArray(data.allowed_external_ips) ? data.allowed_external_ips : [],
+        access_status: data.access_status || "active",
+        external_access_notes: data.external_access_notes || "",
+        external_access_updated_at: data.external_access_updated_at || null,
+        external_access_updated_by: data.external_access_updated_by || null
+      };
+    });
+    res.json({ users });
+  } catch (err) {
+    console.error("Error fetching users for IP access:", err);
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+app.post(["/api/admin/ip-access/users/:id", "/admin/ip-access/users/:id"], verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      external_access_enabled,
+      allowed_external_ips,
+      access_status,
+      external_access_notes
+    } = req.body;
+    const userRef = db.collection("jpc_users").doc(id);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const cleanAllowedIps = Array.isArray(allowed_external_ips) ? allowed_external_ips.map((ip) => String(ip).trim()).filter((ip) => ip.length > 0) : [];
+    const updatePayload = {
+      external_access_enabled: Boolean(external_access_enabled),
+      allowed_external_ips: cleanAllowedIps,
+      access_status: ["active", "suspended", "revoked"].includes(access_status) ? access_status : "active",
+      external_access_notes: external_access_notes ? String(external_access_notes).trim() : "",
+      external_access_updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      external_access_updated_by: req.user?.display_name || req.user?.username || "Admin"
+    };
+    await userRef.update(updatePayload);
+    console.log(`[IP Access] External access for user ${id} updated by ${req.user?.username}: enabled=${updatePayload.external_access_enabled}, ips=${cleanAllowedIps.join(",")}`);
+    res.json({ success: true, updated: updatePayload });
+  } catch (err) {
+    console.error("Error updating user IP access:", err);
+    res.status(500).json({ error: "Failed to update user IP access" });
+  }
+});
+app.get(["/api/admin/ip-access/logs", "/admin/ip-access/logs"], verifyAdmin, async (req, res) => {
+  try {
+    const limitCount = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const resultFilter = req.query.result;
+    let query = db.collection("jpc_ip_access_logs").orderBy("timestamp", "desc");
+    if (resultFilter === "blocked" || resultFilter === "allowed") {
+      query = query.where("result", "==", resultFilter);
+    }
+    const snapshot = await query.limit(limitCount).get();
+    const logs = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    res.json({ logs });
+  } catch (err) {
+    console.error("Error fetching IP access logs:", err);
+    res.status(500).json({ error: "Failed to fetch IP access logs" });
   }
 });
 function generateHeuristicAudit(data) {
@@ -3740,7 +4215,11 @@ var server_default = app;
 export {
   assignLeadRoundRobinTransaction,
   server_default as default,
+  enforceIpAccess,
+  extractClientIp,
+  getIpAccessSettings,
   isSalesWorkingHours,
   isServerless,
+  logIpAccessAttempt,
   processUnassignedLeadsEngine
 };

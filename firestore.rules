@@ -273,6 +273,12 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
     
+    match /jpc_ip_access_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if false;
+    }
+    
     match /jpc_lead_locks/{lockId} {
       allow read, write: if isSignedIn();
     }
