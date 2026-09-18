@@ -838,7 +838,12 @@ export const Dashboard: React.FC = () => {
       <TimeZoneClocks />
 
       {/* Confetti & Superstars Celebration Hall of Fame */}
-      <CelebrationBanner candidates={candidates} allUsers={allUsers} />
+      <CelebrationBanner 
+        candidates={candidates} 
+        allUsers={allUsers} 
+        interviews={interviews}
+        offerRequests={offerRequests}
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6">

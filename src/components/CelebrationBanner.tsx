@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Trophy, Award, PartyPopper, ChevronLeft, ChevronRight, Volume2, VolumeX, Flame, X } from 'lucide-react';
-import { Candidate, User } from '../types';
+import { Candidate, User, InterviewSupportRequest, InterviewOfferRequest } from '../types';
 import { cn } from '../lib/utils';
 
 interface CelebrationBannerProps {
   candidates: Candidate[];
   allUsers: User[];
+  interviews?: InterviewSupportRequest[];
+  offerRequests?: InterviewOfferRequest[];
 }
 
 interface ConfettiParticle {
@@ -25,7 +27,12 @@ interface ConfettiParticle {
 
 const CELEBRATION_EMOJIS = ['🎉', '🥳', '🏆', '🚀', '💼', '✨', '👏', '🌟', '👑', '💰'];
 
-export const CelebrationBanner: React.FC<CelebrationBannerProps> = ({ candidates, allUsers }) => {
+export const CelebrationBanner: React.FC<CelebrationBannerProps> = ({ 
+  candidates, 
+  allUsers, 
+  interviews = [], 
+  offerRequests = [] 
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -213,6 +220,51 @@ export const CelebrationBanner: React.FC<CelebrationBannerProps> = ({ candidates
   const marketingTL = allUsers.find(u => String(u.id) === String(currentCandidate.assigned_marketing_leader))?.display_name || 'Not Assigned';
   const salesPerson = allUsers.find(u => String(u.id) === String(currentCandidate.assigned_sales))?.display_name || 'Not Assigned';
 
+  // Proxy Person resolution
+  const getProxyPersonName = () => {
+    // 1. Direct from latest offer request on candidate
+    if (currentCandidate.latest_interview_offer_request?.proxy_person_name?.trim()) {
+      return currentCandidate.latest_interview_offer_request.proxy_person_name.trim();
+    }
+    if (currentCandidate.latest_interview_offer_request?.proxy_user_id) {
+      const matched = allUsers.find(u => String(u.id) === String(currentCandidate.latest_interview_offer_request?.proxy_user_id));
+      if (matched?.display_name) return matched.display_name;
+    }
+
+    // 2. From offer requests collection
+    if (offerRequests && offerRequests.length > 0) {
+      const candOfferRequests = offerRequests
+        .filter(o => o.candidate_id === currentCandidate.id)
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+      const matchedOffer = candOfferRequests[0];
+      if (matchedOffer?.proxy_person_name?.trim()) {
+        return matchedOffer.proxy_person_name.trim();
+      }
+      if (matchedOffer?.proxy_user_id) {
+        const matched = allUsers.find(u => String(u.id) === String(matchedOffer.proxy_user_id));
+        if (matched?.display_name) return matched.display_name;
+      }
+    }
+
+    // 3. From interview support requests (matched proxy user)
+    if (interviews && interviews.length > 0) {
+      const candInterviews = interviews
+        .filter(i => i.candidate_id === currentCandidate.id)
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+      const withProxy = candInterviews.find(i => i.proxy_user_id);
+      if (withProxy?.proxy_user_id) {
+        const matchedUser = allUsers.find(u => String(u.id) === String(withProxy.proxy_user_id));
+        if (matchedUser?.display_name) return matchedUser.display_name;
+      }
+    }
+
+    return 'Not Assigned';
+  };
+
+  const proxyPerson = getProxyPersonName();
+
   return (
     <div 
       ref={containerRef}
@@ -315,7 +367,7 @@ export const CelebrationBanner: React.FC<CelebrationBannerProps> = ({ candidates
 
             <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider truncate">{currentCandidate.job_interest || currentCandidate.domain_interested}</p>
             
-            {/* Metadata Badges: Recruiter, Marketing TL, Sales Person */}
+            {/* Metadata Badges: Recruiter, Marketing TL, Sales Person, Proxy */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-text-muted font-bold tracking-wider uppercase pt-0.5">
               <span className="flex items-center gap-1 bg-bg-tertiary/60 p-0.5 px-2 rounded-md border border-border-primary/30">
                 Recruiter: <b className="text-text-primary font-black">{recruiter}</b>
@@ -325,6 +377,9 @@ export const CelebrationBanner: React.FC<CelebrationBannerProps> = ({ candidates
               </span>
               <span className="flex items-center gap-1 bg-bg-tertiary/60 p-0.5 px-2 rounded-md border border-border-primary/30">
                 Sales: <b className="text-text-primary font-black">{salesPerson}</b>
+              </span>
+              <span className="flex items-center gap-1 bg-bg-tertiary/60 p-0.5 px-2 rounded-md border border-border-primary/30">
+                Proxy: <b className="text-text-primary font-black">{proxyPerson}</b>
               </span>
             </div>
           </div>
