@@ -30,6 +30,7 @@ import { useToast } from '../contexts/ToastContext';
 import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
+import * as XLSX from 'xlsx';
 
 type TabType = 'resume_understanding' | 'interview_questions';
 
@@ -322,7 +323,7 @@ export const ResumePrepLog: React.FC = () => {
     }
   };
 
-  const handleExportReport = async (statusToExport: string, typeToExport: string) => {
+  const handleExportReport = (statusToExport: string, typeToExport: string) => {
     const filtered = requests.filter(req => {
       // Type filter
       if (typeToExport !== 'all' && req.type !== typeToExport) return false;
@@ -389,7 +390,6 @@ export const ResumePrepLog: React.FC = () => {
       };
     });
 
-    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resume Prep Log');

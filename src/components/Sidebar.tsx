@@ -23,7 +23,7 @@ import {
   FolderTree
 } from 'lucide-react';
 import { cn, isSalesWorkingHours } from '../lib/utils';
-import { subscribeToCollection, updateSalesAvailability, getCachedCollection } from '../services/storage';
+import { subscribeToCollection, updateSalesAvailability } from '../services/storage';
 import { useToast } from '../contexts/ToastContext';
 import { isProxyUser } from '../services/interviewService';
 import { FollowUp, Candidate, User } from '../types';
@@ -40,9 +40,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
   const { theme, toggleTheme } = useTheme();
   const { showToast } = useToast();
 
-  const [allFollowUps, setAllFollowUps] = useState<FollowUp[]>(() => getCachedCollection<FollowUp>('jpc_followups') || []);
-  const [allCandidates, setAllCandidates] = useState<Candidate[]>(() => getCachedCollection<Candidate>('jpc_candidates') || []);
-  const [allUsers, setAllUsers] = useState<User[]>(() => getCachedCollection<User>('jpc_users') || []);
+  const [allFollowUps, setAllFollowUps] = useState<FollowUp[]>([]);
+  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [salesStatus, setSalesStatus] = useState<'Active' | 'Deactive'>(user?.sales_availability_status || 'Deactive');
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
 

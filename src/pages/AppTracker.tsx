@@ -18,6 +18,7 @@ import {
   Trash2,
   Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Select from 'react-select';
 import { sharedSelectStyles } from '../lib/selectStyles';
 import { motion, AnimatePresence } from 'motion/react';
@@ -111,7 +112,6 @@ export const AppTracker: React.FC = () => {
       });
 
       // Generate workbook
-      const XLSX = await import('xlsx');
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Applications');

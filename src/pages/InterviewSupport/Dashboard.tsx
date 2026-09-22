@@ -13,12 +13,8 @@ import {
   addInterviewNotification,
   addBookingLink,
   deleteInterviewSupportRequest,
-  generateId,
-  getCachedCollection,
-  hasCachedCollection
+  generateId
 } from '../../services/storage';
-import { useDebounce } from '../../lib/hooks';
-import { DashboardSkeleton } from '../../components/common/Skeleton';
 import { syncInterviewRoundToGoogleCalendar, clearPreviousCalendarEvents } from '../../services/calendarService';
 import { handleViewFile, uploadFile } from '../../services/fileService';
 import { 
@@ -107,16 +103,15 @@ export const InterviewSupportDashboard: React.FC = () => {
   }, [user]);
   
   const [activeTab, setActiveTab] = useState<TabType>('today');
-  const [requests, setRequests] = useState<InterviewSupportRequest[]>(() => getCachedCollection<InterviewSupportRequest>('jpc_interview_requests') || []);
-  const [rounds, setRounds] = useState<InterviewRound[]>(() => getCachedCollection<InterviewRound>('jpc_interview_rounds') || []);
-  const [feedbacks, setFeedbacks] = useState<InterviewFeedback[]>(() => getCachedCollection<InterviewFeedback>('jpc_interview_feedback') || []);
-  const [candidates, setCandidates] = useState<Candidate[]>(() => getCachedCollection<Candidate>('jpc_candidates') || []);
-  const [team, setTeam] = useState<User[]>(() => getCachedCollection<User>('jpc_users') || []);
-  const [availabilities, setAvailabilities] = useState<ProxyAvailability[]>(() => getCachedCollection<ProxyAvailability>('jpc_proxy_availability') || []);
-  const [calendarEvents, setCalendarEvents] = useState<any[]>(() => getCachedCollection<any>('jpc_calendar_events') || []);
-  const [isLoading, setIsLoading] = useState(() => !hasCachedCollection('jpc_interview_requests'));
+  const [requests, setRequests] = useState<InterviewSupportRequest[]>([]);
+  const [rounds, setRounds] = useState<InterviewRound[]>([]);
+  const [feedbacks, setFeedbacks] = useState<InterviewFeedback[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [team, setTeam] = useState<User[]>([]);
+  const [availabilities, setAvailabilities] = useState<ProxyAvailability[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearch = useDebounce(searchTerm, 300);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterDate, setFilterDate] = useState<string>('');
   
@@ -171,7 +166,7 @@ export const InterviewSupportDashboard: React.FC = () => {
   }, [rounds, visibleRequests, user]);
 
   const filteredData = useMemo(() => {
-    const searchLower = debouncedSearch.toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
     
     let base = visibleRequests.filter(req => {
       const candidate = candidates.find(c => c.id === req.candidate_id);
@@ -278,7 +273,7 @@ export const InterviewSupportDashboard: React.FC = () => {
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
-  }, [visibleRequests, visibleRounds, candidates, debouncedSearch, activeTab, sortDirection, filterDate, selectedProxyId]);
+  }, [visibleRequests, visibleRounds, candidates, searchTerm, activeTab, sortDirection, filterDate, selectedProxyId]);
 
   const stats = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -379,7 +374,11 @@ export const InterviewSupportDashboard: React.FC = () => {
   };
 
   if (isLoading) {
-    return <DashboardSkeleton />;
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (

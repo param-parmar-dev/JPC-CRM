@@ -4,7 +4,6 @@ import { db } from '../firebase';
 import { doc, onSnapshot, collection, query, where, orderBy, limit, setDoc } from 'firebase/firestore';
 import { Candidate, Payment, Application, InterviewSupportRequest, ActivityLog, InterviewRound, User } from '../types';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
-import { DashboardSkeleton } from '../components/common/Skeleton';
 import { STAGES } from '../constants';
 import { 
   TrendingUp, 
@@ -159,7 +158,11 @@ export const CandidateDashboard: React.FC = () => {
   }, [activityLogs]);
 
   if (isLoading) {
-    return <DashboardSkeleton />;
+    return (
+      <div className="h-[60vh] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
+      </div>
+    );
   }
 
   if (!candidate) return null;

@@ -17,29 +17,6 @@ export default defineConfig(() => {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
-          manualChunks(id) {
-            if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/') || id.includes('node_modules/react-router-dom/')) {
-              return 'vendor-react';
-            }
-            if (id.includes('node_modules/firebase/')) {
-              return 'vendor-firebase';
-            }
-            if (id.includes('node_modules/lucide-react/')) {
-              return 'vendor-lucide';
-            }
-            if (id.includes('node_modules/motion/') || id.includes('node_modules/framer-motion/')) {
-              return 'vendor-motion';
-            }
-            if (id.includes('node_modules/xlsx/')) {
-              return 'vendor-xlsx';
-            }
-            if (id.includes('node_modules/pdfjs-dist/') || id.includes('node_modules/mammoth/')) {
-              return 'vendor-doc-parsers';
-            }
-            if (id.includes('node_modules/recharts/') || id.includes('node_modules/d3-')) {
-              return 'vendor-recharts';
-            }
-          },
         },
       },
     },

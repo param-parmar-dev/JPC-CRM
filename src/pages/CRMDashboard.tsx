@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Candidate, FollowUp, Application, User } from '../types';
+import * as XLSX from 'xlsx';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell 
@@ -244,7 +245,7 @@ export const CRMDashboard: React.FC = () => {
     }));
   }, [filteredCRMLeads]);
 
-  const handleExportLeadsAndSales = async () => {
+  const handleExportLeadsAndSales = () => {
     setIsExporting(true);
     try {
       if (candidates.length === 0) {
@@ -335,7 +336,6 @@ export const CRMDashboard: React.FC = () => {
         };
       });
 
-      const XLSX = await import('xlsx');
       const wsData = XLSX.utils.json_to_sheet(dataRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, wsData, 'All Lead & Sales Data');

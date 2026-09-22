@@ -15,13 +15,10 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../contexts/ToastContext';
 
-import { useDebounce } from '../lib/hooks';
-
 export const CVRepository: React.FC = () => {
   const [files, setFiles] = useState<CVFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearch = useDebounce(searchTerm, 300);
   const { showToast } = useToast();
 
   const fetchFiles = async () => {
@@ -41,14 +38,11 @@ export const CVRepository: React.FC = () => {
     fetchFiles();
   }, []);
 
-  const filteredFiles = files.filter(file => {
-    const q = debouncedSearch.toLowerCase();
-    return (
-      file.name.toLowerCase().includes(q) ||
-      file.email.toLowerCase().includes(q) ||
-      file.title.toLowerCase().includes(q)
-    );
-  });
+  const filteredFiles = files.filter(file => 
+    file.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    file.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    file.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="space-y-8 pb-12">

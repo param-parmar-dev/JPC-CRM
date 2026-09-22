@@ -16,10 +16,8 @@ import {
   now,
   updateCandidate,
   deleteCandidate,
-  deleteInterviewSupportRequest,
-  getCachedCandidate
+  deleteInterviewSupportRequest
 } from '../services/storage';
-import { Skeleton } from '../components/common/Skeleton';
 import { uploadFile, handleViewFile } from '../services/fileService';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -103,7 +101,7 @@ export const CandidateDetail: React.FC = () => {
   const canDelete = user?.role === 'administrator' || user?.role === 'jpc_sysadmin';
   const canEditFreeTrial = canManageFreeTrial(user);
 
-  const [candidate, setCandidate] = useState<Candidate | null>(() => id ? getCachedCandidate(id) : null);
+  const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [isUpdatingTrial, setIsUpdatingTrial] = useState(false);
   const [isEditingTrialDates, setIsEditingTrialDates] = useState(false);
   const [trialDatesForm, setTrialDatesForm] = useState({ start_date: '', end_date: '' });
@@ -129,7 +127,7 @@ export const CandidateDetail: React.FC = () => {
   const [interviewOfferRequests, setInterviewOfferRequests] = useState<InterviewOfferRequest[]>([]);
   const [isInterviewCompletionModalOpen, setIsInterviewCompletionModalOpen] = useState(false);
   const [isComplianceApprovalModalOpen, setIsComplianceApprovalModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(() => id ? !getCachedCandidate(id) : true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!isAuthReady || !id) return;
@@ -428,39 +426,8 @@ export const CandidateDetail: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 animate-pulse p-2">
-        <div className="flex items-center justify-between pb-6 border-b border-border/40">
-          <div className="flex items-center gap-4">
-            <Skeleton className="w-10 h-10 rounded-xl" />
-            <div className="space-y-2">
-              <Skeleton className="w-48 h-7 rounded" />
-              <Skeleton className="w-32 h-4 rounded" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="w-24 h-9 rounded-lg" />
-            <Skeleton className="w-28 h-9 rounded-lg" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-surface/50 border border-border/40 rounded-xl p-6 space-y-4">
-              <Skeleton className="w-40 h-6 rounded" />
-              <div className="grid grid-cols-2 gap-4">
-                <Skeleton className="h-10 rounded-lg" />
-                <Skeleton className="h-10 rounded-lg" />
-                <Skeleton className="h-10 rounded-lg" />
-                <Skeleton className="h-10 rounded-lg" />
-              </div>
-            </div>
-          </div>
-          <div className="space-y-6">
-            <div className="bg-surface/50 border border-border/40 rounded-xl p-6 space-y-4">
-              <Skeleton className="w-32 h-6 rounded" />
-              <Skeleton className="h-28 rounded-lg" />
-            </div>
-          </div>
-        </div>
+      <div className="h-full flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
       </div>
     );
   }

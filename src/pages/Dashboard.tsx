@@ -22,11 +22,11 @@ import { ComplianceOfferApprovalModal } from '../components/ComplianceOfferAppro
 import { CelebrationBanner } from '../components/CelebrationBanner';
 import { db, firebaseConfig } from '../firebase';
 import { query, collection, where, limit, doc, getDoc } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell 
 } from 'recharts';
 import { isProxyUser } from '../services/interviewService';
-import { DashboardSkeleton } from '../components/common/Skeleton';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -589,7 +589,7 @@ export const Dashboard: React.FC = () => {
     return filtered.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 5);
   }, [candidates, user]);
 
-  const handleExportLeadsAndSales = async () => {
+  const handleExportLeadsAndSales = () => {
     setIsExporting(true);
     try {
       if (candidates.length === 0) {
@@ -693,7 +693,6 @@ export const Dashboard: React.FC = () => {
       });
 
       // Generate sheets
-      const XLSX = await import('xlsx');
       const wsData = XLSX.utils.json_to_sheet(dataRows);
       
       const wb = XLSX.utils.book_new();
@@ -721,7 +720,11 @@ export const Dashboard: React.FC = () => {
   };
 
   if (isLoading) {
-    return <DashboardSkeleton />;
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (

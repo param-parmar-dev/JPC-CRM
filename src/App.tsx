@@ -4,14 +4,13 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { Sidebar } from './components/Sidebar';
 import { isProxyUser } from './services/interviewService';
+import { AddCandidateModal } from './components/AddCandidateModal';
 import { NotificationList } from './components/NotificationList';
 import { SLAMonitor } from './components/SLAMonitor';
 import { MigrationExecutor } from './MigrationExecutor';
-import { migrateAllChecklists, autoAssignFaizToCandidates } from './services/storage';
+import { migrateAllChecklists, testConnection, autoAssignFaizToCandidates } from './services/storage';
 import { Plus, Menu } from 'lucide-react';
 import { MobileBottomNav } from './components/MobileBottomNav';
-
-const AddCandidateModal = lazy(() => import('./components/AddCandidateModal').then(m => ({ default: m.AddCandidateModal })));
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -39,33 +38,8 @@ const BookingPage = lazy(() => import('./pages/InterviewSupport/BookingPage').th
 const CRMDashboard = lazy(() => import('./pages/CRMDashboard').then(m => ({ default: m.CRMDashboard })));
 
 const PageLoader = () => (
-  <div className="space-y-6 animate-pulse w-full">
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-      <div className="space-y-2">
-        <div className="h-8 w-48 bg-bg-secondary rounded-xl" />
-        <div className="h-4 w-72 bg-bg-secondary/60 rounded-lg" />
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-28 bg-bg-secondary rounded-xl" />
-        <div className="h-10 w-32 bg-accent-blue/20 rounded-xl" />
-      </div>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="h-28 bg-bg-secondary rounded-2xl border border-border-primary/60 p-4 space-y-3">
-          <div className="h-4 w-24 bg-bg-tertiary rounded" />
-          <div className="h-8 w-16 bg-bg-tertiary rounded-lg" />
-        </div>
-      ))}
-    </div>
-    <div className="h-96 bg-bg-secondary rounded-2xl border border-border-primary/60 p-6 space-y-4">
-      <div className="h-6 w-40 bg-bg-tertiary rounded" />
-      <div className="space-y-3 pt-2">
-        {[1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="h-12 bg-bg-tertiary/60 rounded-xl w-full" />
-        ))}
-      </div>
-    </div>
+  <div className="flex-1 flex items-center justify-center p-20">
+    <div className="w-10 h-10 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
   </div>
 );
 
@@ -77,22 +51,10 @@ const AppContent: React.FC = () => {
 
 
   useEffect(() => {
-    if (isAuthReady && user) {
-      // Preload primary route chunks during browser idle time for instant navigation
-      const preload = () => {
-        import('./pages/Dashboard');
-        import('./pages/Candidates');
-        import('./pages/Pipeline');
-        import('./pages/FollowUps');
-        import('./pages/CandidateDetail');
-      };
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        (window as any).requestIdleCallback(preload, { timeout: 3000 });
-      } else {
-        setTimeout(preload, 1500);
-      }
+    if (isAuthReady) {
+      testConnection();
     }
-  }, [isAuthReady, user]);
+  }, [isAuthReady]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -123,15 +85,10 @@ const AppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-bg-primary">
+      <div className="h-screen flex items-center justify-center bg-bg-primary">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-accent-blue/10 border border-accent-blue/20 flex items-center justify-center shadow-lg shadow-accent-blue/5">
-            <div className="w-6 h-6 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-          </div>
-          <div className="flex flex-col items-center gap-1 text-center">
-            <p className="text-sm font-bold font-heading text-text-primary tracking-tight">Placify CRM</p>
-            <p className="text-xs text-text-muted font-medium animate-pulse">Initializing workspace...</p>
-          </div>
+          <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
+          <p className="text-xs text-text-secondary font-medium animate-pulse">Loading application...</p>
         </div>
       </div>
     );
@@ -315,17 +272,13 @@ const AppContent: React.FC = () => {
 
       <SLAMonitor />
       <MigrationExecutor />
-      {isAddModalOpen && (
-        <Suspense fallback={null}>
-          <AddCandidateModal 
-            isOpen={isAddModalOpen} 
-            onClose={() => setIsAddModalOpen(false)}
-            onSuccess={() => {
-              window.dispatchEvent(new HashChangeEvent('hashchange'));
-            }}
-          />
-        </Suspense>
-      )}
+      <AddCandidateModal 
+        isOpen={isAddModalOpen} 
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => {
+          window.dispatchEvent(new HashChangeEvent('hashchange'));
+        }}
+      />
     </div>
   );
 };
