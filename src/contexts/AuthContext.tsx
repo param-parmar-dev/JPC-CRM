@@ -51,19 +51,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Try getting cached user first in case of network/offline issues
+        let hasLoadedFromCache = false;
         try {
           const cachedString = localStorage.getItem(`jpc_user_cache_${fUser.uid}`);
           if (cachedString) {
             const cachedUser = JSON.parse(cachedString) as User;
             setUser(cachedUser);
             fallbackUser = cachedUser;
+            hasLoadedFromCache = true;
+            // Instantly unblock app render
+            setIsLoading(false);
+            setIsAuthReady(true);
           }
         } catch (e) {
           console.warn('[AuthContext] Failed to parse cached user', e);
         }
 
         try {
-          // Fetch user data from Firestore
+          // Fetch user data from Firestore in background or on first login
           const userDoc = await getDoc(doc(db, 'jpc_users', fUser.uid));
           
           if (userDoc.exists()) {
@@ -115,7 +120,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (error) {
           console.warn('[AuthContext] DB is unreachable, using offline profile & cached configurations.', error);
           // Don't crash wait loop or throw uncaught errors on initial boot
-          setUser(fallbackUser);
+          if (!hasLoadedFromCache) {
+            setUser(fallbackUser);
+          }
         }
       } else {
         setUser(null);
@@ -129,6 +136,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = async () => {
+    if (firebaseUser) {
+      try {
+        localStorage.removeItem(`jpc_user_cache_${firebaseUser.uid}`);
+      } catch (e) {}
+    }
     await signOut(auth);
   };
 

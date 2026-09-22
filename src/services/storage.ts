@@ -104,10 +104,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   }
 }
 
-// Helper to test connection
+// Helper to test connection (runs at most once per session)
 export async function testConnection() {
+  if (typeof window !== 'undefined' && sessionStorage.getItem('jpc_test_connection_done')) {
+    return;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('jpc_test_connection_done', 'true');
+    }
   } catch (error) {
     if(error instanceof Error && error.message.includes('the client is offline')) {
       console.warn("Please check your Firebase configuration.");
@@ -115,41 +121,150 @@ export async function testConnection() {
   }
 }
 
-// Generic Data Access
-export const subscribeToCollection = <T>(collectionName: string, callback: (data: T[]) => void, limitCount?: number) => {
-  let q = query(collection(db, collectionName));
-  if (limitCount) {
-    q = query(q, limit(limitCount));
+// Centralized Subscription and In-Memory Cache Manager
+interface CacheEntry<T> {
+  data: T[] | null;
+  unsubFirestore: (() => void) | null;
+  subscribers: Set<(data: T[]) => void>;
+  cleanupTimer: any | null;
+}
+
+const collectionCache = new Map<string, CacheEntry<any>>();
+
+export const getCachedCollection = <T>(collectionName: string): T[] | null => {
+  const entry = collectionCache.get(collectionName);
+  return entry?.data ? (entry.data as T[]) : null;
+};
+
+export const hasCachedCollection = (collectionName: string): boolean => {
+  const entry = collectionCache.get(collectionName);
+  return !!(entry?.data && entry.data.length >= 0);
+};
+
+export const getCachedCandidate = (id: string): Candidate | null => {
+  // Check main candidates collection
+  const allCandidates = getCachedCollection<Candidate>('jpc_candidates');
+  if (allCandidates) {
+    const found = allCandidates.find(c => c.id === id);
+    if (found) return found;
   }
-  return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
-    callback(data);
-  }, (error) => {
-    if (collectionName === 'jpc_interview_offer_requests') {
-      console.warn('Direct Firestore onSnapshot unavailable for jpc_interview_offer_requests, using API fallback:', error.message);
-      fetch('/api/interview-offer-requests')
-        .then(res => res.ok ? res.json() : [])
-        .then(data => callback(data as T[]))
-        .catch(() => callback([]));
-      return;
+  // Check role-based candidate caches
+  for (const [key, entry] of collectionCache.entries()) {
+    if (key.startsWith('jpc_candidates') && entry.data) {
+      const found = (entry.data as Candidate[]).find(c => c.id === id);
+      if (found) return found;
     }
-    handleFirestoreError(error, OperationType.GET, collectionName);
-  });
+  }
+  return null;
+};
+
+// Generic Data Access with In-Memory Caching & Listener Pooling
+export const subscribeToCollection = <T>(collectionName: string, callback: (data: T[]) => void, limitCount?: number) => {
+  const cacheKey = limitCount ? `${collectionName}_limit_${limitCount}` : collectionName;
+
+  let entry = collectionCache.get(cacheKey);
+  if (!entry) {
+    entry = {
+      data: null,
+      unsubFirestore: null,
+      subscribers: new Set(),
+      cleanupTimer: null
+    };
+    collectionCache.set(cacheKey, entry);
+  }
+
+  // Cancel any pending cleanup timer since a new subscriber joined
+  if (entry.cleanupTimer) {
+    clearTimeout(entry.cleanupTimer);
+    entry.cleanupTimer = null;
+  }
+
+  // Add callback to subscriber set
+  entry.subscribers.add(callback);
+
+  // If we already have data in memory, dispatch immediately for instant zero-lag render
+  if (entry.data !== null) {
+    try {
+      callback(entry.data);
+    } catch (e) {
+      console.error('[Cache] Error delivering cached collection:', e);
+    }
+  }
+
+  // If no Firestore listener is currently open, open one
+  if (!entry.unsubFirestore) {
+    let q = query(collection(db, collectionName));
+    if (limitCount) {
+      q = query(q, limit(limitCount));
+    }
+
+    entry.unsubFirestore = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as T));
+      const currentEntry = collectionCache.get(cacheKey);
+      if (currentEntry) {
+        currentEntry.data = data;
+        currentEntry.subscribers.forEach(cb => {
+          try {
+            cb(data);
+          } catch (err) {
+            console.error('[Cache] Error notifying subscriber:', err);
+          }
+        });
+      }
+    }, (error) => {
+      if (collectionName === 'jpc_interview_offer_requests') {
+        console.warn('Direct Firestore onSnapshot unavailable for jpc_interview_offer_requests, using API fallback:', error.message);
+        fetch('/api/interview-offer-requests')
+          .then(res => res.ok ? res.json() : [])
+          .then(data => {
+            const currentEntry = collectionCache.get(cacheKey);
+            if (currentEntry) {
+              currentEntry.data = data as T[];
+              currentEntry.subscribers.forEach(cb => cb(data as T[]));
+            }
+          })
+          .catch(() => {
+            const currentEntry = collectionCache.get(cacheKey);
+            if (currentEntry) {
+              currentEntry.data = [];
+              currentEntry.subscribers.forEach(cb => cb([]));
+            }
+          });
+        return;
+      }
+      handleFirestoreError(error, OperationType.GET, collectionName);
+    });
+  }
+
+  // Return unsubscribe with grace-period retention
+  return () => {
+    const currentEntry = collectionCache.get(cacheKey);
+    if (!currentEntry) return;
+
+    currentEntry.subscribers.delete(callback);
+
+    // If no active subscribers remain, keep listener alive for 3 minutes before disconnecting
+    if (currentEntry.subscribers.size === 0) {
+      if (currentEntry.cleanupTimer) {
+        clearTimeout(currentEntry.cleanupTimer);
+      }
+      currentEntry.cleanupTimer = setTimeout(() => {
+        if (currentEntry.subscribers.size === 0 && currentEntry.unsubFirestore) {
+          currentEntry.unsubFirestore();
+          currentEntry.unsubFirestore = null;
+        }
+      }, 180000); // 3 minutes retention
+    }
+  };
 };
 
 export const subscribeToCollectionWithLimit = <T>(collectionName: string, limitCount: number, callback: (data: T[]) => void) => {
-  const q = query(collection(db, collectionName), limit(limitCount));
-  return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
-    callback(data);
-  }, (error) => {
-    handleFirestoreError(error, OperationType.GET, collectionName);
-  });
+  return subscribeToCollection<T>(collectionName, callback, limitCount);
 };
 
 export const subscribeToQuery = <T>(q: any, callback: (data: T[]) => void, collectionName: string) => {
   return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as T));
     callback(data);
   }, (error) => {
     if (collectionName === 'jpc_interview_offer_requests') {
@@ -160,6 +275,98 @@ export const subscribeToQuery = <T>(q: any, callback: (data: T[]) => void, colle
     handleFirestoreError(error, OperationType.GET, collectionName);
   });
 };
+
+/**
+ * Shared candidate query subscription for role-filtered users (Recruiter, Marketing, Sales, CS, LeadGen).
+ * Shares the cache and listener between Candidates and Pipeline views so navigation between them is instant.
+ */
+export const subscribeToCandidatesForUser = (user: any, callback: (data: Candidate[]) => void) => {
+  if (!user) return () => {};
+
+  const role = user.role;
+  const userId = String(user.id);
+  const cacheKey = `jpc_candidates_role_${role}_${userId}`;
+
+  let entry = collectionCache.get(cacheKey);
+  if (!entry) {
+    entry = {
+      data: null,
+      unsubFirestore: null,
+      subscribers: new Set(),
+      cleanupTimer: null
+    };
+    collectionCache.set(cacheKey, entry);
+  }
+
+  if (entry.cleanupTimer) {
+    clearTimeout(entry.cleanupTimer);
+    entry.cleanupTimer = null;
+  }
+
+  entry.subscribers.add(callback);
+
+  if (entry.data !== null) {
+    try {
+      callback(entry.data);
+    } catch (e) {
+      console.error('[Cache] Error delivering cached candidates:', e);
+    }
+  }
+
+  if (!entry.unsubFirestore) {
+    let cQuery = query(collection(db, 'jpc_candidates'));
+    if (role === 'jpc_recruiter') {
+      cQuery = query(cQuery, where('assigned_recruiter', '==', userId));
+    } else if (role === 'jpc_marketing') {
+      cQuery = query(cQuery, where('assigned_marketing_leader', '==', userId));
+    } else if (role === 'jpc_sales') {
+      cQuery = query(cQuery, where('assigned_sales', '==', userId));
+    } else if (role === 'jpc_cs') {
+      cQuery = query(cQuery, where('assigned_cs', '==', userId));
+    } else if (role === 'jpc_lead_gen') {
+      cQuery = query(cQuery, where('lead_generated_by', '==', userId));
+    }
+
+    entry.unsubFirestore = onSnapshot(cQuery, (snapshot) => {
+      const data = snapshot.docs
+        .map(d => ({ ...d.data(), id: d.id } as Candidate))
+        .filter(c => !c.deleted_at);
+      const curEntry = collectionCache.get(cacheKey);
+      if (curEntry) {
+        curEntry.data = data;
+        curEntry.subscribers.forEach(cb => {
+          try {
+            cb(data);
+          } catch (err) {
+            console.error('[Cache] Error in candidate subscriber callback:', err);
+          }
+        });
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'jpc_candidates');
+    });
+  }
+
+  return () => {
+    const curEntry = collectionCache.get(cacheKey);
+    if (!curEntry) return;
+
+    curEntry.subscribers.delete(callback);
+
+    if (curEntry.subscribers.size === 0) {
+      if (curEntry.cleanupTimer) {
+        clearTimeout(curEntry.cleanupTimer);
+      }
+      curEntry.cleanupTimer = setTimeout(() => {
+        if (curEntry.subscribers.size === 0 && curEntry.unsubFirestore) {
+          curEntry.unsubFirestore();
+          curEntry.unsubFirestore = null;
+        }
+      }, 180000); // 3 minutes
+    }
+  };
+};
+
 
 // Users
 export const saveUser = async (user: User) => {
@@ -502,6 +709,9 @@ export const getFaizUserId = async (): Promise<string | null> => {
 };
 
 export const autoAssignFaizToCandidates = async () => {
+  if (typeof window !== 'undefined' && sessionStorage.getItem('jpc_faiz_auto_assigned_session')) {
+    return;
+  }
   try {
     const faizId = await getFaizUserId();
     if (!faizId) return;
@@ -527,6 +737,9 @@ export const autoAssignFaizToCandidates = async () => {
           );
         } catch (le) {}
       }
+    }
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('jpc_faiz_auto_assigned_session', 'true');
     }
   } catch (error) {
     console.error('Error in autoAssignFaizToCandidates:', error);
@@ -750,6 +963,9 @@ export const resetQCChecklist = async (candidateId: string) => {
 };
 
 export const migrateAllChecklists = async () => {
+  if (typeof window !== 'undefined' && localStorage.getItem('jpc_checklist_migration_done_v1')) {
+    return;
+  }
   try {
     const candidatesSnap = await getDocs(collection(db, 'jpc_candidates'));
     for (const candidateDoc of candidatesSnap.docs) {
@@ -767,6 +983,9 @@ export const migrateAllChecklists = async () => {
         }
         await seedQCChecklist(candidateId);
       }
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jpc_checklist_migration_done_v1', 'true');
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'jpc_candidates during migration');

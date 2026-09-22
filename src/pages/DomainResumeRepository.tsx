@@ -4,7 +4,6 @@ import { useToast } from '../contexts/ToastContext';
 import { subscribeToCollection, saveCandidate, logActivity } from '../services/storage';
 import { uploadFile, handleViewFile, getFileBinary } from '../services/fileService';
 import { Candidate, ResumeVersion, ResumeChangeRequest, User } from '../types';
-import JSZip from 'jszip';
 import { 
   FolderTree,
   Folder,
@@ -322,6 +321,7 @@ export const DomainResumeRepository: React.FC = () => {
     setZipProgress({ current: 0, total: candidateList.length, message: 'Initializing Archive...' });
 
     try {
+      const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
       let processedCount = 0;
       let totalFilesAdded = 0;

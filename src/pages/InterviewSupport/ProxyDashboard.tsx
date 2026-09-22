@@ -19,8 +19,11 @@ import {
   addInterviewFeedback,
   logInterviewActivity,
   addInterviewNotification,
-  now 
+  now,
+  getCachedCollection,
+  hasCachedCollection
 } from '../../services/storage';
+import { DashboardSkeleton } from '../../components/common/Skeleton';
 import { 
   ProxyAvailability, 
   InterviewRound, 
@@ -62,18 +65,18 @@ import { ProxyAssignmentModal } from '../../components/ProxyAssignmentModal';
 export const ProxyDashboard: React.FC = () => {
   const { user, isAuthReady } = useAuth();
   const { showToast } = useToast();
-  const [availability, setAvailability] = useState<ProxyAvailability[]>([]);
-  const [rounds, setRounds] = useState<InterviewRound[]>([]);
-  const [requests, setRequests] = useState<InterviewSupportRequest[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [availability, setAvailability] = useState<ProxyAvailability[]>(() => getCachedCollection<ProxyAvailability>('jpc_proxy_availability') || []);
+  const [rounds, setRounds] = useState<InterviewRound[]>(() => getCachedCollection<InterviewRound>('jpc_interview_rounds') || []);
+  const [requests, setRequests] = useState<InterviewSupportRequest[]>(() => getCachedCollection<InterviewSupportRequest>('jpc_interview_requests') || []);
+  const [candidates, setCandidates] = useState<Candidate[]>(() => getCachedCollection<Candidate>('jpc_candidates') || []);
+  const [isLoading, setIsLoading] = useState(() => !hasCachedCollection('jpc_proxy_availability'));
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedRoundForFeedback, setSelectedRoundForFeedback] = useState<{round: InterviewRound, request: InterviewSupportRequest} | null>(null);
   const [selectedFeedbackView, setSelectedFeedbackView] = useState<{round: InterviewRound, feedback: InterviewFeedback} | null>(null);
-  const [feedbacks, setFeedbacks] = useState<InterviewFeedback[]>([]);
+  const [feedbacks, setFeedbacks] = useState<InterviewFeedback[]>(() => getCachedCollection<InterviewFeedback>('jpc_interview_feedback') || []);
   const [addSlotConfig, setAddSlotConfig] = useState<{ date: Date } | null>(null);
-  const [team, setTeam] = useState<User[]>([]);
+  const [team, setTeam] = useState<User[]>(() => getCachedCollection<User>('jpc_users') || []);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [proxyAssignmentConfig, setProxyAssignmentConfig] = useState<{ request: InterviewSupportRequest, round: InterviewRound } | null>(null);
   const [directScheduleConfig, setDirectScheduleConfig] = useState<{ request: InterviewSupportRequest, round: InterviewRound } | null>(null);
@@ -485,11 +488,7 @@ export const ProxyDashboard: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (

@@ -30,7 +30,6 @@ import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { isCSHead, canActAsTLForRequest, isManagementUser } from '../lib/permissions';
-import * as XLSX from 'xlsx';
 
 export const ResumeLogBook: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -492,7 +491,7 @@ export const ResumeLogBook: React.FC = () => {
     }
   };
 
-  const handleExportReport = (statusToExport: string) => {
+  const handleExportReport = async (statusToExport: string) => {
     const filtered = requests.filter(req => {
       if (statusToExport === 'all') return true;
       if (statusToExport === 'pending_all') {
@@ -524,29 +523,18 @@ export const ResumeLogBook: React.FC = () => {
       const formattedUpdated = req.updated_at ? new Date(req.updated_at).toLocaleString() : 'N/A';
       const formattedCompleted = req.completed_at 
         ? new Date(req.completed_at).toLocaleString() 
-        : (req.status === 'completed' ? new Date(req.updated_at).toLocaleString() : 'N/A');
-
-      const completedBy = getCompletedByName(req);
+        : 'N/A';
 
       return {
-        'S.No': idx + 1,
-        'Request ID': req.id,
-        'Candidate Name': candidate?.full_name || 'Unknown',
-        'Candidate Email': candidate?.email || 'N/A',
-        'Candidate Phone': candidate?.phone || 'N/A',
-        'Domain / Tech Stack': candidate?.domain_interested || candidate?.job_interest || 'N/A',
-        'Target Role': candidate?.job_interest || 'N/A',
-        'Current Stage': candidate?.current_stage ? candidate.current_stage.replace('_', ' ').toUpperCase() : 'N/A',
-        'Assigned Recruiter': recruiter?.display_name || recruiter?.username || req.recruiter_id || 'Unassigned',
-        'Assigned CS Person': csUser?.display_name || 'Unassigned',
-        'Assigned Marketing Leader': mktLeader?.display_name || 'Unassigned',
+        '#': idx + 1,
+        'Candidate Name': candidate?.full_name || 'N/A',
+        'Candidate ID': req.candidate_id || 'N/A',
+        'Recruiter': recruiter?.display_name || (req as any).recruiter_name || 'N/A',
+        'CS Member': csUser?.display_name || 'Unassigned',
+        'Marketing TL': mktLeader?.display_name || 'Unassigned',
         'Status': statusMap[req.status] || req.status,
-        'Request Date & Time': formattedCreated,
-        'Change Details / Instructions': req.details || '',
-        'TL Remarks / Notes': req.tl_notes || '',
-        'CS Remarks / Notes': req.cs_notes || '',
-        'Resume Team Remarks / Notes': req.resume_team_notes || '',
-        'Completed By': completedBy,
+        'Notes / Instructions': req.details || req.tl_notes || req.cs_notes || '',
+        'Created Date & Time': formattedCreated,
         'Completed Date & Time': formattedCompleted,
         'New Resume File Name': req.resume_filename || '',
         'New Resume URL / Link': req.new_resume_url || req.resume_base64 || '',
@@ -555,6 +543,7 @@ export const ResumeLogBook: React.FC = () => {
       };
     });
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resume Log');

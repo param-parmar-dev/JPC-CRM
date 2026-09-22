@@ -104,24 +104,27 @@ export const BookingPage: React.FC = () => {
       try {
         if (!token) throw new Error('Invalid link');
 
-        // Load background helper collections for real-time conflict evaluation
-        const usersSnap = await getDocs(collection(db, 'jpc_users'));
+        // Load background helper collections in parallel for real-time conflict evaluation
+        const [usersSnap, roundsSnap, availSnap, calEventsSnap] = await Promise.all([
+          getDocs(collection(db, 'jpc_users')),
+          getDocs(collection(db, 'jpc_interview_rounds')),
+          getDocs(collection(db, 'jpc_proxy_availability')),
+          getDocs(collection(db, 'jpc_calendar_events'))
+        ]);
+
         const activeProxies = usersSnap.docs
           .map(d => ({ ...d.data(), id: d.id } as User))
           .filter(u => isProxyUser(u) && u.google_calendar_connected === true);
         setProxyTeam(activeProxies);
 
-        const roundsSnap = await getDocs(collection(db, 'jpc_interview_rounds'));
         const activeRounds = roundsSnap.docs
           .map(d => ({ ...d.data(), id: d.id } as InterviewRound))
           .filter(r => r.status !== 'cancelled');
         setAllRounds(activeRounds);
 
-        const availSnap = await getDocs(collection(db, 'jpc_proxy_availability'));
         const avails = availSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProxyAvailability));
         setAllAvailabilities(avails);
 
-        const calEventsSnap = await getDocs(collection(db, 'jpc_calendar_events'));
         const calEvents = calEventsSnap.docs.map(d => ({ ...d.data(), id: d.id }));
         setAllCalendarEvents(calEvents);
 
@@ -182,13 +185,9 @@ export const BookingPage: React.FC = () => {
           const availSnap = await getDocs(availQuery);
           const nowEastern = getCurrentEasternISOString();
 
-          // Only keep slots of proxies with Google Calendar connected
-          const usersSnap = await getDocs(collection(db, 'jpc_users'));
+          // Only keep slots of proxies with Google Calendar connected (reusing activeProxies)
           const connectedProxyIds = new Set(
-            usersSnap.docs
-              .map(d => d.data() as User)
-              .filter(u => isProxyUser(u) && u.google_calendar_connected === true)
-              .map(u => String(u.id))
+            activeProxies.map(u => String(u.id))
           );
 
           setAvailability(availSnap.docs
@@ -702,7 +701,20 @@ export const BookingPage: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-bg-primary flex items-center justify-center p-6">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
+        <div className="max-w-2xl w-full bg-bg-secondary p-8 sm:p-12 rounded-3xl border border-border-primary shadow-2xl animate-pulse space-y-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-bg-tertiary" />
+            <div className="space-y-2 flex-1">
+              <div className="h-6 w-1/3 bg-bg-tertiary rounded" />
+              <div className="h-4 w-1/2 bg-bg-tertiary rounded" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+            <div className="h-20 bg-bg-tertiary rounded-2xl" />
+            <div className="h-20 bg-bg-tertiary rounded-2xl" />
+          </div>
+          <div className="h-40 bg-bg-tertiary rounded-2xl" />
+        </div>
       </div>
     );
   }

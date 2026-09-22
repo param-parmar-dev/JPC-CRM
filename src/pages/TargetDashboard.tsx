@@ -33,7 +33,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getEasternDate, isEasternDayOngoing, getCalendarDateInfo, formatDisplayDateWithWeekday } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
-import * as XLSX from 'xlsx';
 
 const getLastNDays = (todayStr: string, n: number): string[] => {
   const dates: string[] = [];
@@ -452,7 +451,7 @@ export const TargetDashboard: React.FC = () => {
     }
   };
 
-  const exportReport = () => {
+  const exportReport = async () => {
     if (processedStats.length === 0) {
       showToast('No record available to export', 'info');
       return;
@@ -485,6 +484,7 @@ export const TargetDashboard: React.FC = () => {
       };
     });
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Target Compliance - ${period}`);
@@ -716,7 +716,7 @@ export const TargetDashboard: React.FC = () => {
     };
   }, [selectedRecruiterId, selectedRange, todayStr, team, candidates, applications, interviews]);
 
-  const exportRecruiterReport = (recName: string, rangeDays: number, totalApps: number, totalExp: number, compScore: number, finalDailyStats: any[]) => {
+  const exportRecruiterReport = async (recName: string, rangeDays: number, totalApps: number, totalExp: number, compScore: number, finalDailyStats: any[]) => {
     const rows = finalDailyStats.map(stat => {
       let statusLabel = 'Goal Met';
       if (stat.isWeekend) {
@@ -748,6 +748,7 @@ export const TargetDashboard: React.FC = () => {
       'Status': `Compliance Score: ${compScore}%`
     };
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet([...rows, {}, summaryRow]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Recruiter Report`);

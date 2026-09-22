@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { subscribeToCollection, handleFirestoreError, OperationType } from '../services/storage';
+import { subscribeToCollection, subscribeToCandidatesForUser, handleFirestoreError, OperationType } from '../services/storage';
 import { STAGES } from '../constants';
 import { Search, Filter, X, Package, Phone, Mail, MapPin, Calendar, Users, ChevronRight, MoreVertical, ShieldCheck, Plus, Send, Table, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,10 +14,10 @@ import { AddCandidateModal } from '../components/AddCandidateModal';
 import { useDebounce } from '../lib/hooks';
 import { canUserAccessCandidate } from '../lib/permissions';
 import { List } from 'react-window';
-import * as XLSX from 'xlsx';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
+import { TableSkeleton } from '../components/common/Skeleton';
 
 type CandidateRowExtraProps = {
   items: Candidate[];
@@ -162,29 +162,19 @@ export const Candidates: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady || !user) return;
     
-    // 1. Fetch only relevant candidates based on role to make load small
-    let cQuery = query(collection(db, 'jpc_candidates'));
-    
-    // For recruiters/marketing, strictly only fetch assigned candidates
-    if (user.role === 'jpc_recruiter') {
-      cQuery = query(cQuery, where('assigned_recruiter', '==', String(user.id)));
-    } else if (user.role === 'jpc_marketing') {
-      cQuery = query(cQuery, where('assigned_marketing_leader', '==', String(user.id)));
-    } else if (user.role === 'jpc_sales') {
-      cQuery = query(cQuery, where('assigned_sales', '==', String(user.id)));
-    } else if (user.role === 'jpc_cs') {
-      cQuery = query(cQuery, where('assigned_cs', '==', String(user.id)));
-    } else if (user.role === 'jpc_lead_gen') {
-      cQuery = query(cQuery, where('lead_generated_by', '==', String(user.id)));
+    // Fetch candidates with shared in-memory caching and subscriber pooling
+    let unsub;
+    if (['jpc_recruiter', 'jpc_marketing', 'jpc_sales', 'jpc_cs', 'jpc_lead_gen'].includes(user.role)) {
+      unsub = subscribeToCandidatesForUser(user, (data) => {
+        setCandidates(data);
+        setIsLoading(false);
+      });
+    } else {
+      unsub = subscribeToCollection<Candidate>('jpc_candidates', (data) => {
+        setCandidates(data.filter(c => !c.deleted_at));
+        setIsLoading(false);
+      });
     }
-
-    const unsub = onSnapshot(cQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
-      setCandidates(data.filter(c => !c.deleted_at));
-      setIsLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'jpc_candidates');
-    });
 
     const unsubUsers = subscribeToCollection<User>('jpc_users', (data) => {
       setAllUsers(data);
@@ -337,6 +327,7 @@ export const Candidates: React.FC = () => {
         };
       });
 
+      const XLSX = await import('xlsx');
       const wsData = XLSX.utils.json_to_sheet(dataRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, wsData, 'All Lead & Sales Data');
@@ -353,11 +344,7 @@ export const Candidates: React.FC = () => {
   const [mobileDisplayCount, setMobileDisplayCount] = useState(50);
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center p-20">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-      </div>
-    );
+    return <TableSkeleton title="Candidates" subtitle="Manage and search through your candidate database." />;
   }
 
   return (

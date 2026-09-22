@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Candidate } from '../types';
 import { cn } from '../lib/utils';
-import { parseResume, ParsedCandidate } from '../services/aiService';
+import type { ParsedCandidate } from '../services/aiService';
 import { 
   FileText, 
   Upload, 
@@ -183,6 +183,7 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ isOpen, on
                 url: url,
                 filename: file.name
               });
+              const { parseResume } = await import('../services/aiService');
               const parsed = await parseResume(base64, file.type);
               if (parsed) {
                 // Non-destructive form update: Never overwrite recruiter manual entries

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToCollection, saveUser, generateId } from '../services/storage';
+import { subscribeToCollection, saveUser, generateId, getCachedCollection, hasCachedCollection } from '../services/storage';
+import { TableSkeleton } from '../components/common/Skeleton';
 import { Users, UserPlus, Shield, Mail, Phone, MoreVertical, Edit2, Trash2, X, Save, AlertCircle, ShieldCheck, UserCheck, Lock, Copy, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -35,8 +36,8 @@ const ROLES: { value: UserRole; label: string; icon: any; color: string }[] = [
 export const Team: React.FC = () => {
   const { user, isAuthReady } = useAuth();
   const { showToast } = useToast();
-  const [team, setTeam] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [team, setTeam] = useState<User[]>(() => getCachedCollection<User>('jpc_users') || []);
+  const [isLoading, setIsLoading] = useState(() => !hasCachedCollection('jpc_users'));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
@@ -64,7 +65,7 @@ export const Team: React.FC = () => {
     is_on_leave: false,
   });
 
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>(() => getCachedCollection<Candidate>('jpc_candidates') || []);
   const [activeTab, setActiveTab] = useState<'members' | 'marketing_profiles' | 'round_robin'>('members');
 
   useEffect(() => {
@@ -540,11 +541,7 @@ export const Team: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-      </div>
-    );
+    return <TableSkeleton rows={8} />;
   }
 
   return (

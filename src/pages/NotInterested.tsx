@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToCollection, saveCandidate, logActivity } from '../services/storage';
+import { subscribeToCollection, saveCandidate, logActivity, getCachedCollection, hasCachedCollection } from '../services/storage';
 import { STAGES } from '../constants';
 import { UserX, Search, Filter, Trash2, RotateCcw, AlertCircle, Clock, Calendar, Phone, Mail, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { useDebounce } from '../lib/hooks';
+import { TableSkeleton } from '../components/common/Skeleton';
 import { Candidate, Stage, User } from '../types';
 import { canUserAccessCandidate } from '../lib/permissions';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 
 export const NotInterested: React.FC = () => {
   const { user, isAuthReady } = useAuth();
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [candidates, setCandidates] = useState<Candidate[]>(() => 
+    (getCachedCollection<Candidate>('jpc_candidates') || []).filter(c => c.current_stage === 'not_interested')
+  );
+  const [allUsers, setAllUsers] = useState<User[]>(() => getCachedCollection<User>('jpc_users') || []);
+  const [isLoading, setIsLoading] = useState(() => !hasCachedCollection('jpc_candidates'));
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -32,16 +37,17 @@ export const NotInterested: React.FC = () => {
   }, [isAuthReady]);
 
   const filteredCandidates = useMemo(() => {
+    const q = debouncedSearch.toLowerCase();
     return candidates.filter(c => {
       if (!canUserAccessCandidate(c, user, allUsers)) return false;
 
       return (
-        (c.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
-        (c.phone || '').includes(search) ||
-        (c.email || '').toLowerCase().includes(search.toLowerCase())
+        (c.full_name || '').toLowerCase().includes(q) ||
+        (c.phone || '').includes(debouncedSearch) ||
+        (c.email || '').toLowerCase().includes(q)
       );
     });
-  }, [candidates, search, user, allUsers]);
+  }, [candidates, debouncedSearch, user, allUsers]);
 
   const handleRestore = async (candidate: Candidate) => {
     const updated: Candidate = {
@@ -55,11 +61,7 @@ export const NotInterested: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-      </div>
-    );
+    return <TableSkeleton rows={8} />;
   }
 
   return (

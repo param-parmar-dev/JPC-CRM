@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToCollection, updateFollowUp, logActivity, handleFirestoreError, OperationType } from '../services/storage';
+import { subscribeToCollection, subscribeToCandidatesForUser, updateFollowUp, logActivity, handleFirestoreError, OperationType } from '../services/storage';
 import { STAGES } from '../constants';
 import { Clock, CheckCircle2, Calendar, User, ArrowRight, AlertCircle, Search, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -10,6 +10,7 @@ import { useDebounce } from '../lib/hooks';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
+import { TableSkeleton } from '../components/common/Skeleton';
 
 export const FollowUps: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -23,35 +24,31 @@ export const FollowUps: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
-    // 1. Fetch Follow-ups (Filter by creator if not manager/admin)
-    let fQuery = query(collection(db, 'jpc_followups'));
-    
-    if (user.role !== 'administrator' && user.role !== 'jpc_sysadmin' && user.role !== 'jpc_manager') {
-      fQuery = query(fQuery, where('created_by', '==', String(user.id)));
+    // 1. Fetch Follow-ups
+    let unsubFollowUps;
+    if (user.role === 'administrator' || user.role === 'jpc_sysadmin' || user.role === 'jpc_manager') {
+      unsubFollowUps = subscribeToCollection<FollowUp>('jpc_followups', (data) => {
+        setFollowUps(data);
+        setIsLoading(false);
+      });
+    } else {
+      const fQuery = query(collection(db, 'jpc_followups'), where('created_by', '==', String(user.id)));
+      unsubFollowUps = onSnapshot(fQuery, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as FollowUp));
+        setFollowUps(data);
+        setIsLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'jpc_followups');
+      });
     }
-
-    const unsubFollowUps = onSnapshot(fQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as FollowUp));
-      setFollowUps(data);
-      setIsLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'jpc_followups');
-    });
 
     // 2. Fetch candidates assigned to user (or all if manager/admin)
-    let cQuery = query(collection(db, 'jpc_candidates'));
-    if (user.role === 'jpc_recruiter') {
-      cQuery = query(cQuery, where('assigned_recruiter', '==', String(user.id)));
-    } else if (user.role === 'jpc_marketing') {
-      cQuery = query(cQuery, where('assigned_marketing_leader', '==', String(user.id)));
+    let unsubCandidates;
+    if (['jpc_recruiter', 'jpc_marketing'].includes(user.role)) {
+      unsubCandidates = subscribeToCandidatesForUser(user, setCandidates);
+    } else {
+      unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', setCandidates);
     }
-
-    const unsubCandidates = onSnapshot(cQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
-      setCandidates(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'jpc_candidates');
-    });
 
     return () => {
       unsubFollowUps();
@@ -93,11 +90,7 @@ export const FollowUps: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center p-20">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-      </div>
-    );
+    return <TableSkeleton title="Follow-Ups" subtitle="Scheduled calls and next steps with candidates." />;
   }
 
   return (

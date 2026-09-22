@@ -30,7 +30,6 @@ import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { isCSHead, canActAsTLForRequest, isManagementUser } from '../lib/permissions';
-import * as XLSX from 'xlsx';
 
 export const RTRLogBook: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -451,7 +450,7 @@ export const RTRLogBook: React.FC = () => {
     }
   };
 
-  const handleExportReport = (statusToExport: string) => {
+  const handleExportReport = async (statusToExport: string) => {
     const filtered = requests.filter(req => {
       if (statusToExport === 'all') return true;
       if (statusToExport === 'pending_all') {
@@ -513,6 +512,7 @@ export const RTRLogBook: React.FC = () => {
       };
     });
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'RTR Log');

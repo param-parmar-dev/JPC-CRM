@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToCollection } from '../services/storage';
+import { subscribeToCollection, subscribeToCandidatesForUser } from '../services/storage';
 import { STAGES } from '../constants';
 import { Search, Filter, X, Package, Phone, Mail, MapPin, Calendar, Users, ArrowRight, MoreVertical, Edit2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,6 +11,7 @@ import { canUserAccessCandidate } from '../lib/permissions';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
+import { BoardSkeleton } from '../components/common/Skeleton';
 
 const STAGE_ENTRIES = Object.entries(STAGES).filter(
   ([key]) => key !== 'not_interested' && key !== 'not_eligible' && key !== 'application_tracking'
@@ -28,23 +29,18 @@ export const Pipeline: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady || !user) return;
     
-    // 1. Fetch relevant candidates based on role
-    let cQuery = query(collection(db, 'jpc_candidates'));
-    
-    if (user.role === 'jpc_recruiter') {
-      cQuery = query(cQuery, where('assigned_recruiter', '==', String(user.id)));
-    } else if (user.role === 'jpc_marketing') {
-      cQuery = query(cQuery, where('assigned_marketing_leader', '==', String(user.id)));
+    let unsub;
+    if (['jpc_recruiter', 'jpc_marketing'].includes(user.role)) {
+      unsub = subscribeToCandidatesForUser(user, (data) => {
+        setCandidates(data.filter(c => c.current_stage !== 'not_interested' && c.current_stage !== 'not_eligible'));
+        setIsLoading(false);
+      });
+    } else {
+      unsub = subscribeToCollection<Candidate>('jpc_candidates', (data) => {
+        setCandidates(data.filter(c => c.current_stage !== 'not_interested' && c.current_stage !== 'not_eligible' && !c.deleted_at));
+        setIsLoading(false);
+      });
     }
-
-    const unsub = onSnapshot(cQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
-      setCandidates(data.filter(c => c.current_stage !== 'not_interested' && c.current_stage !== 'not_eligible'));
-      setIsLoading(false);
-    }, (error) => {
-      console.error('Pipeline candidates fetch error:', error);
-      setIsLoading(false);
-    });
 
     const unsubUsers = subscribeToCollection<User>('jpc_users', (data) => {
       setAllUsers(data);
@@ -86,11 +82,7 @@ export const Pipeline: React.FC = () => {
   }, [candidates, debouncedSearch, user, entityFilter, allUsers]);
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center p-20">
-        <div className="w-12 h-12 border-4 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
-      </div>
-    );
+    return <BoardSkeleton />;
   }
 
   const scrollToStage = (stageKey: string) => {
