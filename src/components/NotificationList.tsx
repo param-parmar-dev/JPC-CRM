@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Bell, X, Check, Clock } from 'lucide-react';
+import { Bell, X, Check, Clock, CheckCheck, Loader2 } from 'lucide-react';
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { subscribeToQuery, markNotificationAsRead, addNotification } from '../services/storage';
+import { subscribeToQuery, markNotificationAsRead, markAllNotificationsAsRead, addNotification } from '../services/storage';
 import { Notification as AppNotification, InterviewNotification } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
@@ -85,8 +85,24 @@ export const NotificationList: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [interviewNotifications, setInterviewNotifications] = useState<InterviewNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const prevNotificationsRef = useRef<(AppNotification | InterviewNotification)[]>([]);
   const isInitialLoad = useRef(true);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   const allNotifications = useMemo(() => {
     const combined = [
@@ -188,8 +204,22 @@ export const NotificationList: React.FC = () => {
     }
   };
 
+  const handleClearAll = async () => {
+    if (allNotifications.length === 0 || isClearing) return;
+    setIsClearing(true);
+    try {
+      await markAllNotificationsAsRead(
+        allNotifications.map(n => ({ id: n.id, collection: n.collection }))
+      );
+    } catch (error) {
+      console.error('Failed to clear all notifications:', error);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button onClick={() => setIsOpen(!isOpen)} className="p-2 rounded-full hover:bg-bg-tertiary relative">
         <Bell className="w-6 h-6 text-text-secondary" />
         {allNotifications.filter(n => !n.isRead).length > 0 && (
@@ -203,10 +233,32 @@ export const NotificationList: React.FC = () => {
           <div className="p-6 border-b border-border-primary flex justify-between items-center bg-bg-tertiary/30">
             <div>
               <h3 className="font-black text-text-primary tracking-tight">System Alerts</h3>
-              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1">Recent updates</p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Recent updates</p>
+                {allNotifications.length > 0 && (
+                  <span className="text-[9px] font-bold bg-accent-blue/15 text-accent-blue px-1.5 py-0.5 rounded-full">
+                    {allNotifications.length}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
-               <button 
+              {allNotifications.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  disabled={isClearing}
+                  className="text-[9px] font-black uppercase tracking-wider px-2.5 py-1 bg-accent-red/10 text-accent-red hover:bg-accent-red/20 rounded-lg border border-accent-red/20 transition-all flex items-center gap-1 disabled:opacity-50"
+                  title="Clear all alerts"
+                >
+                  {isClearing ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <CheckCheck className="w-3 h-3" />
+                  )}
+                  <span>{isClearing ? 'Clearing...' : 'Clear all'}</span>
+                </button>
+              )}
+              <button 
                 onClick={async () => {
                   try {
                     if ('Notification' in window && Notification.permission === 'default') {
@@ -260,6 +312,25 @@ export const NotificationList: React.FC = () => {
               ))
             )}
           </div>
+          {allNotifications.length > 0 && (
+            <div className="p-3 bg-bg-tertiary/40 border-t border-border-primary flex items-center justify-between px-6">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                {allNotifications.length} unread {allNotifications.length === 1 ? 'alert' : 'alerts'}
+              </span>
+              <button
+                onClick={handleClearAll}
+                disabled={isClearing}
+                className="text-[10px] font-black uppercase tracking-wider text-text-muted hover:text-accent-red transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isClearing ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <CheckCheck className="w-3.5 h-3.5" />
+                )}
+                <span>Clear all</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

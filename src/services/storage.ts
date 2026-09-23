@@ -797,6 +797,38 @@ export const markNotificationAsRead = async (id: string) => {
   }
 };
 
+export const markAllNotificationsAsRead = async (
+  items: Array<{ id: string; collection?: 'jpc_notifications' | 'jpc_interview_notifications' | string }>
+) => {
+  if (!items || items.length === 0) return;
+  try {
+    const chunkSize = 450;
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        const coll = item.collection || 'jpc_notifications';
+        const docRef = doc(db, coll, item.id);
+        if (coll === 'jpc_interview_notifications') {
+          batch.update(docRef, { is_read: true });
+        } else {
+          batch.update(docRef, { read: true });
+        }
+      });
+      await batch.commit();
+    }
+  } catch (error) {
+    console.warn('Batch markAllNotificationsAsRead failed, attempting individual updates:', error);
+    await Promise.allSettled(
+      items.map(item => {
+        const coll = item.collection || 'jpc_notifications';
+        const docRef = doc(db, coll, item.id);
+        return updateDoc(docRef, coll === 'jpc_interview_notifications' ? { is_read: true } : { read: true });
+      })
+    );
+  }
+};
+
 // Follow-ups
 export const addFollowUp = async (followUp: Omit<FollowUp, 'id' | 'created_at'>) => {
   const id = generateId();

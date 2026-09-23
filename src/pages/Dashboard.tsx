@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { subscribeToCollection, subscribeToQuery, markNotificationAsRead } from '../services/storage';
+import { subscribeToCollection, subscribeToQuery, markNotificationAsRead, markAllNotificationsAsRead } from '../services/storage';
 import { STAGES } from '../constants';
 import { TimeZoneClocks } from '../components/TimeZoneClocks';
 import { 
@@ -1139,10 +1139,23 @@ export const Dashboard: React.FC = () => {
         <div className="space-y-6">
           {notifications.length > 0 && (
             <div className="space-y-4">
-              <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-accent-red" />
-                Team Alerts
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-accent-red" />
+                  Team Alerts
+                </h2>
+                {notifications.some(n => !n.read) && (
+                  <button
+                    onClick={() => {
+                      const unread = notifications.filter(n => !n.read);
+                      markAllNotificationsAsRead(unread.map(n => ({ id: n.id, collection: 'jpc_notifications' })));
+                    }}
+                    className="text-[11px] font-bold text-accent-red hover:underline uppercase tracking-wider"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
               <div className="space-y-3">
                 {notifications.filter(n => !n.read).map(n => (
                   <div key={n.id} className="p-4 bg-accent-red/5 border border-accent-red/20 rounded-2xl relative group flex justify-between items-start">
