@@ -393,7 +393,7 @@ export const Team: React.FC = () => {
     setIsReassigning(true);
     try {
       const candidatesRef = collection(db, 'jpc_candidates');
-      const q = query(candidatesRef, where('assigned_recruiter', '==', reassigningFrom.id));
+      const q = query(candidatesRef, where('assigned_recruiter', '==', String(reassigningFrom.id)));
       const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
@@ -403,17 +403,33 @@ export const Team: React.FC = () => {
         return;
       }
 
+      const nowIso = new Date().toISOString();
       const batch = writeBatch(db);
-      snapshot.docs.forEach((doc) => {
-        batch.update(doc.ref, {
-          assigned_recruiter: reassigningToId,
-          updated_at: new Date().toISOString()
+      snapshot.docs.forEach((docSnap) => {
+        const candData = docSnap.data() as Candidate;
+        const existingPrev = Array.isArray(candData.previous_recruiters) ? candData.previous_recruiters : [];
+        const updatedPrev = [
+          ...existingPrev,
+          {
+            recruiter_id: String(reassigningFrom.id),
+            recruiter_name: reassigningFrom.display_name || reassigningFrom.username || 'Previous Recruiter',
+            assigned_at: candData.recruiter_assigned_at || candData.created_at || null,
+            unassigned_at: nowIso,
+            changed_by: user?.id ? String(user.id) : null
+          }
+        ];
+
+        batch.update(docSnap.ref, {
+          assigned_recruiter: String(reassigningToId),
+          previous_recruiters: updatedPrev,
+          recruiter_assigned_at: nowIso,
+          updated_at: nowIso
         });
       });
       
       await batch.commit();
       
-      showToast(`Successfully reassigned ${snapshot.size} candidates to ${team.find(u => u.id === reassigningToId)?.display_name}`, 'success');
+      showToast(`Successfully reassigned ${snapshot.size} candidates to ${team.find(u => String(u.id) === String(reassigningToId))?.display_name}`, 'success');
       setReassigningFrom(null);
       setReassigningToId('');
     } catch (error) {

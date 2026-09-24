@@ -69,10 +69,11 @@ import {
   Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import * as XLSX from 'xlsx';
+import { cn, getEasternDate, formatDisplayDate } from '../lib/utils';
 import { canManageFreeTrial, isComplianceHead } from '../lib/permissions';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
-import { Candidate, Payment, Promise as PromiseType, QCChecklistItem, FollowUp, ActivityLog, User, Stage, ResumeChangeRequest, Application, InterviewSupportRequest, TargetReductionRequest, ResumeVersion, InterviewOfferRequest } from '../types';
+import { Candidate, Payment, Promise as PromiseType, QCChecklistItem, FollowUp, ActivityLog, User, Stage, ResumeChangeRequest, Application, InterviewSupportRequest, TargetReductionRequest, ResumeVersion, InterviewOfferRequest, RecruiterAssignmentHistory } from '../types';
 import { InterviewCompletionModal } from '../components/InterviewCompletionModal';
 import { ComplianceOfferApprovalModal } from '../components/ComplianceOfferApprovalModal';
 import { query, collection, where, onSnapshot, doc, setDoc, getDocs } from 'firebase/firestore';
@@ -402,27 +403,122 @@ export const CandidateDetail: React.FC = () => {
     );
   }, [activityLogs, resumeRequests, applications, interviews, allUsers]);
 
+  const resolveRecruiterName = (recId?: string | number | null) => {
+    if (!recId) return 'Unassigned';
+    const found = allUsers.find(u => String(u.id) === String(recId));
+    if (found) return found.display_name;
+    if (candidate?.previous_recruiters) {
+      const prev = candidate.previous_recruiters.find(p => String(p.recruiter_id) === String(recId));
+      if (prev?.recruiter_name) return prev.recruiter_name;
+    }
+    return `Recruiter (${recId})`;
+  };
+
   const appStats = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = getEasternDate();
+    const todayParts = todayStr.split('-').map(Number);
+    const estNow = new Date(todayParts[0], todayParts[1] - 1, todayParts[2]);
     
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfWeek = new Date(estNow);
+    startOfWeek.setDate(estNow.getDate() - estNow.getDay());
+    const startOfWeekStr = `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
     
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfMonthStr = `${todayParts[0]}-${String(todayParts[1]).padStart(2, '0')}-01`;
     
     const dayApps = applications.filter(a => a.applied_at === todayStr);
-    const weekApps = applications.filter(a => new Date(a.applied_at) >= startOfWeek);
-    const monthApps = applications.filter(a => new Date(a.applied_at) >= startOfMonth);
+    const weekApps = applications.filter(a => a.applied_at >= startOfWeekStr);
+    const monthApps = applications.filter(a => a.applied_at >= startOfMonthStr);
+
+    // Build recruiter breakdown across Current Recruiter, Previous Recruiters, and all historical applications
+    const map = new Map<string, {
+      recruiterId: string;
+      recruiterName: string;
+      isCurrent: boolean;
+      todayCount: number;
+      weekCount: number;
+      monthCount: number;
+      totalCount: number;
+      firstDate: string | null;
+      lastDate: string | null;
+    }>();
+
+    if (candidate?.assigned_recruiter) {
+      const currId = String(candidate.assigned_recruiter);
+      map.set(currId, {
+        recruiterId: currId,
+        recruiterName: resolveRecruiterName(currId),
+        isCurrent: true,
+        todayCount: 0,
+        weekCount: 0,
+        monthCount: 0,
+        totalCount: 0,
+        firstDate: candidate.recruiter_assigned_at ? candidate.recruiter_assigned_at.slice(0, 10) : null,
+        lastDate: null
+      });
+    }
+
+    if (Array.isArray(candidate?.previous_recruiters)) {
+      candidate.previous_recruiters.forEach(prev => {
+        const prevId = String(prev.recruiter_id);
+        if (!map.has(prevId)) {
+          map.set(prevId, {
+            recruiterId: prevId,
+            recruiterName: prev.recruiter_name || resolveRecruiterName(prevId),
+            isCurrent: Boolean(candidate?.assigned_recruiter && String(candidate.assigned_recruiter) === prevId),
+            todayCount: 0,
+            weekCount: 0,
+            monthCount: 0,
+            totalCount: 0,
+            firstDate: prev.assigned_at ? prev.assigned_at.slice(0, 10) : null,
+            lastDate: prev.unassigned_at ? prev.unassigned_at.slice(0, 10) : null
+          });
+        }
+      });
+    }
+
+    applications.forEach(app => {
+      const recId = String(app.recruiter_id || 'unknown');
+      const existing = map.get(recId);
+      const isToday = app.applied_at === todayStr ? 1 : 0;
+      const isWeek = app.applied_at >= startOfWeekStr ? 1 : 0;
+      const isMonth = app.applied_at >= startOfMonthStr ? 1 : 0;
+
+      if (!existing) {
+        map.set(recId, {
+          recruiterId: recId,
+          recruiterName: resolveRecruiterName(recId),
+          isCurrent: Boolean(candidate?.assigned_recruiter && String(candidate.assigned_recruiter) === recId),
+          todayCount: isToday,
+          weekCount: isWeek,
+          monthCount: isMonth,
+          totalCount: 1,
+          firstDate: app.applied_at,
+          lastDate: app.applied_at
+        });
+      } else {
+        existing.totalCount += 1;
+        existing.todayCount += isToday;
+        existing.weekCount += isWeek;
+        existing.monthCount += isMonth;
+        if (!existing.firstDate || app.applied_at < existing.firstDate) existing.firstDate = app.applied_at;
+        if (!existing.lastDate || app.applied_at > existing.lastDate) existing.lastDate = app.applied_at;
+      }
+    });
+
+    const recruiterBreakdown = Array.from(map.values()).sort((a, b) => {
+      if (a.isCurrent && !b.isCurrent) return -1;
+      if (!a.isCurrent && b.isCurrent) return 1;
+      return b.totalCount - a.totalCount;
+    });
     
     return {
       day: dayApps.length,
       week: weekApps.length,
       month: monthApps.length,
-      lifetime: applications.length
+      lifetime: applications.length,
+      recruiterBreakdown
     };
-  }, [applications]);
+  }, [applications, candidate, allUsers]);
 
   if (isLoading) {
     return (
@@ -687,9 +783,35 @@ export const CandidateDetail: React.FC = () => {
 
   const handleSavePackage = async () => {
     // Lead Generation users must never be able to modify assigned_sales
-    const payload = isLeadGen
+    const payload: Partial<Candidate> = isLeadGen
       ? { ...packageForm, assigned_sales: candidate.assigned_sales }
-      : packageForm;
+      : { ...packageForm };
+
+    // Preserve previous recruiter history when assigned_recruiter changes
+    const oldRecId = candidate.assigned_recruiter ? String(candidate.assigned_recruiter) : '';
+    const newRecId = payload.assigned_recruiter ? String(payload.assigned_recruiter) : '';
+    const isRecruiterChanged = oldRecId !== newRecId;
+
+    if (isRecruiterChanged) {
+      const nowIso = new Date().toISOString();
+      if (oldRecId) {
+        const oldRecUser = allUsers.find(u => String(u.id) === oldRecId);
+        const existingHistory: RecruiterAssignmentHistory[] = Array.isArray(candidate.previous_recruiters)
+          ? [...candidate.previous_recruiters]
+          : [];
+        existingHistory.push({
+          recruiter_id: oldRecId,
+          recruiter_name: oldRecUser?.display_name || `Recruiter (${oldRecId})`,
+          assigned_at: candidate.recruiter_assigned_at || candidate.created_at || null,
+          unassigned_at: nowIso,
+          changed_by: user?.id ? String(user.id) : null
+        });
+        payload.previous_recruiters = existingHistory;
+      }
+      if (newRecId) {
+        payload.recruiter_assigned_at = nowIso;
+      }
+    }
 
     await saveCandidate({ ...candidate, ...payload } as Candidate, user?.id ? String(user.id) : null);
     
@@ -706,9 +828,83 @@ export const CandidateDetail: React.FC = () => {
       }
     }
 
-    await logActivity(candidate.id, 'Updated package info', 'Package and team assignment details were updated.', user?.id || null);
+    if (isRecruiterChanged) {
+      const oldRecName = oldRecId ? resolveRecruiterName(oldRecId) : 'Unassigned';
+      const newRecName = newRecId ? resolveRecruiterName(newRecId) : 'Unassigned';
+      const prevAppsCount = oldRecId ? applications.filter(a => String(a.recruiter_id) === oldRecId).length : 0;
+      await logActivity(
+        candidate.id,
+        'Recruiter Changed',
+        `Assigned recruiter changed from ${oldRecName} (${prevAppsCount} apps submitted) to ${newRecName}. Complete application history preserved.`,
+        user?.id || null
+      );
+    } else {
+      await logActivity(candidate.id, 'Updated package info', 'Package and team assignment details were updated.', user?.id || null);
+    }
+
     setIsEditingPackage(false);
     showToast('Package info updated', 'success');
+  };
+
+  const handleExportCandidateApps = () => {
+    if (applications.length === 0) {
+      showToast('No applications found to export for this candidate', 'error');
+      return;
+    }
+
+    const sortedApps = [...applications].sort((a, b) => b.applied_at.localeCompare(a.applied_at));
+    const currentRecName = resolveRecruiterName(candidate.assigned_recruiter);
+
+    const exportData = sortedApps.map((app, idx) => {
+      const submittedByName = resolveRecruiterName(app.recruiter_id);
+      const isCurrent = Boolean(candidate.assigned_recruiter && String(app.recruiter_id) === String(candidate.assigned_recruiter));
+      return {
+        '#': sortedApps.length - idx,
+        'Date': formatDisplayDate(app.applied_at),
+        'Status': app.status || 'Applied',
+        'Job Title': app.job_title || '---',
+        'Candidate Name': candidate.full_name,
+        'Submitted By (Recruiter)': submittedByName,
+        'Recruiter Status': isCurrent ? 'Current Recruiter' : 'Previous Recruiter',
+        'Current Assigned Recruiter': currentRecName,
+        'Job Link': app.job_link
+      };
+    });
+
+    const summaryRows = appStats.recruiterBreakdown.map(rec => ({
+      'Candidate Name': candidate.full_name,
+      'Recruiter Name': rec.recruiterName,
+      'Role / Status': rec.isCurrent ? 'Current Recruiter' : 'Previous Recruiter',
+      'Today Applications': rec.todayCount,
+      'This Week Applications': rec.weekCount,
+      'This Month Applications': rec.monthCount,
+      'Total Lifetime Applications': rec.totalCount,
+      'First Application Date': rec.firstDate ? formatDisplayDate(rec.firstDate) : '---',
+      'Last Application Date': rec.lastDate ? formatDisplayDate(rec.lastDate) : '---'
+    }));
+
+    summaryRows.push({
+      'Candidate Name': candidate.full_name,
+      'Recruiter Name': 'TOTAL (ALL RECRUITERS COMBINED)',
+      'Role / Status': 'Combined History',
+      'Today Applications': appStats.day,
+      'This Week Applications': appStats.week,
+      'This Month Applications': appStats.month,
+      'Total Lifetime Applications': appStats.lifetime,
+      'First Application Date': sortedApps.length > 0 ? formatDisplayDate(sortedApps[sortedApps.length - 1].applied_at) : '---',
+      'Last Application Date': sortedApps.length > 0 ? formatDisplayDate(sortedApps[0].applied_at) : '---'
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Applications');
+
+    const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, summaryWs, 'Recruiter Summary');
+
+    const safeName = candidate.full_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    XLSX.writeFile(wb, `${safeName}_complete_applications.xlsx`);
+    showToast(`Exported ${sortedApps.length} applications across all recruiters`, 'success');
   };
 
   const handleSaveRemarks = async () => {
@@ -3002,6 +3198,19 @@ export const CandidateDetail: React.FC = () => {
                             </span>
                           )}
                         </div>
+                        {appStats.recruiterBreakdown.filter(r => !r.isCurrent).length > 0 && (
+                          <div className="pt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Previous:</span>
+                            {appStats.recruiterBreakdown.filter(r => !r.isCurrent).map(prev => (
+                              <span
+                                key={prev.recruiterId}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-accent-amber/10 text-accent-amber border border-accent-amber/20"
+                              >
+                                {prev.recruiterName} ({prev.totalCount} apps)
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Marketing Support</p>
@@ -3598,12 +3807,27 @@ export const CandidateDetail: React.FC = () => {
           {/* Application Performance */}
           {!isSalesperson && (
             <section className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden shadow-sm">
-            <div className="px-6 py-4 border-b border-border-primary flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-border-primary flex items-center justify-between gap-2">
               <h3 className="font-bold text-text-primary flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-accent-blue" />
                 Application Performance
               </h3>
-              <a href="#app-tracker" className="text-xs font-bold text-accent-blue hover:underline">Tracker</a>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExportCandidateApps}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-accent-green hover:underline"
+                  title="Download complete application history (Current + Previous Recruiters) as XLSX"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export XLSX
+                </button>
+                <a
+                  href={`#applications?candidate_id=${candidate.id}`}
+                  className="text-xs font-bold text-accent-blue hover:underline"
+                >
+                  Open Sheet
+                </a>
+              </div>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-2 gap-4">
@@ -3620,10 +3844,60 @@ export const CandidateDetail: React.FC = () => {
                   <p className="text-2xl font-bold text-text-primary mt-1">{appStats.month}</p>
                 </div>
                 <div className="p-4 bg-bg-tertiary/50 border border-border-primary rounded-xl">
-                  <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Lifetime</p>
+                  <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Lifetime (All Recruiters)</p>
                   <p className="text-2xl font-bold text-text-primary mt-1">{appStats.lifetime}</p>
                 </div>
               </div>
+
+              {/* Recruiter History & Breakdown (Current + Previous) */}
+              {appStats.recruiterBreakdown.length > 0 && (
+                <div className="mt-6 pt-5 border-t border-border-primary space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                      <UserIcon className="w-3.5 h-3.5 text-accent-blue" />
+                      Recruiter Breakdown (Current & Previous)
+                    </p>
+                    <span className="text-[10px] font-bold text-text-muted">
+                      {appStats.recruiterBreakdown.length} {appStats.recruiterBreakdown.length === 1 ? 'Recruiter' : 'Recruiters'}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {appStats.recruiterBreakdown.map((rec) => (
+                      <div
+                        key={rec.recruiterId}
+                        className="p-3 bg-bg-tertiary/40 border border-border-primary rounded-xl flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-text-primary truncate">{rec.recruiterName}</span>
+                            <span className={cn(
+                              "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
+                              rec.isCurrent
+                                ? "bg-accent-green/10 text-accent-green border border-accent-green/20"
+                                : "bg-accent-amber/10 text-accent-amber border border-accent-amber/20"
+                            )}>
+                              {rec.isCurrent ? 'Current' : 'Previous'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-0.5">
+                            {rec.firstDate && rec.lastDate
+                              ? `${formatDisplayDate(rec.firstDate)} – ${formatDisplayDate(rec.lastDate)}`
+                              : 'Assigned (0 applications logged)'}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-black text-text-primary">
+                            {rec.totalCount} <span className="text-[10px] font-normal text-text-muted">total</span>
+                          </p>
+                          <p className="text-[10px] text-accent-blue font-bold">
+                            Today: {rec.todayCount} · Month: {rec.monthCount}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               {/* Daily Target Progress */}
               <div className="mt-6 space-y-2">

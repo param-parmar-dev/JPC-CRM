@@ -162,6 +162,16 @@ export interface Candidate {
   interview_offer_request_id?: string | null;
   interview_offer_rejection_reason?: string | null;
   latest_interview_offer_request?: InterviewOfferRequest | null;
+  previous_recruiters?: RecruiterAssignmentHistory[];
+  recruiter_assigned_at?: string | null;
+}
+
+export interface RecruiterAssignmentHistory {
+  recruiter_id: string | number;
+  recruiter_name?: string;
+  assigned_at?: string | null;
+  unassigned_at: string;
+  changed_by?: string | number | null;
 }
 
 export interface ResumeVersion {

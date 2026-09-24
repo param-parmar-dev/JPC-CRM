@@ -211,7 +211,7 @@ export const TargetDashboard: React.FC = () => {
     });
 
     return filteredCandidates.map(c => {
-      // Find candidate's applications in selected period
+      // Find candidate's applications in selected period (across all recruiters)
       const candidateApps = applications.filter(app => {
         if (app.candidate_id !== c.id) return false;
         
@@ -223,6 +223,51 @@ export const TargetDashboard: React.FC = () => {
           return app.applied_at >= firstOfMonthStr && app.applied_at <= todayStr;
         }
       });
+
+      const currentRecId = c.assigned_recruiter ? String(c.assigned_recruiter) : '';
+      const currentRecruiterApps = candidateApps.filter(app => String(app.recruiter_id) === currentRecId).length;
+      const previousRecruiterApps = candidateApps.length - currentRecruiterApps;
+
+      // All lifetime applications for this candidate to identify any previous recruiters
+      const allCandidateApps = applications.filter(app => app.candidate_id === c.id);
+      const prevRecMap = new Map<string, { id: string; name: string; periodCount: number; lifetimeCount: number }>();
+
+      if (Array.isArray(c.previous_recruiters)) {
+        c.previous_recruiters.forEach(pr => {
+          const prId = String(pr.recruiter_id);
+          if (prId && prId !== currentRecId && !prevRecMap.has(prId)) {
+            const u = team.find(t => String(t.id) === prId);
+            prevRecMap.set(prId, {
+              id: prId,
+              name: u?.display_name || pr.recruiter_name || `Recruiter (${prId})`,
+              periodCount: 0,
+              lifetimeCount: 0
+            });
+          }
+        });
+      }
+
+      allCandidateApps.forEach(app => {
+        const rId = String(app.recruiter_id || '');
+        if (rId && rId !== currentRecId) {
+          const existing = prevRecMap.get(rId);
+          const inPeriod = candidateApps.some(ca => ca.id === app.id) ? 1 : 0;
+          if (!existing) {
+            const u = team.find(t => String(t.id) === rId);
+            prevRecMap.set(rId, {
+              id: rId,
+              name: u?.display_name || `Recruiter (${rId})`,
+              periodCount: inPeriod,
+              lifetimeCount: 1
+            });
+          } else {
+            existing.periodCount += inPeriod;
+            existing.lifetimeCount += 1;
+          }
+        }
+      });
+
+      const previousRecruitersList = Array.from(prevRecMap.values());
 
       // Targets: Daily (per profile), Weekly (Daily * 5), Monthly (Daily * 22)
       const profilesCount = c.profiles_count || 1;
@@ -241,8 +286,6 @@ export const TargetDashboard: React.FC = () => {
       const missCount = isMet ? 0 : expectedTarget - actualSum;
 
       // Detect if today's shift timezone is Active/Ongoing (ends 6:30 PM, but alerts after 6:15 PM)
-      // If we are looking at the 'daily' period, and today is ongoing (before 6:15 PM Eastern Time), 
-      // a candidate who is below the target is NOT marked as "missed" yet, but rather "ongoing".
       const isShiftOngoingForToday = period === 'daily' && isEasternDayOngoing(todayStr);
       const effectiveStatus: 'met' | 'missed' | 'ongoing' = isMet 
         ? 'met' 
@@ -265,6 +308,10 @@ export const TargetDashboard: React.FC = () => {
         csUser,
         marketingLeader,
         actualCount: actualSum,
+        currentRecruiterApps,
+        previousRecruiterApps,
+        previousRecruitersList,
+        lifetimeAppsCount: allCandidateApps.length,
         targetCount: expectedTarget,
         isComplianceMet,
         effectiveStatus,
@@ -280,16 +327,23 @@ export const TargetDashboard: React.FC = () => {
     return candidatesStats.filter(stat => {
       // Role constraints
       if (user?.role === 'jpc_recruiter') {
-        if (String(stat.candidate.assigned_recruiter) !== String(user.id)) return false;
+        const isCurrent = String(stat.candidate.assigned_recruiter) === String(user.id);
+        const isPrev = stat.previousRecruitersList.some(pr => String(pr.id) === String(user.id));
+        if (!isCurrent && !isPrev) return false;
       } else if (user?.role === 'jpc_cs') {
         if (String(stat.candidate.assigned_cs) !== String(user.id)) return false;
       }
 
+      const prevNames = stat.previousRecruitersList.map(p => p.name).join(' ').toLowerCase();
       const nameMatch = stat.candidate.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         (stat.recruiter?.display_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        prevNames.includes(searchTerm.toLowerCase()) ||
                         (stat.marketingLeader?.display_name || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-      const recruiterMatch = recruiterFilter === 'all' || String(stat.candidate.assigned_recruiter) === recruiterFilter;
+      const recruiterMatch =
+        recruiterFilter === 'all' ||
+        String(stat.candidate.assigned_recruiter) === recruiterFilter ||
+        stat.previousRecruitersList.some(pr => String(pr.id) === recruiterFilter);
 
       let complianceMatch = true;
       if (complianceFilter === 'missed') {
@@ -458,7 +512,7 @@ export const TargetDashboard: React.FC = () => {
       return;
     }
 
-    const rows = processedStats.map(({ candidate, recruiter, csUser, marketingLeader, actualCount, targetCount, effectiveStatus, missMargin, activeRequest }) => {
+    const rows = processedStats.map(({ candidate, recruiter, csUser, marketingLeader, actualCount, currentRecruiterApps, previousRecruiterApps, previousRecruitersList, lifetimeAppsCount, targetCount, effectiveStatus, missMargin, activeRequest }) => {
       let statusLabel = 'Met';
       if (effectiveStatus === 'ongoing') {
         statusLabel = 'In Progress (Shift Active)';
@@ -466,16 +520,24 @@ export const TargetDashboard: React.FC = () => {
         statusLabel = `Missed (by ${missMargin} apps)`;
       }
 
+      const prevRecSummary = previousRecruitersList.length > 0
+        ? previousRecruitersList.map(p => `${p.name} (${p.lifetimeCount} total / ${p.periodCount} in period)`).join(', ')
+        : 'None';
+
       return {
         'Candidate Name': candidate.full_name,
         'Active Stage': candidate.current_stage.replace('_', ' ').toUpperCase(),
         'Profiles Count': candidate.profiles_count || 1,
         'Daily Target per Profile': candidate.custom_daily_target || 40,
         'Assigned Team Lead (TL)': marketingLeader?.display_name || 'Unassigned',
-        'Assigned Recruiter': recruiter?.display_name || (marketingLeader ? `${marketingLeader.display_name} (TL)` : 'Unassigned'),
+        'Current Assigned Recruiter': recruiter?.display_name || (marketingLeader ? `${marketingLeader.display_name} (TL)` : 'Unassigned'),
+        'Previous Recruiter(s)': prevRecSummary,
         'Assigned CS': csUser?.display_name || 'N/A',
-        'Applications Submitted': actualCount,
+        'Current Recruiter Apps (Period)': currentRecruiterApps,
+        'Previous Recruiter Apps (Period)': previousRecruiterApps,
+        'Total Applications Submitted (Period)': actualCount,
         'Required Target': targetCount,
+        'Total Lifetime Applications (All Recruiters)': lifetimeAppsCount,
         'Compliance Period': period.toUpperCase(),
         'Shift Timeframe': '10:00 AM EDT - 6:30 PM EST',
         'Performance Status': statusLabel,
@@ -505,7 +567,7 @@ export const TargetDashboard: React.FC = () => {
     }
   }, [activeTab, recruitersList, selectedRecruiterId]);
 
-  // Generate detailed daily stats for selected recruiter
+  // Generate detailed daily stats for selected recruiter (including handover candidates)
   const recruiterKPIData = useMemo(() => {
     if (selectedRecruiterId === 'all') return null;
     
@@ -525,19 +587,28 @@ export const TargetDashboard: React.FC = () => {
       const dateObj = new Date(date + 'T12:00:00');
       const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
 
-      // Active candidates managed by this recruiter on or around this date
+      // Active candidates managed by this recruiter on this date (or where this recruiter submitted apps on this date as a previous recruiter)
       const activeCandidatesForDate = candidates.filter(c => {
-        if (String(c.assigned_recruiter) !== String(selectedRecruiterId)) return false;
-        if (!monitoredStages.includes(c.current_stage)) return false;
-
         // EXCLUSION: If SIVIUM is selected but NOT Recruiter, skip from target tracking
         const entities = c.marketing_entity || [];
         if (entities.includes('sivium') && !entities.includes('recruiter')) {
           return false;
         }
 
-        return c.created_at.slice(0, 10) <= date;
+        const isCurrentRecruiter = String(c.assigned_recruiter) === String(selectedRecruiterId);
+        if (isCurrentRecruiter) {
+          if (!monitoredStages.includes(c.current_stage)) return false;
+          return c.created_at.slice(0, 10) <= date;
+        }
+
+        // Also include if this recruiter submitted applications for this candidate on this date (previous recruiter history)
+        const filedAppsOnDate = applications.some(
+          app => app.applied_at === date && String(app.candidate_id) === String(c.id) && String(app.recruiter_id) === String(selectedRecruiterId)
+        );
+        return filedAppsOnDate;
       });
+
+      const activeCandidateIds = new Set(activeCandidatesForDate.map(c => String(c.id)));
 
       // Sum expected
       let expected = 0;
@@ -549,9 +620,10 @@ export const TargetDashboard: React.FC = () => {
         });
       }
 
-      // Applications filed on this date
+      // Applications filed on this date for the active candidates (both current & previous recruiter apps for assigned candidates, plus any apps filed directly by selectedRecruiterId)
       const appsOnDate = applications.filter(app => {
-        return app.applied_at === date && String(app.recruiter_id) === String(selectedRecruiterId);
+        if (app.applied_at !== date) return false;
+        return String(app.recruiter_id) === String(selectedRecruiterId) || activeCandidateIds.has(String(app.candidate_id));
       });
 
       const actual = appsOnDate.length;
@@ -587,8 +659,11 @@ export const TargetDashboard: React.FC = () => {
         const candExpected = isWeekend ? 0 : (profiles * targetPerProf);
 
         const candApps = appsOnDate.filter(app => String(app.candidate_id) === String(c.id));
+        const bySelectedRecruiter = candApps.filter(app => String(app.recruiter_id) === String(selectedRecruiterId)).length;
+        const byOtherRecruiters = candApps.length - bySelectedRecruiter;
         const candActual = candApps.length;
         const candMissed = isWeekend ? 0 : (candActual >= candExpected ? 0 : candExpected - candActual);
+        const isCurrentRecruiter = String(c.assigned_recruiter) === String(selectedRecruiterId);
 
         return {
           id: c.id,
@@ -597,6 +672,9 @@ export const TargetDashboard: React.FC = () => {
           customTargetPerProfile: targetPerProf,
           expected: candExpected,
           actual: candActual,
+          bySelectedRecruiter,
+          byOtherRecruiters,
+          isCurrentRecruiter,
           missed: candMissed
         };
       });
@@ -622,9 +700,13 @@ export const TargetDashboard: React.FC = () => {
       ? Math.round((metTargetDays / workingDaysCount) * 100) 
       : 100;
 
-    // Filter interview support requests created for this recruiter's assigned candidates during range
+    // Filter interview support requests created for this recruiter's assigned or previously assigned candidates during range
     const recruiterCandidatesIds = candidates
-      .filter(c => String(c.assigned_recruiter) === String(selectedRecruiterId))
+      .filter(c => {
+        if (String(c.assigned_recruiter) === String(selectedRecruiterId)) return true;
+        if (Array.isArray(c.previous_recruiters) && c.previous_recruiters.some(p => String(p.recruiter_id) === String(selectedRecruiterId))) return true;
+        return false;
+      })
       .map(c => c.id);
 
     const earliestDate = datesList[datesList.length - 1] || todayStr;
@@ -641,25 +723,36 @@ export const TargetDashboard: React.FC = () => {
       ? parseFloat(((interviewCount / totalAppsFiled) * 100).toFixed(2)) 
       : 0;
 
-    // Build period-wide cumulative stats per candidate
+    // Build period-wide cumulative stats per candidate (including both Currently Assigned and Previously Assigned candidates)
     const candidatesSummary = candidates
       .filter(c => {
-        if (String(c.assigned_recruiter) !== String(selectedRecruiterId)) return false;
-        if (!monitoredStages.includes(c.current_stage)) return false;
-
         // EXCLUSION: If SIVIUM is selected but NOT Recruiter, skip from target tracking
         const entities = c.marketing_entity || [];
         if (entities.includes('sivium') && !entities.includes('recruiter')) {
           return false;
         }
-        return true;
+
+        const isCurrentlyAssigned = String(c.assigned_recruiter) === String(selectedRecruiterId);
+        if (isCurrentlyAssigned) {
+          return monitoredStages.includes(c.current_stage);
+        }
+
+        const wasExplicitPrevious = Array.isArray(c.previous_recruiters) && c.previous_recruiters.some(p => String(p.recruiter_id) === String(selectedRecruiterId));
+        const hasHistoricalAppsByRecruiter = applications.some(
+          app => String(app.candidate_id) === String(c.id) && String(app.recruiter_id) === String(selectedRecruiterId)
+        );
+        return wasExplicitPrevious || hasHistoricalAppsByRecruiter;
       })
       .map(c => {
         const profiles = c.profiles_count || 1;
         const targetPerProf = c.custom_daily_target || 40;
+        const isCurrentRecruiter = String(c.assigned_recruiter) === String(selectedRecruiterId);
+        const currentRecUser = team.find(u => String(u.id) === String(c.assigned_recruiter));
         
         let candExpectedTotal = 0;
         let candActualTotal = 0;
+        let bySelectedRecruiterPeriod = 0;
+        let byOtherRecruitersPeriod = 0;
         let candWorkingDays = 0;
         let candMetDays = 0;
 
@@ -668,22 +761,39 @@ export const TargetDashboard: React.FC = () => {
           const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
           
           if (c.created_at.slice(0, 10) <= date) {
-            const dayExpected = isWeekend ? 0 : (profiles * targetPerProf);
-            const dayActual = applications.filter(app => {
+            const dayApps = applications.filter(app => {
               return app.applied_at === date && String(app.candidate_id) === String(c.id);
-            }).length;
+            });
+            const dayBySelected = dayApps.filter(app => String(app.recruiter_id) === String(selectedRecruiterId)).length;
+            const dayByOthers = dayApps.length - dayBySelected;
 
-            candExpectedTotal += dayExpected;
-            candActualTotal += dayActual;
+            // If currently assigned, count all working days; if previous recruiter, count days they submitted or all period apps
+            if (isCurrentRecruiter || dayBySelected > 0) {
+              const dayExpected = isWeekend ? 0 : (profiles * targetPerProf);
+              const dayActual = dayApps.length;
 
-            if (!isWeekend) {
-              candWorkingDays++;
-              if (dayActual >= dayExpected) {
-                candMetDays++;
+              candExpectedTotal += dayExpected;
+              candActualTotal += dayActual;
+              bySelectedRecruiterPeriod += dayBySelected;
+              byOtherRecruitersPeriod += dayByOthers;
+
+              if (!isWeekend) {
+                candWorkingDays++;
+                if (dayActual >= dayExpected) {
+                  candMetDays++;
+                }
               }
+            } else {
+              candActualTotal += dayApps.length;
+              bySelectedRecruiterPeriod += dayBySelected;
+              byOtherRecruitersPeriod += dayByOthers;
             }
           }
         });
+
+        const allLifetimeApps = applications.filter(app => String(app.candidate_id) === String(c.id));
+        const lifetimeBySelected = allLifetimeApps.filter(app => String(app.recruiter_id) === String(selectedRecruiterId)).length;
+        const lifetimeByOthers = allLifetimeApps.length - lifetimeBySelected;
 
         const complianceRate = candWorkingDays > 0 ? Math.round((candMetDays / candWorkingDays) * 100) : 100;
         const missedTotal = candExpectedTotal > candActualTotal ? (candExpectedTotal - candActualTotal) : 0;
@@ -694,8 +804,15 @@ export const TargetDashboard: React.FC = () => {
           domain: c.domain_interested || c.job_interest || 'N/A',
           profilesCount: profiles,
           customTargetPerProfile: targetPerProf,
+          isCurrentRecruiter,
+          currentAssignedRecruiterName: currentRecUser?.display_name || 'Unassigned',
           expectedTotal: candExpectedTotal,
           actualTotal: candActualTotal,
+          bySelectedRecruiterPeriod,
+          byOtherRecruitersPeriod,
+          lifetimeTotal: allLifetimeApps.length,
+          lifetimeBySelected,
+          lifetimeByOthers,
           missedTotal,
           complianceRate
         };
@@ -732,7 +849,7 @@ export const TargetDashboard: React.FC = () => {
         'Day': stat.weekday,
         'Candidates Managed': stat.candidateCount,
         'Expected Quota': stat.expected,
-        'Submitted Output': stat.actual,
+        'Submitted Output (Combined)': stat.actual,
         'Missed Applications': stat.missed,
         'Status': statusLabel
       };
@@ -743,14 +860,33 @@ export const TargetDashboard: React.FC = () => {
       'Day': '',
       'Candidates Managed': '',
       'Expected Quota': totalExp,
-      'Submitted Output': totalApps,
+      'Submitted Output (Combined)': totalApps,
       'Missed Applications': totalExp - totalApps > 0 ? totalExp - totalApps : 0,
       'Status': `Compliance Score: ${compScore}%`
     };
 
-    const ws = XLSX.utils.json_to_sheet([...rows, {}, summaryRow]);
     const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet([...rows, {}, summaryRow]);
     XLSX.utils.book_append_sheet(wb, ws, `Recruiter Report`);
+
+    if (recruiterKPIData?.candidatesSummary && recruiterKPIData.candidatesSummary.length > 0) {
+      const candRows = recruiterKPIData.candidatesSummary.map(cand => ({
+        'Candidate Name': cand.name,
+        'Domain': cand.domain,
+        'Assignment Status': cand.isCurrentRecruiter ? 'Current Recruiter' : `Previous Recruiter (Now: ${cand.currentAssignedRecruiterName})`,
+        'Profiles & Target': `${cand.profilesCount}p × ${cand.customTargetPerProfile}`,
+        'Expected (Period)': cand.expectedTotal,
+        'Submitted by This Recruiter (Period)': cand.bySelectedRecruiterPeriod,
+        'Submitted by Other Recruiter(s) (Period)': cand.byOtherRecruitersPeriod,
+        'Total Submitted (Period Combined)': cand.actualTotal,
+        'Lifetime by This Recruiter': cand.lifetimeBySelected,
+        'Lifetime by Other Recruiter(s)': cand.lifetimeByOthers,
+        'Lifetime Total (All Recruiters)': cand.lifetimeTotal,
+        'Compliance Rate': `${cand.complianceRate}%`
+      }));
+      const candWs = XLSX.utils.json_to_sheet(candRows);
+      XLSX.utils.book_append_sheet(wb, candWs, 'Candidate History');
+    }
 
     XLSX.writeFile(wb, `${recName.replace(/\s+/g, '_')}_KPI_Report_Last_${rangeDays}_Days.xlsx`);
     showToast('Recruiter KPI ledger exported successfully', 'success');
@@ -1052,7 +1188,7 @@ export const TargetDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-primary">
-              {processedStats.map(({ candidate, recruiter, csUser, marketingLeader, actualCount, targetCount, isComplianceMet, effectiveStatus, missMargin, activeRequest, baseDailyTarget }) => (
+              {processedStats.map(({ candidate, recruiter, csUser, marketingLeader, actualCount, currentRecruiterApps, previousRecruiterApps, previousRecruitersList, lifetimeAppsCount, targetCount, isComplianceMet, effectiveStatus, missMargin, activeRequest, baseDailyTarget }) => (
                 <tr key={candidate.id} className="hover:bg-bg-tertiary/20 transition-all group">
                   {/* Candidate details */}
                   <td className="py-5 px-6">
@@ -1095,6 +1231,20 @@ export const TargetDashboard: React.FC = () => {
                         <span className="text-text-muted w-8 inline-block text-[10px]">REC:</span> 
                         <span>{recruiter?.display_name || (marketingLeader ? `${marketingLeader.display_name} (TL)` : 'Unassigned')}</span>
                       </p>
+                      {previousRecruitersList.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                          <span className="text-accent-amber w-8 inline-block text-[9px] font-black uppercase">PREV:</span>
+                          {previousRecruitersList.map(pr => (
+                            <span
+                              key={pr.id}
+                              className="px-1.5 py-0.5 rounded bg-accent-amber/10 text-accent-amber border border-accent-amber/20 text-[9px] font-bold"
+                              title={`Previous Recruiter: ${pr.name} (${pr.lifetimeCount} lifetime apps, ${pr.periodCount} in ${period} period)`}
+                            >
+                              {pr.name} ({pr.lifetimeCount})
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-[10px] font-medium text-text-secondary flex items-center gap-1">
                         <span className="text-text-muted w-8 inline-block text-[10px]">CS:</span> 
                         <span>{csUser?.display_name || 'N/A'}</span>
@@ -1137,6 +1287,11 @@ export const TargetDashboard: React.FC = () => {
                           style={{ width: `${Math.min((actualCount / targetCount) * 100, 100)}%` }}
                         />
                       </div>
+                      {(previousRecruiterApps > 0 || previousRecruitersList.length > 0) && (
+                        <span className="text-[9px] font-bold text-text-muted whitespace-nowrap">
+                          Curr: {currentRecruiterApps} · Prev: {previousRecruiterApps}
+                        </span>
+                      )}
                     </div>
                   </td>
 
@@ -1500,9 +1655,9 @@ export const TargetDashboard: React.FC = () => {
           {recruiterKPIData.candidatesSummary && recruiterKPIData.candidatesSummary.length > 0 && (
             <div className="bg-bg-secondary rounded-[32px] border border-border-primary shadow-sm p-6 space-y-4 animate-fadeIn">
               <div>
-                <h3 className="text-lg font-bold text-text-primary">Monitored Candidates Compliance Summary</h3>
+                <h3 className="text-lg font-bold text-text-primary">Monitored & Historical Candidates Compliance Summary</h3>
                 <p className="text-xs text-text-secondary mt-1 font-medium">
-                  Cumulative aggregate tracking of targets versus submitted applications for each candidate assigned to this recruiter over the selected range.
+                  Cumulative aggregate tracking of targets versus submitted applications (including both current and previous recruiter contributions) over the selected range.
                 </p>
               </div>
 
@@ -1510,10 +1665,15 @@ export const TargetDashboard: React.FC = () => {
                 {recruiterKPIData.candidatesSummary.map((cand) => (
                   <div key={cand.id} className="bg-bg-tertiary/40 border border-border-primary rounded-2xl p-4 flex flex-col justify-between hover:shadow-sm transition-all">
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-text-primary truncate max-w-[180px]">{cand.name}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <a
+                          href={`#candidate?id=${cand.id}`}
+                          className="text-xs font-black text-text-primary hover:text-accent-blue truncate max-w-[170px] transition-colors"
+                        >
+                          {cand.name}
+                        </a>
                         <span className={cn(
-                          "px-2 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider",
+                          "px-2 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider shrink-0",
                           cand.complianceRate >= 95 ? "bg-accent-green/10 text-accent-green border-accent-green/20" :
                           cand.complianceRate >= 80 ? "bg-accent-amber/10 text-accent-amber border-accent-amber/20" :
                           "bg-accent-red/10 text-accent-red border-accent-red/20"
@@ -1521,7 +1681,17 @@ export const TargetDashboard: React.FC = () => {
                           {cand.complianceRate}% Rate
                         </span>
                       </div>
-                      <p className="text-[10px] text-text-muted truncate font-bold uppercase tracking-wider">{cand.domain}</p>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="text-[10px] text-text-muted truncate font-bold uppercase tracking-wider">{cand.domain}</p>
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
+                          cand.isCurrentRecruiter
+                            ? "bg-accent-green/10 text-accent-green border border-accent-green/20"
+                            : "bg-accent-amber/10 text-accent-amber border border-accent-amber/20"
+                        )}>
+                          {cand.isCurrentRecruiter ? 'Current Recruiter' : `Prev Recruiter (Now: ${cand.currentAssignedRecruiterName})`}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-border-primary/55 grid grid-cols-3 gap-2 text-center">
@@ -1538,6 +1708,18 @@ export const TargetDashboard: React.FC = () => {
                         <span className="text-[11px] font-black text-accent-blue">{cand.actualTotal}</span>
                       </div>
                     </div>
+
+                    {(cand.byOtherRecruitersPeriod > 0 || cand.lifetimeByOthers > 0 || !cand.isCurrentRecruiter) && (
+                      <div className="mt-2.5 px-2.5 py-1.5 bg-accent-blue/5 rounded-xl border border-accent-blue/15 flex items-center justify-between text-[10px]">
+                        <span className="text-text-secondary font-bold">
+                          This Recruiter: <strong className="text-text-primary">{cand.bySelectedRecruiterPeriod}</strong> (Lifetime: {cand.lifetimeBySelected})
+                        </span>
+                        <span className="text-text-muted font-bold">
+                          Other Rec: <strong className="text-text-primary">{cand.byOtherRecruitersPeriod}</strong> (Lifetime: {cand.lifetimeByOthers})
+                        </span>
+                      </div>
+                    )}
+
                     {cand.missedTotal > 0 && (
                       <div className="mt-2.5 px-2.5 py-1.5 bg-accent-red/5 rounded-xl border border-accent-red/10 flex items-center gap-1.5">
                         <AlertCircle className="w-3.5 h-3.5 text-accent-red shrink-0" />
@@ -1661,11 +1843,16 @@ export const TargetDashboard: React.FC = () => {
                                   {stat.candidatesBreakdown.map((cand: any) => (
                                     <div key={cand.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-semibold hover:bg-bg-tertiary/10 transition-colors">
                                       <div className="space-y-0.5">
-                                        <div className="font-bold text-text-primary text-xs flex items-center gap-2">
+                                        <div className="font-bold text-text-primary text-xs flex items-center gap-2 flex-wrap">
                                           <span className="w-1.5 h-1.5 rounded-full bg-accent-blue shrink-0" />
-                                          {cand.name}
+                                          <span>{cand.name}</span>
+                                          {!cand.isCurrentRecruiter && (
+                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase bg-accent-amber/10 text-accent-amber border border-accent-amber/20">
+                                              Previous Assignment
+                                            </span>
+                                          )}
                                         </div>
-                                        <span className="text-[10px] text-text-muted/80 ml-3.5 font-medium uppercase tracking-wider leading-none">
+                                        <span className="text-[10px] text-text-muted/80 ml-3.5 font-medium uppercase tracking-wider leading-none block">
                                           Target configuration: {cand.profilesCount} {cand.profilesCount === 1 ? 'profile' : 'profiles'} @ {cand.customTargetPerProfile} target daily
                                         </span>
                                       </div>
@@ -1677,6 +1864,11 @@ export const TargetDashboard: React.FC = () => {
                                         <div className="text-left sm:text-center min-w-[70px]">
                                           <span className="text-[9px] text-text-muted block uppercase tracking-wider">Submitted</span>
                                           <span className="font-black text-accent-blue">{cand.actual}</span>
+                                          {cand.byOtherRecruiters > 0 && (
+                                            <span className="text-[8px] text-text-muted block">
+                                              ({cand.bySelectedRecruiter} self + {cand.byOtherRecruiters} prev)
+                                            </span>
+                                          )}
                                         </div>
                                         <div className="text-left sm:text-right min-w-[90px]">
                                           <span className="text-[9px] text-text-muted block uppercase tracking-wider">Delta status</span>

@@ -45,7 +45,15 @@ export const AppTracker: React.FC = () => {
   const [trackingCandidate, setTrackingCandidate] = useState<Candidate | null>(null);
   const [isTrackSheetOpen, setIsTrackSheetOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [filterCandidateId, setFilterCandidateId] = useState<string | null>(null);
+  const [filterCandidateId, setFilterCandidateId] = useState<string | null>(() => {
+    const hashParts = window.location.hash.split('?');
+    if (hashParts[1]) {
+      const params = new URLSearchParams(hashParts[1]);
+      return params.get('candidate_id') || params.get('id') || null;
+    }
+    return null;
+  });
+  const [selectedRecruiterFilter, setSelectedRecruiterFilter] = useState<string>('all');
   const [inlineJobLink, setInlineJobLink] = useState('');
   const [isInlineSubmitting, setIsInlineSubmitting] = useState(false);
   
@@ -55,11 +63,21 @@ export const AppTracker: React.FC = () => {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const [exportFilters, setExportFilters] = useState({
     candidateId: '',
+    recruiterScope: 'all' as 'all' | 'current' | 'previous',
     startDate: '',
     endDate: ''
   });
 
   const customSelectStyles = sharedSelectStyles;
+
+  const resolveRecruiterName = (recId: string | number | null | undefined, candidateObj?: Candidate | null) => {
+    if (!recId) return 'Unassigned';
+    const matchedUser = team.find(u => String(u.id) === String(recId));
+    if (matchedUser) return matchedUser.display_name || matchedUser.username;
+    const matchedPrev = candidateObj?.previous_recruiters?.find(p => String(p.recruiter_id) === String(recId));
+    if (matchedPrev?.recruiter_name) return matchedPrev.recruiter_name;
+    return 'Previous Recruiter';
+  };
 
   const handleExportXLSX = async () => {
     if (!exportFilters.candidateId) {
@@ -72,8 +90,7 @@ export const AppTracker: React.FC = () => {
 
     setIsExportLoading(true);
     try {
-      // For export, we need to ensure we have ALL applications for this candidate
-      // especially if they aren't the currently selected one or weren't applied today
+      // Fetch ALL applications for this candidate across both current and previous recruiters
       let exportApps: Application[] = [];
       
       const q = query(
@@ -81,9 +98,11 @@ export const AppTracker: React.FC = () => {
         where('candidate_id', '==', exportFilters.candidateId)
       );
       const snap = await getDocs(q);
-      exportApps = snap.docs.map(d => ({ ...d.data(), id: d.id } as Application));
+      exportApps = snap.docs
+        .map(d => ({ ...d.data(), id: d.id } as Application))
+        .sort((a, b) => new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime());
 
-      // Filter applications
+      // Filter applications by date and optional recruiter scope
       let exportData = exportApps;
       
       if (exportFilters.startDate) {
@@ -92,33 +111,88 @@ export const AppTracker: React.FC = () => {
       if (exportFilters.endDate) {
         exportData = exportData.filter(app => app.applied_at <= exportFilters.endDate);
       }
+      if (exportFilters.recruiterScope === 'current') {
+        exportData = exportData.filter(app => String(app.recruiter_id) === String(candidate.assigned_recruiter));
+      } else if (exportFilters.recruiterScope === 'previous') {
+        exportData = exportData.filter(app => String(app.recruiter_id) !== String(candidate.assigned_recruiter));
+      }
 
       if (exportData.length === 0) {
         showToast('No data found for the selected filters', 'info');
         return;
       }
 
-      // Map to XLSX rows
+      const currentAssignedName = resolveRecruiterName(candidate.assigned_recruiter, candidate);
+
+      // Map to XLSX rows with explicit Current vs Previous Recruiter attribution
       const rows = exportData.map(app => {
-        const recruiter = team.find(u => u.id === app.recruiter_id);
+        const isCurrentRecruiter = candidate.assigned_recruiter && String(app.recruiter_id) === String(candidate.assigned_recruiter);
+        const recName = resolveRecruiterName(app.recruiter_id, candidate);
         
         return {
           'Candidate Name': candidate.full_name,
-          'Recruiter Name': recruiter?.display_name || 'System',
+          'Submitted By (Recruiter)': recName,
+          'Recruiter Status': isCurrentRecruiter ? 'Current Recruiter' : 'Previous Recruiter',
+          'Current Assigned Recruiter': currentAssignedName,
+          'Job Title': app.job_title || 'N/A',
+          'Company Name': app.company_name || 'N/A',
           'Job Link': app.job_link,
           'Application Date': app.applied_at,
           'Application Status': app.status || 'Applied'
         };
       });
 
-      // Generate workbook
+      // Build Recruiter Summary breakdown sheet (Current + Previous Recruiters)
+      const summaryByRecruiter = new Map<string, { name: string; status: string; count: number; firstDate: string; lastDate: string }>();
+      exportData.forEach(app => {
+        const key = String(app.recruiter_id || 'unknown');
+        const isCurrent = candidate.assigned_recruiter && String(app.recruiter_id) === String(candidate.assigned_recruiter);
+        const name = resolveRecruiterName(app.recruiter_id, candidate);
+        const existing = summaryByRecruiter.get(key);
+        if (!existing) {
+          summaryByRecruiter.set(key, {
+            name,
+            status: isCurrent ? 'Current Recruiter' : 'Previous Recruiter',
+            count: 1,
+            firstDate: app.applied_at,
+            lastDate: app.applied_at
+          });
+        } else {
+          existing.count += 1;
+          if (app.applied_at < existing.firstDate) existing.firstDate = app.applied_at;
+          if (app.applied_at > existing.lastDate) existing.lastDate = app.applied_at;
+        }
+      });
+
+      const summaryRows = [
+        ...Array.from(summaryByRecruiter.values()).map(item => ({
+          'Candidate Name': candidate.full_name,
+          'Recruiter Name': item.name,
+          'Role Status': item.status,
+          'Applications Submitted': item.count,
+          'First Application Date': item.firstDate,
+          'Last Application Date': item.lastDate
+        })),
+        {
+          'Candidate Name': candidate.full_name,
+          'Recruiter Name': 'TOTAL COMBINED (ALL RECRUITERS)',
+          'Role Status': 'Current + Previous',
+          'Applications Submitted': exportData.length,
+          'First Application Date': exportData[exportData.length - 1]?.applied_at || '',
+          'Last Application Date': exportData[0]?.applied_at || ''
+        }
+      ];
+
+      // Generate workbook with Applications and Recruiter Summary sheets
       const ws = XLSX.utils.json_to_sheet(rows);
+      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Applications');
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Recruiter Summary');
 
       // Download
-      XLSX.writeFile(wb, `${candidate.full_name}_Applications_${new Date().toISOString().split('T')[0]}.xlsx`);
-      showToast('XLSX report generated successfully', 'success');
+      XLSX.writeFile(wb, `${candidate.full_name}_Complete_Applications_${new Date().toISOString().split('T')[0]}.xlsx`);
+      showToast('Complete XLSX report (Current + Previous Recruiters) generated', 'success');
       setIsExportModalOpen(false);
     } catch (err) {
       console.error('Export error:', err);
@@ -131,22 +205,13 @@ export const AppTracker: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
-    console.log('[AppTracker] INITIAL LOAD - candidates only');
-
-    // 1. Fetch only active/interviewing candidates assigned to the user (or all if manager/admin)
-    let cQuery = query(
-      collection(db, 'jpc_candidates'),
-      where('current_stage', 'in', ['marketing_active', 'interviewing'])
-    );
-
-    if (user.role === 'jpc_recruiter') {
-      cQuery = query(cQuery, where('assigned_recruiter', '==', String(user.id)));
-    } else if (user.role === 'jpc_marketing') {
-      cQuery = query(cQuery, where('assigned_marketing_leader', '==', String(user.id)));
-    }
+    // Subscribe to non-deleted candidates so history & exports work even across stage/recruiter transitions
+    const cQuery = query(collection(db, 'jpc_candidates'));
 
     const unsubCandidates = onSnapshot(cQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
+      const data = snapshot.docs
+        .map(doc => ({ ...doc.data(), id: doc.id } as Candidate))
+        .filter(c => !c.deleted_at);
       setCandidates(data);
       setIsLoading(false);
     }, (error) => {
@@ -167,16 +232,17 @@ export const AppTracker: React.FC = () => {
     };
   }, [isAuthReady, user?.id, user?.role]);
 
-  // 2. Fetch applications ONLY for the selected candidate specifically
+  // Reset recruiter sub-filter whenever candidate changes
+  useEffect(() => {
+    setSelectedRecruiterFilter('all');
+  }, [filterCandidateId]);
+
+  // 2. Fetch applications for the selected candidate across ALL recruiters (current & previous)
   useEffect(() => {
     if (!filterCandidateId) {
       setApplications([]);
       return;
     }
-
-    console.log('[AppTracker] SELECTED CANDIDATE:', filterCandidateId);
-    console.log('[AppTracker] Loading application data for:', filterCandidateId);
-    console.log('[AppTracker] FIRESTORE APPLICATION QUERY');
 
     const q = query(
       collection(db, 'jpc_applications'),
@@ -191,52 +257,124 @@ export const AppTracker: React.FC = () => {
     });
 
     return () => {
-      console.log('[AppTracker] Cleaning up application listener for candidate:', filterCandidateId);
       unsub();
     };
   }, [filterCandidateId]);
+
+  // Complete breakdown of Current Recruiter vs Previous Recruiter(s) for the selected candidate
+  const recruiterBreakdown = useMemo(() => {
+    if (!filterCandidateId) return [];
+    const candidate = candidates.find(c => c.id === filterCandidateId);
+    if (!candidate) return [];
+
+    const today = getEasternDate();
+    const map = new Map<string, {
+      recruiterId: string;
+      recruiterName: string;
+      isCurrent: boolean;
+      totalCount: number;
+      todayCount: number;
+      firstDate: string | null;
+      lastDate: string | null;
+    }>();
+
+    // Ensure current assigned recruiter is always represented
+    if (candidate.assigned_recruiter) {
+      const currId = String(candidate.assigned_recruiter);
+      map.set(currId, {
+        recruiterId: currId,
+        recruiterName: resolveRecruiterName(currId, candidate),
+        isCurrent: true,
+        totalCount: 0,
+        todayCount: 0,
+        firstDate: null,
+        lastDate: null
+      });
+    }
+
+    // Ensure any explicitly recorded previous recruiters are represented
+    if (Array.isArray(candidate.previous_recruiters)) {
+      candidate.previous_recruiters.forEach(prev => {
+        const prevId = String(prev.recruiter_id);
+        if (!map.has(prevId)) {
+          map.set(prevId, {
+            recruiterId: prevId,
+            recruiterName: prev.recruiter_name || resolveRecruiterName(prevId, candidate),
+            isCurrent: String(candidate.assigned_recruiter) === prevId,
+            totalCount: 0,
+            todayCount: 0,
+            firstDate: prev.assigned_at ? prev.assigned_at.slice(0, 10) : null,
+            lastDate: prev.unassigned_at ? prev.unassigned_at.slice(0, 10) : null
+          });
+        }
+      });
+    }
+
+    // Aggregate all applications by recruiter_id
+    applications.forEach(app => {
+      const recId = String(app.recruiter_id || 'unknown');
+      const existing = map.get(recId);
+      if (!existing) {
+        map.set(recId, {
+          recruiterId: recId,
+          recruiterName: resolveRecruiterName(recId, candidate),
+          isCurrent: Boolean(candidate.assigned_recruiter && String(candidate.assigned_recruiter) === recId),
+          totalCount: 1,
+          todayCount: app.applied_at === today ? 1 : 0,
+          firstDate: app.applied_at,
+          lastDate: app.applied_at
+        });
+      } else {
+        existing.totalCount += 1;
+        if (app.applied_at === today) existing.todayCount += 1;
+        if (!existing.firstDate || app.applied_at < existing.firstDate) existing.firstDate = app.applied_at;
+        if (!existing.lastDate || app.applied_at > existing.lastDate) existing.lastDate = app.applied_at;
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.isCurrent && !b.isCurrent) return -1;
+      if (!a.isCurrent && b.isCurrent) return 1;
+      return b.totalCount - a.totalCount;
+    });
+  }, [applications, candidates, team, filterCandidateId]);
 
   const filteredApps = useMemo(() => {
     if (!filterCandidateId) return [];
 
     return applications.filter(app => {
       const candidate = candidates.find(c => c.id === app.candidate_id);
-      
-      // In Application Tracker show only Marketing Active and Interviewing profiles
-      // This is now enforced at the query level for candidates, but apps might refer to others if they were completed today
-      if (candidate?.current_stage !== 'marketing_active' && candidate?.current_stage !== 'interviewing') return false;
-      
-      // Filter by assigned recruiter if user is a recruiter
-      if (user?.role === 'jpc_recruiter') {
-        if (String(candidate?.assigned_recruiter) !== String(user.id)) return false;
+      if (!candidate) return false;
+
+      if (selectedRecruiterFilter !== 'all') {
+        if (String(app.recruiter_id) !== String(selectedRecruiterFilter)) return false;
       }
 
-      const recruiter = team.find(u => u.id === app.recruiter_id);
-      const searchStr = `${candidate?.full_name} ${recruiter?.display_name} ${app.job_link}`.toLowerCase();
+      const recName = resolveRecruiterName(app.recruiter_id, candidate);
+      const searchStr = `${candidate.full_name} ${recName} ${app.job_title || ''} ${app.company_name || ''} ${app.job_link}`.toLowerCase();
       return searchStr.includes(debouncedSearch.toLowerCase());
     });
-  }, [applications, candidates, team, debouncedSearch, user, filterCandidateId]);
+  }, [applications, candidates, team, debouncedSearch, filterCandidateId, selectedRecruiterFilter]);
 
   const stats = useMemo(() => {
     const today = getEasternDate();
     
-    // Total today is only calculated if we have data for a selected candidate
+    // Total today is calculated across all recruiters for the selected candidate
     const todayApps = applications.filter(a => a.applied_at === today);
     
     // Calculate candidate-wise progress ONLY for the selected candidate if one exists
     const candidateProgress = candidates
       .filter(c => {
-        // Only show progress for selected candidate if filter is active
-        if (filterCandidateId && c.id !== filterCandidateId) return false;
+        if (filterCandidateId) return c.id === filterCandidateId;
         
         if (user?.role === 'jpc_recruiter') {
           return String(c.assigned_recruiter) === String(user.id);
         } else if (user?.role === 'jpc_marketing') {
-          return String(c.assigned_marketing_leader) === String(user.id);
+          const isInCluster = team.some(u => String(u.id) === String(c.assigned_recruiter) && String(u.leader_id) === String(user.id));
+          return String(c.assigned_marketing_leader) === String(user.id) || isInCluster;
         }
-        return true;
+        return c.current_stage === 'marketing_active' || c.current_stage === 'interviewing';
       })
-      .filter(c => c.current_stage === 'marketing_active' || c.current_stage === 'interviewing')
       .map(c => {
         const count = todayApps.filter(a => a.candidate_id === c.id).length;
         const profiles = c.profiles_count || 1;
@@ -253,21 +391,26 @@ export const AppTracker: React.FC = () => {
 
     return {
       totalToday: filterCandidateId ? todayApps.length : 0,
+      totalLifetime: filterCandidateId ? applications.length : 0,
       candidateProgress
     };
   }, [applications, team, candidates, user, filterCandidateId]);
 
-  // My candidates filter
+  // My candidates filter (includes active assigned candidates and any candidate currently inspected via URL)
   const myCandidates = useMemo(() => {
     return candidates.filter(c => {
+      if (filterCandidateId && c.id === filterCandidateId) return true;
+      if (c.current_stage !== 'marketing_active' && c.current_stage !== 'interviewing') return false;
       if (user?.role === 'jpc_recruiter') {
-        return String(c.assigned_recruiter) === String(user.id);
+        const wasPreviousRecruiter = Array.isArray(c.previous_recruiters) && c.previous_recruiters.some(p => String(p.recruiter_id) === String(user.id));
+        return String(c.assigned_recruiter) === String(user.id) || wasPreviousRecruiter;
       } else if (user?.role === 'jpc_marketing') {
-        return String(c.assigned_marketing_leader) === String(user.id);
+        const isInCluster = team.some(u => String(u.id) === String(c.assigned_recruiter) && String(u.leader_id) === String(user.id));
+        return String(c.assigned_marketing_leader) === String(user.id) || isInCluster;
       }
       return true;
-    }).filter(c => c.current_stage === 'marketing_active' || c.current_stage === 'interviewing');
-  }, [candidates, user]);
+    });
+  }, [candidates, user, team, filterCandidateId]);
 
   const handleInlineSubmit = async (e: React.KeyboardEvent | React.MouseEvent) => {
     if (!filterCandidateId || !inlineJobLink || isInlineSubmitting) return;
@@ -348,7 +491,12 @@ export const AppTracker: React.FC = () => {
           <p className="text-text-secondary text-sm sm:text-base mt-1">Select a candidate to track their daily job applications.</p>
         </div>
         <button 
-          onClick={() => setIsExportModalOpen(true)}
+          onClick={() => {
+            if (filterCandidateId && !exportFilters.candidateId) {
+              setExportFilters(prev => ({ ...prev, candidateId: filterCandidateId }));
+            }
+            setIsExportModalOpen(true);
+          }}
           className="flex items-center justify-center gap-2 px-6 py-3 bg-bg-tertiary border border-border-primary rounded-2xl text-sm font-bold text-text-primary hover:bg-bg-tertiary/80 transition-all shadow-sm w-full sm:w-auto"
         >
           <Download className="w-4 h-4 text-accent-blue" />
@@ -364,8 +512,12 @@ export const AppTracker: React.FC = () => {
           </h2>
           <div className="w-full sm:w-64">
             <Select
+              value={filterCandidateId ? { value: filterCandidateId, label: candidates.find(c => c.id === filterCandidateId)?.full_name || 'Selected Candidate' } : null}
               options={myCandidates.map(c => ({ value: c.id, label: c.full_name }))}
-              onChange={(opt: any) => setFilterCandidateId(opt?.value || null)}
+              onChange={(opt: any) => {
+                setFilterCandidateId(opt?.value || null);
+                setSelectedRecruiterFilter('all');
+              }}
               styles={customSelectStyles}
               placeholder="Search Candidate..."
               isClearable
@@ -380,6 +532,7 @@ export const AppTracker: React.FC = () => {
               whileTap={{ scale: 0.98 }}
               onClick={() => {
                 setFilterCandidateId(candidate.id === filterCandidateId ? null : candidate.id);
+                setSelectedRecruiterFilter('all');
                 setTrackingCandidate(candidate);
               }}
               className={cn(
@@ -410,13 +563,13 @@ export const AppTracker: React.FC = () => {
               </div>
               <div className="relative z-10">
                 <h3 className={cn(
-                  "text-sm font-bold transition-colors",
+                  "text-sm font-bold transition-colors truncate",
                   filterCandidateId === candidate.id ? "text-white" : "text-text-primary"
                 )}>
                   {candidate.full_name}
                 </h3>
                 <p className={cn(
-                  "text-[10px] uppercase tracking-wider font-bold mt-0.5 transition-colors",
+                  "text-[10px] uppercase tracking-wider font-bold mt-0.5 transition-colors truncate",
                   filterCandidateId === candidate.id ? "text-white/70" : "text-text-muted"
                 )}>
                   {candidate.job_interest || 'General'}
@@ -441,7 +594,7 @@ export const AppTracker: React.FC = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm">
+        <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm flex flex-col justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-accent-blue/10 rounded-2xl flex items-center justify-center text-accent-blue">
               <TrendingUp className="w-6 h-6" />
@@ -451,6 +604,12 @@ export const AppTracker: React.FC = () => {
               <p className="text-2xl font-bold text-text-primary">{stats.totalToday}</p>
             </div>
           </div>
+          {filterCandidateId && (
+            <div className="pt-3 border-t border-border-primary/60 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Total Lifetime (All Recruiters)</span>
+              <span className="text-sm font-black text-accent-blue">{stats.totalLifetime}</span>
+            </div>
+          )}
         </div>
         
         <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm md:col-span-2">
@@ -500,6 +659,83 @@ export const AppTracker: React.FC = () => {
         </div>
       </div>
 
+      {/* Recruiter Breakdown Panel (Current + Previous Recruiters) */}
+      {filterCandidateId && recruiterBreakdown.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
+                <UserIcon className="w-4 h-4 text-accent-blue" />
+                Recruiter Application History (Current & Previous)
+              </h3>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Complete application attribution across all recruiters who have worked on {candidates.find(c => c.id === filterCandidateId)?.full_name}. Click a card to filter the sheet.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedRecruiterFilter('all')}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border",
+                  selectedRecruiterFilter === 'all'
+                    ? "bg-accent-blue text-white border-accent-blue shadow-sm"
+                    : "bg-bg-tertiary text-text-secondary border-border-primary hover:border-accent-blue/40"
+                )}
+              >
+                All Recruiters ({applications.length})
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recruiterBreakdown.map((rec) => {
+              const isSelected = selectedRecruiterFilter === rec.recruiterId;
+              return (
+                <button
+                  key={rec.recruiterId}
+                  onClick={() => setSelectedRecruiterFilter(isSelected ? 'all' : rec.recruiterId)}
+                  className={cn(
+                    "p-4 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3",
+                    isSelected
+                      ? "bg-accent-blue/10 border-accent-blue ring-1 ring-accent-blue/30"
+                      : "bg-bg-tertiary/30 border-border-primary/60 hover:border-accent-blue/40"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-text-primary truncate">{rec.recruiterName}</p>
+                      <p className="text-[10px] text-text-muted mt-0.5">
+                        {rec.firstDate && rec.lastDate
+                          ? `${formatDisplayDate(rec.firstDate)} – ${formatDisplayDate(rec.lastDate)}`
+                          : 'Assigned (No applications logged yet)'}
+                      </p>
+                    </div>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider shrink-0",
+                      rec.isCurrent
+                        ? "bg-accent-green/10 text-accent-green border border-accent-green/20"
+                        : "bg-accent-amber/10 text-accent-amber border border-accent-amber/20"
+                    )}>
+                      {rec.isCurrent ? 'Current Recruiter' : 'Previous Recruiter'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-border-primary/50">
+                    <div>
+                      <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Total Submitted</span>
+                      <span className="text-lg font-black text-text-primary">{rec.totalCount} <span className="text-[10px] font-normal text-text-muted">apps</span></span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Today</span>
+                      <span className="text-sm font-bold text-accent-blue">{rec.todayCount}</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Search & Table */}
       <div className="bg-bg-secondary border border-border-primary rounded-3xl overflow-hidden shadow-sm">
         <div className="p-6 border-b border-border-primary flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -507,7 +743,7 @@ export const AppTracker: React.FC = () => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
             <input 
               type="text" 
-              placeholder="Search sheet..."
+              placeholder="Search sheet by job title, link, or recruiter..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-bg-tertiary border border-border-primary rounded-2xl pl-12 pr-4 py-3 text-text-primary focus:outline-none focus:border-accent-blue transition-colors"
@@ -530,7 +766,10 @@ export const AppTracker: React.FC = () => {
                   Bulk Import Links
                 </button>
                 <button 
-                  onClick={() => setFilterCandidateId(null)}
+                  onClick={() => {
+                    setFilterCandidateId(null);
+                    setSelectedRecruiterFilter('all');
+                  }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-tertiary text-text-muted rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-bg-tertiary/80 transition-all"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -554,7 +793,7 @@ export const AppTracker: React.FC = () => {
                 <th className="w-32 border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest text-center">Status</th>
                 <th className="w-48 border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest">Job Title</th>
                 <th className="w-48 border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest">Candidate</th>
-                <th className="w-40 border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest">Recruiter</th>
+                <th className="w-48 border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest">Recruiter</th>
                 <th className="border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest">Job Link</th>
                 <th className="w-20 border border-border-primary px-3 py-2 text-[10px] font-bold text-text-muted uppercase tracking-widest text-center">Actions</th>
               </tr>
@@ -610,7 +849,11 @@ export const AppTracker: React.FC = () => {
 
               {filteredApps.map((app, index) => {
                 const candidate = candidates.find(c => c.id === app.candidate_id);
-                const recruiter = team.find(u => u.id === app.recruiter_id);
+                const recruiterName = resolveRecruiterName(app.recruiter_id, candidate);
+                const isCurrentRecruiter = Boolean(
+                  candidate?.assigned_recruiter && String(app.recruiter_id) === String(candidate.assigned_recruiter)
+                );
+                const hasMultipleRecruiters = recruiterBreakdown.length > 1;
                 return (
                   <tr key={app.id} className="hover:bg-bg-tertiary/30 transition-colors group">
                     <td className="border border-border-primary px-3 py-2 text-center text-[10px] font-mono text-text-muted">
@@ -644,7 +887,7 @@ export const AppTracker: React.FC = () => {
                         className="text-xs font-bold text-text-primary hover:text-accent-blue transition-colors text-left"
                       >
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{candidate?.full_name || 'Unknown'}</span>
+                          <span className="truncate">{candidate?.full_name || 'Unknown'}</span>
                           {candidate?.is_free_trial && (
                             <FreeTrialBadge 
                               startDate={candidate.free_trial_start_date}
@@ -656,7 +899,21 @@ export const AppTracker: React.FC = () => {
                       </button>
                     </td>
                     <td className="border border-border-primary px-3 py-2">
-                      <span className="text-xs text-text-secondary">{recruiter?.display_name || 'System'}</span>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="text-xs text-text-secondary truncate" title={recruiterName}>
+                          {recruiterName}
+                        </span>
+                        {(hasMultipleRecruiters || !isCurrentRecruiter) && candidate?.assigned_recruiter && (
+                          <span className={cn(
+                            "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0",
+                            isCurrentRecruiter
+                              ? "bg-accent-green/10 text-accent-green"
+                              : "bg-accent-amber/10 text-accent-amber"
+                          )}>
+                            {isCurrentRecruiter ? 'Current' : 'Previous'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="border border-border-primary px-3 py-2">
                       <div className="flex items-center justify-between gap-2">
@@ -689,7 +946,7 @@ export const AppTracker: React.FC = () => {
               })}
               {filteredApps.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center border border-border-primary">
+                  <td colSpan={8} className="px-6 py-12 text-center border border-border-primary">
                     <div className="flex flex-col items-center gap-3 text-text-muted">
                       <FileText className="w-12 h-12 opacity-20" />
                       <p className="text-sm">No applications found in sheet.</p>
@@ -763,7 +1020,7 @@ export const AppTracker: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-text-primary">Export Applications</h3>
-                      <p className="text-sm text-text-muted">Generate XLSX report with filters</p>
+                      <p className="text-sm text-text-muted">Generate complete XLSX report (Current + Previous Recruiters)</p>
                     </div>
                   </div>
                   <button 
@@ -778,13 +1035,18 @@ export const AppTracker: React.FC = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-text-primary px-1">Select Candidate</label>
                     <Select
+                      value={exportFilters.candidateId ? {
+                        value: exportFilters.candidateId,
+                        label: candidates.find(c => c.id === exportFilters.candidateId)?.full_name || 'Selected Candidate'
+                      } : null}
                       options={candidates
-                        .filter(c => c.current_stage === 'marketing_active' || c.current_stage === 'interviewing')
+                        .filter(c => !c.deleted_at)
                         .filter(c => {
                           if (user?.role === 'jpc_recruiter') {
-                            return String(c.assigned_recruiter) === String(user.id);
+                            const wasPrevious = Array.isArray(c.previous_recruiters) && c.previous_recruiters.some(p => String(p.recruiter_id) === String(user.id));
+                            return String(c.assigned_recruiter) === String(user.id) || wasPrevious;
                           }
-                          return !c.deleted_at;
+                          return true;
                         })
                         .sort((a, b) => a.full_name.localeCompare(b.full_name))
                         .map(c => ({
@@ -797,6 +1059,31 @@ export const AppTracker: React.FC = () => {
                       placeholder="Search and Select Candidate..."
                       isClearable
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-text-primary px-1">Recruiter History Scope</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'all', label: 'All Recruiters (Complete)' },
+                        { id: 'current', label: 'Current Recruiter Only' },
+                        { id: 'previous', label: 'Previous Recruiter(s)' }
+                      ].map(scope => (
+                        <button
+                          key={scope.id}
+                          type="button"
+                          onClick={() => setExportFilters({ ...exportFilters, recruiterScope: scope.id as 'all' | 'current' | 'previous' })}
+                          className={cn(
+                            "py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-center",
+                            exportFilters.recruiterScope === scope.id
+                              ? "bg-accent-blue text-white border-accent-blue shadow-sm"
+                              : "bg-bg-tertiary text-text-secondary border-border-primary hover:border-accent-blue/40"
+                          )}
+                        >
+                          {scope.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
