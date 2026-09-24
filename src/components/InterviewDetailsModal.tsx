@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { 
   X, Calendar, Clock, User as UserIcon, Building, Briefcase, 
   Globe, Mail, Phone, ExternalLink, Link as LinkIcon, Edit3, Save, 
-  CheckCircle2, AlertCircle, RefreshCw, FileText
+  CheckCircle2, AlertCircle, RefreshCw, FileText, Sparkles
 } from 'lucide-react';
 import { InterviewSupportRequest, InterviewRound, Candidate, User, InterviewFeedback, ProxyAvailability } from '../types';
 import { db } from '../firebase';
@@ -12,6 +12,7 @@ import { cn, parseLocalTimeToDate } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { handleViewFile } from '../services/fileService';
+import { isProxyUser, getInterviewResumeInfo } from '../services/interviewService';
 import { ResumeSubstitutionModal } from './ResumeSubstitutionModal';
 import { ProxyAssignmentModal } from './ProxyAssignmentModal';
 import { FreeTrialBadge } from './FreeTrialBadge';
@@ -404,27 +405,156 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
                         </a>
                       </p>
                     )}
-                    {(candidate?.resume_url || candidate?.resume_base64) && (
-                      <p className="pt-1">
-                        <button 
-                          onClick={() => handleViewFile(
-                            candidate.resume_url || candidate.resume_base64 || '', 
-                            candidate.resume_filename || 'resume.pdf'
+                    {/* Resume section */}
+                    {(() => {
+                      const isProxy = currentUser ? isProxyUser(currentUser) : false;
+                      const resumeInfo = getInterviewResumeInfo(request, candidate);
+
+                      if (isProxy) {
+                        // PROXY VIEW: When other resume is active, strictly show highlighted other resume and NEVER show master resume
+                        if (resumeInfo.hasOtherResume) {
+                          return (
+                            <div className="pt-2">
+                              <div className="p-3.5 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl space-y-2 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                    Substituted Interview Resume
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500 text-black">
+                                    ACTIVE
+                                  </span>
+                                </div>
+                                <p className="text-[11px] font-bold text-text-primary truncate" title={resumeInfo.otherResumeFilename}>
+                                  {resumeInfo.otherResumeFilename}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewFile(
+                                    resumeInfo.otherResumeUrl!, 
+                                    resumeInfo.otherResumeFilename
+                                  )}
+                                  className="w-full px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/50 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 justify-center transition-all cursor-pointer shadow-md shadow-amber-500/10"
+                                >
+                                  View Substituted Resume <ExternalLink className="w-3 h-3" />
+                                </button>
+                                <p className="text-[9px] text-amber-300/80 leading-relaxed font-medium">
+                                  * This interview uses a custom-assigned resume. Master profile resume is hidden.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Proxy with no other resume: show candidate's latest profile resume
+                        if (resumeInfo.masterResumeUrl) {
+                          return (
+                            <p className="pt-2">
+                              <button 
+                                type="button"
+                                onClick={() => handleViewFile(
+                                  resumeInfo.masterResumeUrl, 
+                                  resumeInfo.masterResumeFilename
+                                )}
+                                className="w-full px-4 py-2 bg-bg-secondary hover:border-accent-purple border border-border-primary rounded-xl text-[10px] font-bold text-accent-purple font-black flex items-center gap-1.5 justify-center transition-all cursor-pointer animate-none"
+                              >
+                                Candidate Resume {resumeInfo.masterResumeVersion ? `(v${resumeInfo.masterResumeVersion})` : ''} <ExternalLink className="w-3 h-3" />
+                              </button>
+                            </p>
+                          );
+                        }
+
+                        return null;
+                      }
+
+                      // NON-PROXY VIEW (Staff, Recruiter, Admin, Manager):
+                      if (resumeInfo.hasOtherResume) {
+                        return (
+                          <div className="pt-2 space-y-2.5">
+                            {/* Highlighted Other Resume */}
+                            <div className="p-3.5 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  Other Resume Active
+                                </span>
+                                <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500 text-black">
+                                  Shown to Proxy
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-bold text-text-primary truncate" title={resumeInfo.otherResumeFilename}>
+                                {resumeInfo.otherResumeFilename}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleViewFile(
+                                  resumeInfo.otherResumeUrl!, 
+                                  resumeInfo.otherResumeFilename
+                                )}
+                                className="w-full px-4 py-2 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/50 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 justify-center transition-all cursor-pointer shadow-md shadow-amber-500/10"
+                              >
+                                View Active Other Resume <ExternalLink className="w-3 h-3" />
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => setSubstitutionRequest(request)}
+                                className="w-full px-3 py-1.5 bg-bg-secondary hover:bg-bg-tertiary border border-border-primary rounded-xl text-[9px] font-bold text-text-secondary hover:text-text-primary flex items-center gap-1.5 justify-center transition-all cursor-pointer"
+                              >
+                                Manage / Change Other Resume <FileText className="w-3 h-3 text-amber-400" />
+                              </button>
+                            </div>
+
+                            {/* Secondary link for Candidate Master Resume */}
+                            {resumeInfo.masterResumeUrl && (
+                              <div className="p-3 bg-bg-secondary/60 border border-border-primary rounded-2xl space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Candidate Master Resume</span>
+                                  <span className="text-[8px] text-text-muted italic">(Hidden from proxy)</span>
+                                </div>
+                                <p className="text-[10px] text-text-secondary truncate">
+                                  {resumeInfo.masterResumeFilename} {resumeInfo.masterResumeVersion ? `(v${resumeInfo.masterResumeVersion})` : ''}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewFile(
+                                    resumeInfo.masterResumeUrl, 
+                                    resumeInfo.masterResumeFilename
+                                  )}
+                                  className="w-full px-3 py-1.5 bg-bg-tertiary hover:border-accent-purple border border-border-primary rounded-xl text-[9px] font-bold text-text-secondary hover:text-accent-purple flex items-center gap-1.5 justify-center transition-all cursor-pointer"
+                                >
+                                  View Master Resume <ExternalLink className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Non-proxy view with no other resume
+                      return (
+                        <div className="pt-2 space-y-2">
+                          {resumeInfo.masterResumeUrl && (
+                            <button 
+                              type="button"
+                              onClick={() => handleViewFile(
+                                resumeInfo.masterResumeUrl, 
+                                resumeInfo.masterResumeFilename
+                              )}
+                              className="w-full px-4 py-2 bg-bg-secondary hover:border-accent-purple border border-border-primary rounded-xl text-[10px] font-bold text-accent-purple font-black flex items-center gap-1.5 justify-center transition-all cursor-pointer animate-none"
+                            >
+                              Candidate Master Resume {resumeInfo.masterResumeVersion ? `(v${resumeInfo.masterResumeVersion})` : ''} <ExternalLink className="w-3 h-3" />
+                            </button>
                           )}
-                          className="w-full px-4 py-2 bg-bg-secondary hover:border-accent-purple border border-border-primary rounded-xl text-[10px] font-bold text-accent-purple font-black flex items-center gap-1.5 justify-center transition-all cursor-pointer animate-none"
-                        >
-                          Candidate Master Resume <ExternalLink className="w-3 h-3" />
-                        </button>
-                      </p>
-                    )}
-                    <p className="pt-1">
-                      <button 
-                        onClick={() => setSubstitutionRequest(request)}
-                        className="w-full px-4 py-2 bg-accent-purple/10 hover:border-accent-purple border border-accent-purple/20 rounded-xl text-[10px] font-bold text-accent-purple flex items-center gap-1.5 justify-center transition-all cursor-pointer"
-                      >
-                         Use Other Resume <FileText className="w-3 h-3" />
-                      </button>
-                    </p>
+                          <button 
+                            type="button"
+                            onClick={() => setSubstitutionRequest(request)}
+                            className="w-full px-4 py-2 bg-accent-purple/10 hover:border-accent-purple border border-accent-purple/20 rounded-xl text-[10px] font-bold text-accent-purple flex items-center gap-1.5 justify-center transition-all cursor-pointer"
+                          >
+                            Use Other Resume <FileText className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -464,6 +594,7 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
             isOpen={!!substitutionRequest}
             onClose={() => setSubstitutionRequest(null)}
             request={substitutionRequest}
+            candidate={candidate}
           />
         )}
         {reassignConfig && (

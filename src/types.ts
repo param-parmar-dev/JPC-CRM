@@ -326,6 +326,9 @@ export interface InterviewSupportRequest {
   application_link: string;
   job_description?: string;
   latest_resume_id: string;
+  use_other_resume?: boolean;
+  other_resume_url?: string | null;
+  other_resume_filename?: string | null;
   proxy_required: boolean;
   proxy_user_id?: string | null;
   overall_status: 'pending_request' | 'booking_link_generated' | 'candidate_slot_selected' | 'proxy_assigned' | 'confirmed' | 'live' | 'completed' | 'feedback_added' | 'next_round' | 'rejected' | 'cancelled' | 'rescheduled' | 'placed';
@@ -399,7 +402,7 @@ export interface BookingLink {
 export interface InterviewNotification {
   id: string;
   interview_round_id: string;
-  notification_type: 'request_created' | 'link_generated' | 'slot_selected' | 'proxy_assigned' | 'feedback_submitted' | 'completed' | 'reminder' | 'link_opened' | 'result_updated' | 'rescheduled';
+  notification_type: 'request_created' | 'link_generated' | 'slot_selected' | 'proxy_assigned' | 'feedback_submitted' | 'completed' | 'reminder' | 'link_opened' | 'result_updated' | 'rescheduled' | 'other_resume_updated';
   recipient_user_id: string;
   message: string;
   is_read: boolean;

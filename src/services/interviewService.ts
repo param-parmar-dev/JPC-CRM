@@ -1,5 +1,5 @@
 import { addProxyAvailability, now } from './storage';
-import { ProxyAvailability, User } from '../types';
+import { ProxyAvailability, User, Candidate, InterviewSupportRequest } from '../types';
 import { collection, query, where, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { parseLocalTimeToDate } from '../lib/utils';
@@ -380,4 +380,118 @@ export const findBestProxyForWindow = (
     errors: []
   };
 };
+
+/**
+ * Returns the latest resume version for a candidate.
+ * Inspects candidate.resume_versions (checking is_current, latest version number or upload date),
+ * falling back to the top-level resume_url / resume_base64 and resume_filename.
+ */
+export function getLatestCandidateResume(candidate?: Candidate | null): {
+  url: string;
+  filename: string;
+  versionNumber?: number;
+} {
+  if (!candidate) {
+    return { url: '', filename: 'resume.pdf' };
+  }
+
+  // Helper to pick the best non-generic filename
+  const resolveFilename = (versionFilename?: string | null) => {
+    if (versionFilename && versionFilename !== 'original_resume.pdf' && versionFilename !== 'resume.pdf') {
+      return versionFilename;
+    }
+    if (candidate.resume_filename && candidate.resume_filename !== 'original_resume.pdf' && candidate.resume_filename !== 'resume.pdf') {
+      return candidate.resume_filename;
+    }
+    return versionFilename || candidate.resume_filename || (candidate.full_name ? `${candidate.full_name.replace(/\s+/g, '_')}_Resume.pdf` : 'resume.pdf');
+  };
+
+  // 1. Inspect candidate.resume_versions if available
+  if (candidate.resume_versions && Array.isArray(candidate.resume_versions) && candidate.resume_versions.length > 0) {
+    // Check for explicitly marked current version with valid URL
+    const currentVersion = candidate.resume_versions.find(v => v.is_current && (v.url || (v as any).base64));
+    if (currentVersion) {
+      return {
+        url: currentVersion.url || (currentVersion as any).base64 || candidate.resume_url || candidate.resume_base64 || '',
+        filename: resolveFilename(currentVersion.filename),
+        versionNumber: currentVersion.version_number
+      };
+    }
+
+    // Sort by version_number descending, or by uploaded_at descending
+    const sorted = [...candidate.resume_versions].sort((a, b) => {
+      if (typeof a.version_number === 'number' && typeof b.version_number === 'number') {
+        return b.version_number - a.version_number;
+      }
+      return new Date(b.uploaded_at || 0).getTime() - new Date(a.uploaded_at || 0).getTime();
+    });
+
+    const latest = sorted[0];
+    if (latest && (latest.url || (latest as any).base64)) {
+      return {
+        url: latest.url || (latest as any).base64 || candidate.resume_url || candidate.resume_base64 || '',
+        filename: resolveFilename(latest.filename),
+        versionNumber: latest.version_number
+      };
+    }
+  }
+
+  // 2. Fallback to candidate's main resume fields
+  const fallbackUrl = candidate.resume_url || candidate.resume_base64 || '';
+  const fallbackFilename = candidate.resume_filename || (candidate.full_name ? `${candidate.full_name.replace(/\s+/g, '_')}_Resume.pdf` : 'resume.pdf');
+
+  return {
+    url: fallbackUrl,
+    filename: fallbackFilename,
+    versionNumber: candidate.resume_versions && candidate.resume_versions.length > 0 ? candidate.resume_versions.length : undefined
+  };
+}
+
+/**
+ * Returns comprehensive interview resume information for an interview support request.
+ * Discloses whether an "Other Resume" is active, provides URLs/filenames for both Other Resume and Master Resume,
+ * and determines the exact resume that must be presented to proxies (strictly hiding the master resume when an other resume is active).
+ */
+export function getInterviewResumeInfo(
+  request?: InterviewSupportRequest | null, 
+  candidate?: Candidate | null
+) {
+  const latestCandidateResume = getLatestCandidateResume(candidate);
+
+  // Check if an Other Resume is actively configured on the request
+  const hasDirectOtherResume = Boolean(request?.use_other_resume && request?.other_resume_url);
+  const hasOtherUrlField = Boolean(request?.other_resume_url);
+  // Also check if latest_resume_id has a custom URL that is not 'original' and not candidate's default filename
+  const hasLatestUrl = Boolean(
+    request?.latest_resume_id && 
+    request.latest_resume_id !== 'original' && 
+    request.latest_resume_id !== candidate?.resume_filename &&
+    (request.latest_resume_id.startsWith('http') || request.latest_resume_id.startsWith('data:') || request.latest_resume_id.includes('/'))
+  );
+
+  const hasOtherResume = hasDirectOtherResume || hasOtherUrlField || hasLatestUrl;
+
+  const otherResumeUrl = request?.other_resume_url || (hasLatestUrl ? request?.latest_resume_id : null) || null;
+  const otherResumeFilename = request?.other_resume_filename || (hasOtherResume ? 'Custom_Interview_Resume.pdf' : null);
+
+  const masterResumeUrl = latestCandidateResume.url;
+  const masterResumeFilename = latestCandidateResume.filename;
+  const masterResumeVersion = latestCandidateResume.versionNumber;
+
+  return {
+    hasOtherResume,
+    otherResumeUrl,
+    otherResumeFilename: otherResumeFilename || 'Custom_Interview_Resume.pdf',
+    masterResumeUrl,
+    masterResumeFilename,
+    masterResumeVersion,
+    // What proxies MUST see:
+    proxyResumeUrl: (hasOtherResume && otherResumeUrl) ? otherResumeUrl : masterResumeUrl,
+    proxyResumeFilename: (hasOtherResume && otherResumeFilename) ? otherResumeFilename : masterResumeFilename,
+    // Active resume for the interview:
+    activeResumeUrl: (hasOtherResume && otherResumeUrl) ? otherResumeUrl : masterResumeUrl,
+    activeResumeFilename: (hasOtherResume && otherResumeFilename) ? otherResumeFilename : masterResumeFilename,
+  };
+}
+
 

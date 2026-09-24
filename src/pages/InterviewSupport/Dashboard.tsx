@@ -47,6 +47,7 @@ import {
   Phone,
   FileText,
   AlertCircle,
+  Sparkles,
   FileEdit,
   RotateCcw,
   FileSearch,
@@ -54,7 +55,8 @@ import {
   Trophy,
   Trash2,
   BarChart2,
-  MessageCircle
+  MessageCircle,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Select from 'react-select';
@@ -66,7 +68,7 @@ import { InterviewDetailsModal } from '../../components/InterviewDetailsModal';
 import { ProxyAssignmentModal } from '../../components/ProxyAssignmentModal';
 import { ResumeSubstitutionModal } from '../../components/ResumeSubstitutionModal';
 import { SlotVisualizer } from '../../components/SlotVisualizer';
-import { findBestProxyForWindow, isProxyUser } from '../../services/interviewService';
+import { findBestProxyForWindow, isProxyUser, getLatestCandidateResume, getInterviewResumeInfo } from '../../services/interviewService';
 import { sharedSelectStyles } from '../../lib/selectStyles';
 import { FreeTrialBadge } from '../../components/FreeTrialBadge';
 
@@ -650,18 +652,45 @@ export const InterviewSupportDashboard: React.FC = () => {
                         </div>
 
                         <div className="flex flex-wrap gap-3 mt-4">
-                          {(candidate?.resume_url || candidate?.resume_base64) && (
-                            <button
-                              onClick={() => handleViewFile(
-                                candidate.resume_url || candidate.resume_base64 || '', 
-                                candidate.resume_filename || 'resume.pdf'
-                              )}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-black text-text-primary hover:bg-bg-tertiary/80 transition-all uppercase tracking-widest cursor-pointer animate-none"
-                            >
-                              <FileText className="w-3.5 h-3.5 text-accent-blue" />
-                              View Resume
-                            </button>
-                          )}
+                          {(() => {
+                            const resumeInfo = getInterviewResumeInfo(req, candidate);
+
+                            if (resumeInfo.hasOtherResume) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewFile(
+                                    resumeInfo.otherResumeUrl!, 
+                                    resumeInfo.otherResumeFilename
+                                  )}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border-2 border-amber-500/60 shadow-md shadow-amber-500/15 rounded-xl text-[10px] font-black text-amber-400 transition-all uppercase tracking-wider cursor-pointer"
+                                  title="Custom role resume active (Master resume hidden from proxy)"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>View Other Resume</span>
+                                  <span className="px-1.5 py-0.5 text-[8px] bg-amber-500 text-black font-black rounded-md uppercase tracking-tight">Active</span>
+                                </button>
+                              );
+                            }
+
+                            if (resumeInfo.masterResumeUrl) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewFile(
+                                    resumeInfo.masterResumeUrl, 
+                                    resumeInfo.masterResumeFilename
+                                  )}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-black text-text-primary hover:bg-bg-tertiary/80 transition-all uppercase tracking-widest cursor-pointer animate-none"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-accent-blue" />
+                                  View Resume {resumeInfo.masterResumeVersion ? `(v${resumeInfo.masterResumeVersion})` : ''}
+                                </button>
+                              );
+                            }
+
+                            return null;
+                          })()}
                           {req.job_link && (
                             <a 
                               href={req.job_link} 
@@ -995,21 +1024,43 @@ export const InterviewSupportDashboard: React.FC = () => {
                       )}
                       <div className="flex items-center justify-between text-[10px] text-text-muted font-bold px-2">
                         <span>RESUME:</span>
-                        <button 
-                          onClick={() => {
-                            if (candidate?.resume_url || candidate?.resume_base64) {
-                              handleViewFile(
-                                candidate.resume_url || candidate.resume_base64 || '', 
-                                candidate.resume_filename || `${candidate.full_name.replace(/\s+/g, '_')}_Resume`
-                              );
-                            } else {
-                              showToast('No resume currently attached to this candidate.', 'info');
-                            }
-                          }}
-                          className="text-accent-blue hover:underline flex items-center gap-1"
-                        >
-                          View <ExternalLink className="w-2.5 h-2.5" />
-                        </button>
+                        {(() => {
+                          const resumeInfo = getInterviewResumeInfo(req, candidate);
+                          if (resumeInfo.hasOtherResume) {
+                            return (
+                              <button 
+                                type="button"
+                                onClick={() => handleViewFile(
+                                  resumeInfo.otherResumeUrl!, 
+                                  resumeInfo.otherResumeFilename
+                                )}
+                                className="text-amber-400 font-black hover:underline flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/30"
+                                title="View custom assigned other resume"
+                              >
+                                <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                                <span>Other Resume</span> <ExternalLink className="w-2.5 h-2.5" />
+                              </button>
+                            );
+                          }
+                          return (
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                if (resumeInfo.masterResumeUrl) {
+                                  handleViewFile(
+                                    resumeInfo.masterResumeUrl, 
+                                    resumeInfo.masterResumeFilename
+                                  );
+                                } else {
+                                  showToast('No resume currently attached to this candidate.', 'info');
+                                }
+                              }}
+                              className="text-accent-blue hover:underline flex items-center gap-1"
+                            >
+                              View {resumeInfo.masterResumeVersion ? `(v${resumeInfo.masterResumeVersion})` : ''} <ExternalLink className="w-2.5 h-2.5" />
+                            </button>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-text-muted font-bold px-2 mt-2">
                         <span>JOB LINK:</span>
@@ -1134,6 +1185,7 @@ export const InterviewSupportDashboard: React.FC = () => {
           isOpen={!!substitutionRequest}
           onClose={() => setSubstitutionRequest(null)}
           request={substitutionRequest}
+          candidate={candidates.find(c => c.id === substitutionRequest.candidate_id)}
         />
       )}
     </div>
@@ -1844,15 +1896,21 @@ const RequestModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isSubmitting) return;
-
     setIsSubmitting(true);
     try {
       const candidate = candidates.find(c => c.id === formData.candidate_id);
+      const latestResume = getLatestCandidateResume(candidate);
       
-      let resumeId = candidate?.resume_filename || 'original';
+      let resumeId = latestResume.filename || candidate?.resume_filename || 'original';
+      let otherResumeUrl: string | null = null;
+      let otherResumeFilename: string | null = null;
+      let useOtherResume = false;
+
       if (resumeOption === 'upload' && newResumeFile) {
-        resumeId = await uploadFile(newResumeFile);
+        otherResumeUrl = await uploadFile(newResumeFile);
+        otherResumeFilename = newResumeFile.name;
+        resumeId = otherResumeUrl;
+        useOtherResume = true;
       }
 
       // 1. AUTO-ASSIGNMENT & BUFFER-AWARE CONFLICT ASSESSMENT FOR PROXIES
@@ -1928,6 +1986,9 @@ const RequestModal: React.FC<{
         application_link: formData.application_link,
         job_description: formData.job_description,
         latest_resume_id: resumeId,
+        use_other_resume: useOtherResume,
+        other_resume_url: otherResumeUrl,
+        other_resume_filename: otherResumeFilename,
         proxy_required: formData.proxy_required,
         proxy_user_id: formData.proxy_required ? (Object.values(assignedProxiesByDay)[0]?.id || null) : null,
         overall_status: formData.proxy_required ? 'confirmed' : 'pending_request',
@@ -2159,17 +2220,60 @@ const RequestModal: React.FC<{
                     type="button"
                     onClick={() => setResumeOption('existing')}
                     className={cn("flex-1 py-3 px-4 rounded-xl text-xs font-bold border", resumeOption === 'existing' ? "bg-accent-blue text-white border-accent-blue" : "bg-bg-tertiary text-text-secondary border-border-primary")}
-                  >Use Existing</button>
+                  >Candidate Profile Resume (Latest)</button>
                   <button 
                     type="button"
                     onClick={() => setResumeOption('upload')}
                     className={cn("flex-1 py-3 px-4 rounded-xl text-xs font-bold border", resumeOption === 'upload' ? "bg-accent-blue text-white border-accent-blue" : "bg-bg-tertiary text-text-secondary border-border-primary")}
-                  >Upload New</button>
+                  >Upload Other Resume</button>
                 </div>
+
+                {/* When Existing Resume is selected: Automatically resolve and display the latest version from candidate's profile */}
+                {resumeOption === 'existing' && (() => {
+                  const selectedCand = candidates.find(c => c.id === formData.candidate_id);
+                  if (!selectedCand) {
+                    return (
+                      <p className="text-[10px] text-text-muted px-1 italic">
+                        Select a candidate above to automatically load their latest profile resume.
+                      </p>
+                    );
+                  }
+
+                  const latestResume = getLatestCandidateResume(selectedCand);
+                  if (latestResume.url) {
+                    return (
+                      <div className="p-3 bg-bg-tertiary rounded-2xl border border-border-primary flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 overflow-hidden">
+                          <FileText className="w-4 h-4 text-accent-blue shrink-0" />
+                          <div className="truncate">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-text-muted">Latest Profile Resume</p>
+                            <p className="text-xs font-bold text-text-primary truncate" title={latestResume.filename}>
+                              {latestResume.filename} {latestResume.versionNumber ? `(Version ${latestResume.versionNumber})` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleViewFile(latestResume.url, latestResume.filename)}
+                          className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-primary text-[10px] font-black uppercase tracking-wider text-accent-blue border border-border-primary rounded-xl transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          Preview <ExternalLink className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <p className="text-[10px] text-accent-amber px-1 italic">
+                      * Candidate has no resume attached to their profile. Please use "Upload Other Resume".
+                    </p>
+                  );
+                })()}
+
                 {resumeOption === 'upload' && (
                   <div 
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-border-primary rounded-2xl p-4 flex flex-col items-center justify-center hover:border-accent-blue hover:bg-accent-blue/5 transition-all cursor-pointer"
+                    className="border-2 border-dashed border-border-primary hover:border-amber-500/50 hover:bg-amber-500/5 rounded-2xl p-4 flex flex-col items-center justify-center transition-all cursor-pointer group"
                   >
                     <input 
                       type="file" 
@@ -2179,9 +2283,24 @@ const RequestModal: React.FC<{
                       }} 
                       className="hidden" accept=".pdf,.doc,.docx"
                     />
-                    <p className="text-xs font-bold text-text-secondary text-center">
-                      {newResumeFile ? newResumeFile.name : 'Click to select resume'}
-                    </p>
+                    {newResumeFile ? (
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="text-xs font-bold text-amber-300 truncate max-w-[220px]">
+                          {newResumeFile.name} (Other Resume)
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5 text-text-muted group-hover:text-amber-400 mb-1 transition-colors" />
+                        <p className="text-xs font-bold text-text-secondary text-center">
+                          Click to select other resume for this role
+                        </p>
+                        <p className="text-[9px] text-text-muted mt-0.5 text-center">
+                          Will be highlighted & shown to proxy (master resume will be hidden)
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

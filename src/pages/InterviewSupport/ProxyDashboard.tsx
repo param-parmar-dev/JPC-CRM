@@ -29,7 +29,8 @@ import {
   InterviewFeedback,
   User
 } from '../../types';
-import { generateDefaultProxySlots, getSlotStatusColor, cleanupDuplicateProxySlots, isProxyUser } from '../../services/interviewService';
+import { generateDefaultProxySlots, getSlotStatusColor, cleanupDuplicateProxySlots, isProxyUser, getInterviewResumeInfo } from '../../services/interviewService';
+import { handleViewFile } from '../../services/fileService';
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -52,7 +53,9 @@ import {
   ChevronRight as ChevronRightIcon,
   MessageSquare,
   FileText,
-  Lock
+  Lock,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getLocalYYYYMMDD, formatDisplayDateWithWeekday, parseLocalTimeToDate } from '../../lib/utils';
@@ -768,6 +771,8 @@ export const ProxyDashboard: React.FC = () => {
           <AnimatePresence mode="popLayout">
             {assignments.map(({ round, request, candidate }) => {
               const assignedProxy = team.find(u => String(u.id) === String(round.proxy_user_id));
+              const resumeInfo = getInterviewResumeInfo(request, candidate);
+
               return (
                 <motion.div
                 key={round.id}
@@ -850,6 +855,28 @@ export const ProxyDashboard: React.FC = () => {
                         </p>
                       </div>
                     )}
+
+                    {/* Highlighted Other Resume Banner for Proxy (Only shown when other resume is active) */}
+                    {resumeInfo.hasOtherResume && (
+                      <div className="mt-4 p-3.5 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl space-y-1.5 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                            Substituted Role Resume
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500 text-black">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-text-primary truncate" title={resumeInfo.otherResumeFilename}>
+                          {resumeInfo.otherResumeFilename}
+                        </p>
+                        <p className="text-[9px] text-amber-300/80 leading-tight">
+                          * Reference only this custom resume. Candidate profile master resume is hidden.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="pt-3 border-t border-border-primary/50 text-[10px] text-text-muted font-bold space-y-1 mt-4">
                       <p>🕒 Time: {(() => {
                          const start = round.booked_slot_time;
@@ -873,6 +900,36 @@ export const ProxyDashboard: React.FC = () => {
                   </div>
 
                     <div className="pt-4 flex flex-wrap gap-3">
+                      {/* Resume button for Proxy - Strictly shows other resume when active, never master resume */}
+                      {resumeInfo.hasOtherResume ? (
+                        <button 
+                          type="button"
+                          onClick={() => handleViewFile(
+                            resumeInfo.otherResumeUrl!, 
+                            resumeInfo.otherResumeFilename
+                          )}
+                          className="flex-1 min-w-[130px] py-3 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border-2 border-amber-500/50 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 cursor-pointer"
+                          title="View custom assigned other resume"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          View Other Resume
+                        </button>
+                      ) : (
+                        resumeInfo.masterResumeUrl ? (
+                          <button 
+                            type="button"
+                            onClick={() => handleViewFile(
+                              resumeInfo.masterResumeUrl, 
+                              resumeInfo.masterResumeFilename
+                            )}
+                            className="flex-1 min-w-[130px] py-3 bg-bg-tertiary text-text-primary text-[10px] font-black uppercase tracking-widest rounded-2xl border border-border-primary hover:bg-bg-tertiary/80 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-accent-blue" />
+                            Candidate Resume {resumeInfo.masterResumeVersion ? `(v${resumeInfo.masterResumeVersion})` : ''}
+                          </button>
+                        ) : null
+                      )}
+
                       <button 
                         onClick={() => {
                           if (request?.job_link) window.open(request?.job_link, '_blank');
@@ -1113,6 +1170,54 @@ const FeedbackModal: React.FC<{
                   </p>
                 </div>
               )}
+
+              {/* Resume Reference in Evaluation */}
+              {(() => {
+                const fbResumeInfo = getInterviewResumeInfo(request, candidate);
+                if (fbResumeInfo.hasOtherResume) {
+                  return (
+                    <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between max-w-2xl">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-black text-amber-400 uppercase tracking-wider">Custom Role Resume Assigned</p>
+                          <p className="text-xs font-bold text-text-primary truncate max-w-md">{fbResumeInfo.otherResumeFilename}</p>
+                        </div>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => handleViewFile(fbResumeInfo.otherResumeUrl!, fbResumeInfo.otherResumeFilename)}
+                        className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        View Resume <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                }
+                if (fbResumeInfo.masterResumeUrl) {
+                  return (
+                    <div className="mt-3 p-3 bg-bg-tertiary border border-border-primary rounded-2xl flex items-center justify-between max-w-2xl">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-accent-blue shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-black text-text-muted uppercase tracking-wider">Candidate Profile Resume</p>
+                          <p className="text-xs font-bold text-text-primary truncate max-w-md">
+                            {fbResumeInfo.masterResumeFilename} {fbResumeInfo.masterResumeVersion ? `(v${fbResumeInfo.masterResumeVersion})` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => handleViewFile(fbResumeInfo.masterResumeUrl, fbResumeInfo.masterResumeFilename)}
+                        className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-tertiary border border-border-primary rounded-xl text-[10px] font-bold text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        View Resume <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <button onClick={onClose} className="p-3 hover:bg-bg-tertiary rounded-2xl transition-colors">
               <X className="w-6 h-6 text-text-muted" />
