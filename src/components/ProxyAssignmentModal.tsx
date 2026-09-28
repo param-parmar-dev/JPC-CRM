@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { updateInterviewRound, updateInterviewSupportRequest, logInterviewActivity, addInterviewNotification } from '../services/storage';
 import { syncInterviewRoundToGoogleCalendar, checkProxyAvailability } from '../services/calendarService';
-import { findBestProxyForWindow, isProxyUser } from '../services/interviewService';
+import { findBestProxyForWindow, isProxyUser, resolveEffectiveProxySelection } from '../services/interviewService';
 import { db } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { TimeSlotSelector } from './TimeSlotSelector';
@@ -45,7 +45,7 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
   
   const [date, setDate] = useState(initialDate);
   const [selectedSlot, setSelectedSlot] = useState<string>(round.booked_slot_time || '');
-  const [selectedProxyId, setSelectedProxyId] = useState<string>('');
+  const [manualProxyId, setManualProxyId] = useState<string | null>(null);
 
   const [isManualTime, setIsManualTime] = useState(false);
   const [manualStart, setManualStart] = useState(round.booked_slot_time ? round.booked_slot_time.substring(11, 16) : '');
@@ -70,20 +70,26 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
     return findBestProxyForWindow(date, startTime, endTime, team, allRounds, allAvailabilities, allCalendarEvents, round.id);
   }, [date, startTime, endTime, team, allRounds, allAvailabilities, allCalendarEvents, round.id, isTimeRangeValid]);
 
-  // Set initial selected proxy when assignmentResult changes
-  useEffect(() => {
-    if (assignmentResult.bestProxy && !selectedProxyId) {
-      setSelectedProxyId(assignmentResult.bestProxy.id);
-    }
+  const autoSelectedProxyId = useMemo(() => {
+    return assignmentResult.bestProxy ? String(assignmentResult.bestProxy.id) : '';
   }, [assignmentResult.bestProxy]);
 
+  const selectedProxyId = useMemo(() => {
+    return resolveEffectiveProxySelection(autoSelectedProxyId, manualProxyId);
+  }, [autoSelectedProxyId, manualProxyId]);
+
+  // Reset manual selection when opening modal for a different round
+  useEffect(() => {
+    setManualProxyId(null);
+  }, [round.id, isOpen]);
+
   const selectedProxy = useMemo(() => {
-    return team.find(u => u.id === selectedProxyId);
+    return team.find(u => String(u.id) === String(selectedProxyId));
   }, [selectedProxyId, team]);
 
   const isSelectedProxyAvailable = useMemo(() => {
     if (!selectedProxyId) return true;
-    return assignmentResult.availableProxies.some(p => p.id === selectedProxyId);
+    return assignmentResult.availableProxies.some(p => String(p.id) === String(selectedProxyId));
   }, [selectedProxyId, assignmentResult.availableProxies]);
 
   // Real-time Google Calendar check
@@ -304,7 +310,7 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
                   <span className="text-[9px] font-black text-text-muted uppercase tracking-wider block">Choose Proxy Member</span>
                   <select
                     value={selectedProxyId}
-                    onChange={e => setSelectedProxyId(e.target.value)}
+                    onChange={e => setManualProxyId(e.target.value || null)}
                     className="w-full bg-bg-secondary border border-border-primary rounded-xl text-xs p-2 font-bold text-text-primary focus:ring-1 focus:ring-accent-blue"
                   >
                     <option value="">-- Select Proxy --</option>

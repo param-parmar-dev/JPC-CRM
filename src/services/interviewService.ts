@@ -221,6 +221,40 @@ export interface GroupedRoundTime {
   end_time: string; // HH:MM
 }
 
+export interface RoundScheduleInput {
+  label?: string;
+  round_label?: string;
+  interview_date: string;
+  start_time: string;
+  end_time: string;
+  duration?: number;
+}
+
+/**
+ * Computes a deterministic, neutral 32-bit unsigned hash from the window coordinates and proxy ID.
+ * Ensures tie-breaking does NOT depend on proxy display_name (alphabetical order) or array/database order,
+ * while remaining stable across renders for the same time window and rotating fairly across different windows.
+ */
+export const computeNeutralTieBreaker = (
+  proxyId: string,
+  dateStr: string,
+  startTimeJoint: string,
+  endTimeJoint: string
+): number => {
+  const key = `${dateStr}|${startTimeJoint}|${endTimeJoint}|${String(proxyId)}`;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+};
+
 /**
  * Finds the best available proxy for a given daily time window, taking into account
  * 15-minute buffers before/after, existing rounds, manual blocks, and leave, with workload balancing.
@@ -233,7 +267,8 @@ export const findBestProxyForWindow = (
   allRounds: any[],
   allAvailabilities: any[],
   calendarEvents: any[] = [],
-  excludeRoundId?: string
+  excludeRoundId?: string,
+  temporaryWorkloadMap?: Record<string, number>
 ): { bestProxy: any; availableProxies: any[]; errors: string[] } => {
   const errors: string[] = [];
   
@@ -349,29 +384,38 @@ export const findBestProxyForWindow = (
   }
 
   // 3. Select best proxy based on workload
-  // Workload = Count of active/confirmed/live interview rounds assigned
+  // Workload = Count of active/confirmed/live interview rounds assigned + any temporary in-memory assignments
   const availableWithWorkload = availableProxies.map(proxy => {
-    const workload = allRounds.filter(r => 
-      String(r.proxy_user_id) === String(proxy.id) && 
+    const proxyIdStr = String(proxy.id);
+    const baseWorkload = allRounds.filter(r => 
+      !r._isTempRound &&
+      String(r.proxy_user_id) === proxyIdStr && 
       ['confirmed', 'live'].includes(r.status)
     ).length;
+    const tempWorkload = temporaryWorkloadMap
+      ? (temporaryWorkloadMap[proxyIdStr] || 0)
+      : allRounds.filter(r => 
+          r._isTempRound &&
+          String(r.proxy_user_id) === proxyIdStr && 
+          ['confirmed', 'live'].includes(r.status)
+        ).length;
+    const workload = baseWorkload + tempWorkload;
+    const tieBreaker = computeNeutralTieBreaker(proxyIdStr, dateStr, startTimeJoint, endTimeJoint);
     
-    return { proxy, workload };
+    return { proxy, workload, tieBreaker };
   });
 
-  // Sort: 1) Connected Google Calendar first, 2) Lowest workload first, 3) Stable sort order by display_name
+  // Sort: 1) Lowest workload first, 2) Connected Google Calendar second, 3) Neutral/stable tie-breaker
   availableWithWorkload.sort((a, b) => {
+    if (a.workload !== b.workload) {
+      return a.workload - b.workload;
+    }
     const connA = a.proxy.google_calendar_connected ? 1 : 0;
     const connB = b.proxy.google_calendar_connected ? 1 : 0;
     if (connA !== connB) {
       return connB - connA;
     }
-    if (a.workload !== b.workload) {
-      return a.workload - b.workload;
-    }
-    const nameA = a.proxy.display_name || '';
-    const nameB = b.proxy.display_name || '';
-    return nameA.localeCompare(nameB);
+    return a.tieBreaker - b.tieBreaker;
   });
 
   return {
@@ -380,6 +424,163 @@ export const findBestProxyForWindow = (
     errors: []
   };
 };
+
+/**
+ * Evaluates multiple interview rounds sequentially (whether on the same day or across multiple days)
+ * against a live temporary workload map and working rounds list.
+ * Each round assignment immediately increments the selected proxy's temporary workload and reserves
+ * their time window (including 15-minute pre/post buffers) for subsequent rounds in the same request.
+ */
+export const assignProxiesForRounds = (
+  roundsInput: RoundScheduleInput[],
+  proxies: any[],
+  allRounds: any[],
+  allAvailabilities: any[],
+  calendarEvents: any[] = []
+): {
+  roundAssignments: { roundIndex: number; bestProxy: any; availableProxies: any[]; errors: string[] }[];
+  temporaryWorkloadMap: Record<string, number>;
+  errors: string[];
+} => {
+  const temporaryWorkloadMap: Record<string, number> = {};
+  const workingRounds: any[] = [...allRounds];
+  const roundAssignments: { roundIndex: number; bestProxy: any; availableProxies: any[]; errors: string[] }[] = [];
+  const errors: string[] = [];
+
+  for (let i = 0; i < roundsInput.length; i++) {
+    const r = roundsInput[i];
+    if (!r.interview_date || !r.start_time || !r.end_time) {
+      roundAssignments.push({ roundIndex: i, bestProxy: null, availableProxies: [], errors: [] });
+      continue;
+    }
+
+    const result = findBestProxyForWindow(
+      r.interview_date,
+      r.start_time,
+      r.end_time,
+      proxies,
+      workingRounds,
+      allAvailabilities,
+      calendarEvents,
+      undefined,
+      temporaryWorkloadMap
+    );
+
+    roundAssignments.push({
+      roundIndex: i,
+      bestProxy: result.bestProxy,
+      availableProxies: result.availableProxies,
+      errors: result.errors
+    });
+
+    if (result.errors && result.errors.length > 0) {
+      errors.push(
+        `Currently no proxy is available for the selected interview time on ${r.interview_date} (${r.start_time} - ${r.end_time}). Please choose another time.`
+      );
+      continue;
+    }
+
+    if (result.bestProxy) {
+      const proxyId = String(result.bestProxy.id);
+      temporaryWorkloadMap[proxyId] = (temporaryWorkloadMap[proxyId] || 0) + 1;
+      workingRounds.push({
+        id: `__temp_round_${i}__`,
+        _isTempRound: true,
+        proxy_user_id: proxyId,
+        status: 'confirmed',
+        interview_date: r.interview_date,
+        booked_slot_time: `${r.interview_date}T${r.start_time}:00`,
+        booked_slot_end: `${r.interview_date}T${r.end_time}:00`,
+        duration_minutes: r.duration || 30
+      });
+    }
+  }
+
+  return { roundAssignments, temporaryWorkloadMap, errors };
+};
+
+/**
+ * Resolves the best proxy availability slot when multiple proxies have an 'available' slot
+ * at the same requested time on the BookingPage.
+ * Avoids first-slot / array-order / deduplication bias by running workload-aware findBestProxyForWindow
+ * across all proxies who own an available slot for the target time window.
+ */
+export const resolveBestSlotForBooking = (
+  slotStartIso: string,
+  slotEndIso: string | undefined | null,
+  sameTimeSlots: ProxyAvailability[],
+  proxies: any[],
+  allRounds: any[],
+  allAvailabilities: any[],
+  calendarEvents: any[] = []
+): ProxyAvailability | null => {
+  const availableSlotsAtTime = sameTimeSlots.filter(
+    s => s.slot_start === slotStartIso && s.slot_status === 'available'
+  );
+  if (availableSlotsAtTime.length === 0) {
+    return null;
+  }
+
+  const proxyIdsWithAvailableSlot = new Set(
+    availableSlotsAtTime.map(s => String(s.proxy_user_id))
+  );
+
+  const candidateProxies = proxies.filter(
+    u => isProxyUser(u) && proxyIdsWithAvailableSlot.has(String(u.id))
+  );
+
+  if (candidateProxies.length === 0) {
+    return null;
+  }
+
+  const dateStr = slotStartIso.split('T')[0];
+  const startTimePart = slotStartIso.split('T')[1]?.substring(0, 5) || '';
+
+  let endTimePart = '';
+  if (slotEndIso && slotEndIso.includes('T')) {
+    endTimePart = slotEndIso.split('T')[1].substring(0, 5);
+  } else {
+    const startD = new Date(slotStartIso);
+    const endD = new Date(startD.getTime() + 60 * 60 * 1000);
+    endTimePart = `${String(endD.getHours()).padStart(2, '0')}:${String(endD.getMinutes()).padStart(2, '0')}`;
+  }
+
+  const result = findBestProxyForWindow(
+    dateStr,
+    startTimePart,
+    endTimePart,
+    candidateProxies,
+    allRounds,
+    allAvailabilities,
+    calendarEvents
+  );
+
+  if (!result.bestProxy) {
+    return null;
+  }
+
+  const winningSlot = availableSlotsAtTime.find(
+    s => String(s.proxy_user_id) === String(result.bestProxy.id)
+  );
+  return winningSlot || null;
+};
+
+/**
+ * Resolves the effective proxy ID by separating automatic workload-based selection
+ * from an explicit manual selection made by the user.
+ * If manualProxyId is not set (null/undefined/''), returns autoSelectedProxyId so date/time changes
+ * dynamically update the selection. If manualProxyId is set, preserves the user's manual choice.
+ */
+export const resolveEffectiveProxySelection = (
+  autoSelectedProxyId: string | null | undefined,
+  manualProxyId: string | null | undefined
+): string => {
+  if (manualProxyId !== null && manualProxyId !== undefined && manualProxyId !== '') {
+    return String(manualProxyId);
+  }
+  return autoSelectedProxyId ? String(autoSelectedProxyId) : '';
+};
+
 
 /**
  * Returns the latest resume version for a candidate.

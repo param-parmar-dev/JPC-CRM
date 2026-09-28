@@ -38,7 +38,7 @@ import { cn, getCalendarDateInfo, parseLocalTimeToDate, getCurrentEasternISOStri
 import { useToast } from '../../contexts/ToastContext';
 import { uploadFile } from '../../services/fileService';
 import { syncInterviewRoundToGoogleCalendar } from '../../services/calendarService';
-import { findBestProxyForWindow, isProxyUser } from '../../services/interviewService';
+import { findBestProxyForWindow, isProxyUser, resolveBestSlotForBooking } from '../../services/interviewService';
 
 const DetailCard: React.FC<{ label: string; value: string | undefined; icon: any }> = ({ label, value, icon: Icon }) => (
   <div className="flex items-center gap-5 p-5 bg-bg-tertiary rounded-[24px] border border-border-primary shadow-sm hover:border-accent-blue/30 transition-all">
@@ -182,12 +182,12 @@ export const BookingPage: React.FC = () => {
           const availSnap = await getDocs(availQuery);
           const nowEastern = getCurrentEasternISOString();
 
-          // Only keep slots of proxies with Google Calendar connected
+          // Keep slots of all active eligible proxies
           const usersSnap = await getDocs(collection(db, 'jpc_users'));
-          const connectedProxyIds = new Set(
+          const activeProxyIds = new Set(
             usersSnap.docs
-              .map(d => d.data() as User)
-              .filter(u => isProxyUser(u) && u.google_calendar_connected === true)
+              .map(d => ({ ...d.data(), id: d.id } as User))
+              .filter(u => isProxyUser(u) && !u.deleted_at && !u.is_on_leave)
               .map(u => String(u.id))
           );
 
@@ -195,8 +195,8 @@ export const BookingPage: React.FC = () => {
             .map(d => ({ ...d.data(), id: d.id } as ProxyAvailability))
             .filter(slot => {
               // Compare formatted local strings directly to prevent client timezone offset bugs
-              const isProxyConnected = connectedProxyIds.has(String(slot.proxy_user_id));
-              return slot.slot_start >= nowEastern && isProxyConnected;
+              const isProxyActive = activeProxyIds.has(String(slot.proxy_user_id));
+              return slot.slot_start >= nowEastern && isProxyActive;
             })
           );
         }
@@ -280,77 +280,44 @@ export const BookingPage: React.FC = () => {
     const selectedSlotBase = availability.find(s => s.id === selectedSlotIdStr);
     if (!selectedSlotBase) throw new Error('Selected slot details not found.');
 
-    const usersSnap = await getDocs(collection(db, 'jpc_users'));
-    let proxyUsers = usersSnap.docs
-      .map(d => d.data() as User)
-      .filter(u => isProxyUser(u) && u.google_calendar_connected === true);
+    const [usersSnap, allRoundsSnap, allAvailsSnap, allCalEventsSnap] = await Promise.all([
+      getDocs(collection(db, 'jpc_users')),
+      getDocs(collection(db, 'jpc_interview_rounds')),
+      getDocs(collection(db, 'jpc_proxy_availability')),
+      getDocs(collection(db, 'jpc_calendar_events'))
+    ]);
+
+    const proxyUsers = usersSnap.docs
+      .map(d => ({ ...d.data(), id: d.id } as User))
+      .filter(u => isProxyUser(u));
 
     if (proxyUsers.length === 0) {
-      throw new Error('No proxy specialists with an active/connected Google Calendar are available.');
+      throw new Error('No proxy specialists are currently available.');
     }
 
-    const allRoundsSnap = await getDocs(collection(db, 'jpc_interview_rounds'));
-    
-    const chosenStart = new Date(selectedSlotBase.slot_start);
-    const chosenEnd = selectedSlotBase.slot_end 
-      ? new Date(selectedSlotBase.slot_end) 
-      : new Date(chosenStart.getTime() + 60 * 60 * 1000);
+    const allRoundsData = allRoundsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const allAvailsData = allAvailsSnap.docs.map(d => ({ id: d.id, ...d.data() as ProxyAvailability }));
+    const allCalEventsData = allCalEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const busyProxyIds = new Set<string>();
-    allRoundsSnap.docs.forEach(d => {
-      const r = d.data();
-      if (r.status === 'cancelled' || r.status === 'rejected' || !r.booked_slot_time) return;
-      
-      const rndStart = new Date(r.booked_slot_time);
-      const rndEnd = r.booked_slot_end 
-        ? new Date(r.booked_slot_end) 
-        : new Date(rndStart.getTime() + (r.duration_minutes || 60) * 60 * 1000);
-        
-      const bufferRndStart = new Date(rndStart.getTime() - 15 * 60 * 1000);
-      const bufferRndEnd = new Date(rndEnd.getTime() + 15 * 60 * 1000);
-      
-      if (bufferRndStart < chosenEnd && chosenStart < bufferRndEnd) {
-        if (r.proxy_user_id) {
-          busyProxyIds.add(String(r.proxy_user_id));
-        }
-      }
-    });
+    const sameTimeSlots = allAvailsData.filter(
+      s => s.slot_start === selectedSlotBase.slot_start
+    );
 
-    const sameTimeBlockedAvailsSnap = await getDocs(query(
-      collection(db, 'jpc_proxy_availability'),
-      where('slot_start', '==', selectedSlotBase.slot_start),
-      where('slot_status', 'in', ['unavailable', 'leave', 'break'])
-    ));
-    const blockedProxyIds = new Set(sameTimeBlockedAvailsSnap.docs.map(d => String(d.data().proxy_user_id)));
+    const chosenSlot = resolveBestSlotForBooking(
+      selectedSlotBase.slot_start,
+      selectedSlotBase.slot_end,
+      sameTimeSlots,
+      proxyUsers,
+      allRoundsData,
+      allAvailsData,
+      allCalEventsData
+    );
 
-    const allSameTimeSlotsSnap = await getDocs(query(
-      collection(db, 'jpc_proxy_availability'),
-      where('slot_start', '==', selectedSlotBase.slot_start)
-    ));
-    const sameTimeSlots = allSameTimeSlotsSnap.docs.map(d => ({ id: d.id, ...d.data() as ProxyAvailability }));
-
-    const availableProxiesWithSlots = proxyUsers.map(pu => {
-      const isBusyInRound = busyProxyIds.has(String(pu.id));
-      const isBlockedInAvail = blockedProxyIds.has(String(pu.id));
-      const proxySlot = sameTimeSlots.find(s => String(s.proxy_user_id) === String(pu.id));
-      
-      const isFree = !isBusyInRound && !isBlockedInAvail && proxySlot && proxySlot.slot_status === 'available';
-      return {
-        user: pu,
-        slot: proxySlot,
-        isFree
-      };
-    }).filter(item => item.isFree);
-
-    if (availableProxiesWithSlots.length === 0) {
+    if (!chosenSlot) {
       throw new Error('CONFLICT_ALL_BUSY');
     }
 
-    let chosenItem = availableProxiesWithSlots.find(item => item.slot?.id === selectedSlotIdStr);
-    if (!chosenItem) {
-      chosenItem = availableProxiesWithSlots[0];
-    }
-    return chosenItem.slot!;
+    return chosenSlot;
   };
 
   const dates = useMemo(() => {

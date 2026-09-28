@@ -68,7 +68,7 @@ import { InterviewDetailsModal } from '../../components/InterviewDetailsModal';
 import { ProxyAssignmentModal } from '../../components/ProxyAssignmentModal';
 import { ResumeSubstitutionModal } from '../../components/ResumeSubstitutionModal';
 import { SlotVisualizer } from '../../components/SlotVisualizer';
-import { findBestProxyForWindow, isProxyUser, getLatestCandidateResume, getInterviewResumeInfo } from '../../services/interviewService';
+import { findBestProxyForWindow, assignProxiesForRounds, isProxyUser, getLatestCandidateResume, getInterviewResumeInfo } from '../../services/interviewService';
 import { sharedSelectStyles } from '../../lib/selectStyles';
 import { FreeTrialBadge } from '../../components/FreeTrialBadge';
 
@@ -1810,22 +1810,28 @@ const RequestModal: React.FC<{
   const [filterAvailableOnly, setFilterAvailableOnly] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ASSESSMENT: Simplified conflict check for the first round (as in screenshot)
-  const assignmentResult = useMemo(() => {
-    const mainRound = formData.rounds[0];
-    if (!mainRound?.interview_date || !mainRound?.start_time || !mainRound?.end_time) {
-      return { bestProxy: null, availableProxies: [], errors: [] };
-    }
-    return findBestProxyForWindow(
-      mainRound.interview_date,
-      mainRound.start_time,
-      mainRound.end_time,
+  // ASSESSMENT: Sequential conflict & workload check across all scheduled rounds
+  const multiRoundAssignment = useMemo(() => {
+    return assignProxiesForRounds(
+      formData.rounds,
       team,
       allRounds,
       allAvailabilities,
       allCalendarEvents
     );
   }, [formData.rounds, team, allRounds, allAvailabilities, allCalendarEvents]);
+
+  const assignmentResult = useMemo(() => {
+    const firstAssigned = multiRoundAssignment.roundAssignments.find(ra => ra.bestProxy || (ra.errors && ra.errors.length > 0));
+    if (!firstAssigned) {
+      return { bestProxy: null, availableProxies: [], errors: [] };
+    }
+    return {
+      bestProxy: firstAssigned.bestProxy,
+      availableProxies: firstAssigned.availableProxies,
+      errors: multiRoundAssignment.errors.length > 0 ? multiRoundAssignment.errors : firstAssigned.errors
+    };
+  }, [multiRoundAssignment]);
 
   const availabilityByDate = useMemo(() => {
     const map: { [date: string]: ProxyAvailability[] } = {};
@@ -1913,8 +1919,8 @@ const RequestModal: React.FC<{
         useOtherResume = true;
       }
 
-      // 1. AUTO-ASSIGNMENT & BUFFER-AWARE CONFLICT ASSESSMENT FOR PROXIES
-      const assignedProxiesByDay: { [date: string]: any } = {};
+      // 1. AUTO-ASSIGNMENT & BUFFER-AWARE CONFLICT ASSESSMENT FOR PROXIES (PER-ROUND WORKLOAD TRACKING)
+      const assignedProxiesByRoundIdx: { [roundIdx: number]: any } = {};
 
       if (formData.proxy_required) {
         // Enforce scheduling details
@@ -1924,49 +1930,30 @@ const RequestModal: React.FC<{
           return;
         }
 
-        // Group rounds by unique date (Same-Day Multi-rounds rules)
-        const dayGroups: { [date: string]: typeof formData.rounds } = {};
-        formData.rounds.forEach(r => {
-          if (!dayGroups[r.interview_date]) {
-            dayGroups[r.interview_date] = [];
-          }
-          dayGroups[r.interview_date].push(r);
-        });
+        // Evaluate each round sequentially against temporary in-memory workload & conflict state
+        const multiResult = assignProxiesForRounds(
+          formData.rounds,
+          team,
+          allRounds,
+          allAvailabilities,
+          allCalendarEvents
+        );
 
-        // Resolve best proxy for each day (independent multi-day rule)
-        for (const day of Object.keys(dayGroups)) {
-          const roundsForDay = dayGroups[day];
-          
-          // Compute Joint boundaries (earliest start, latest end)
-          let minStartHour = roundsForDay[0].start_time;
-          let maxEndHour = roundsForDay[0].end_time;
-          roundsForDay.forEach(r => {
-            if (r.start_time < minStartHour) minStartHour = r.start_time;
-            if (r.end_time > maxEndHour) maxEndHour = r.end_time;
-          });
+        for (let i = 0; i < formData.rounds.length; i++) {
+          const r = formData.rounds[i];
+          const roundEval = multiResult.roundAssignments[i];
 
-          // Perform conflict detection and workload checking
-          const result = findBestProxyForWindow(
-            day,
-            minStartHour,
-            maxEndHour,
-            team,
-            allRounds,
-            allAvailabilities,
-            allCalendarEvents
-          );
-
-          if (result.errors && result.errors.length > 0) {
-            showToast(`Currently no proxy is available for the selected interview time on ${day} (${minStartHour} - ${maxEndHour}). Please choose another time.`, "error");
+          if (!roundEval || (roundEval.errors && roundEval.errors.length > 0)) {
+            showToast(`Currently no proxy is available for the selected interview time on ${r.interview_date} (${r.start_time} - ${r.end_time}). Please choose another time.`, "error");
             return;
           }
 
-          if (!result.bestProxy) {
+          if (!roundEval.bestProxy) {
             showToast(`Currently no proxy is available for the selected interview time. Please choose another time.`, "error");
             return;
           }
 
-          assignedProxiesByDay[day] = result.bestProxy;
+          assignedProxiesByRoundIdx[i] = roundEval.bestProxy;
         }
       }
 
@@ -1990,7 +1977,7 @@ const RequestModal: React.FC<{
         other_resume_url: otherResumeUrl,
         other_resume_filename: otherResumeFilename,
         proxy_required: formData.proxy_required,
-        proxy_user_id: formData.proxy_required ? (Object.values(assignedProxiesByDay)[0]?.id || null) : null,
+        proxy_user_id: formData.proxy_required ? (assignedProxiesByRoundIdx[0]?.id || null) : null,
         overall_status: formData.proxy_required ? 'confirmed' : 'pending_request',
         created_by: user.id as string
       });
@@ -2024,7 +2011,8 @@ const RequestModal: React.FC<{
         if (candidate?.assigned_cs && !emailRecipients.includes(candidate.assigned_cs)) emailRecipients.push(candidate.assigned_cs);
 
         // 3. PERSIST ROUNDS AND EMIT CALENDAR INVITES
-        for (const round of formData.rounds) {
+        for (let roundIdx = 0; roundIdx < formData.rounds.length; roundIdx++) {
+          const round = formData.rounds[roundIdx];
           let assignedProxyId: string | null = null;
           let statusStr: 'confirmed' | 'pending' = 'pending';
           let bookedStart: string | null = null;
@@ -2032,8 +2020,8 @@ const RequestModal: React.FC<{
           let durationMin = round.duration;
 
           if (formData.proxy_required && round.interview_date && round.start_time && round.end_time) {
-            const proxyForDay = assignedProxiesByDay[round.interview_date];
-            assignedProxyId = proxyForDay ? proxyForDay.id : null;
+            const proxyForRound = assignedProxiesByRoundIdx[roundIdx];
+            assignedProxyId = proxyForRound ? proxyForRound.id : null;
             statusStr = 'confirmed';
             bookedStart = `${round.interview_date}T${round.start_time}:00`;
             bookedEnd = `${round.interview_date}T${round.end_time}:00`;
