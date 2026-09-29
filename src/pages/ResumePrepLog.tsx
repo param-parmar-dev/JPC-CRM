@@ -31,6 +31,7 @@ import { uploadFile, handleViewFile } from '../services/fileService';
 import { SearchableCandidateSelect } from '../components/SearchableCandidateSelect';
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import * as XLSX from 'xlsx';
+import { resolveRecruiterUser } from '../utils/recruiterResolver';
 
 type TabType = 'resume_understanding' | 'interview_questions';
 
@@ -115,7 +116,7 @@ export const ResumePrepLog: React.FC = () => {
       if (req.type !== activeTab) return false;
       
       const candidate = candidates.find(c => c.id === req.candidate_id);
-      const recruiter = team.find(u => String(u.id) === String(req.recruiter_id));
+      const recruiter = resolveRecruiterUser(req.recruiter_id, team, candidate, candidates);
       
       const matchesSearch = `${candidate?.full_name || ''} ${recruiter?.display_name || ''} ${req.details || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesFilter = filterStatus === 'all' || req.status === filterStatus;
@@ -353,7 +354,7 @@ export const ResumePrepLog: React.FC = () => {
 
     const exportData = filtered.map((req, idx) => {
       const candidate = candidates.find(c => c.id === req.candidate_id);
-      const recruiter = team.find(u => String(u.id) === String(req.recruiter_id));
+      const recruiter = resolveRecruiterUser(req.recruiter_id, team, candidate, candidates);
       const csUser = team.find(u => String(u.id) === String(candidate?.assigned_cs));
       const mktLeader = team.find(u => String(u.id) === String(candidate?.assigned_marketing_leader));
       
@@ -544,7 +545,7 @@ export const ResumePrepLog: React.FC = () => {
           <AnimatePresence mode="popLayout">
             {filteredRequests.map((req) => {
               const candidate = candidates.find(c => c.id === req.candidate_id);
-              const recruiter = team.find(u => String(u.id) === String(req.recruiter_id));
+              const recruiter = resolveRecruiterUser(req.recruiter_id, team, candidate, candidates);
 
               return (
                 <motion.div

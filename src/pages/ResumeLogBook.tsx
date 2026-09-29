@@ -31,6 +31,7 @@ import { SearchableCandidateSelect } from '../components/SearchableCandidateSele
 import { FreeTrialBadge } from '../components/FreeTrialBadge';
 import { isCSHead, canActAsTLForRequest, isManagementUser } from '../lib/permissions';
 import * as XLSX from 'xlsx';
+import { resolveRecruiterUser } from '../utils/recruiterResolver';
 
 export const ResumeLogBook: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -115,7 +116,7 @@ export const ResumeLogBook: React.FC = () => {
   const filteredRequests = useMemo(() => {
     return requests.filter(req => {
       const candidate = candidates.find(c => c.id === req.candidate_id);
-      const recruiter = team.find(u => String(u.id) === String(req.recruiter_id));
+      const recruiter = resolveRecruiterUser(req.recruiter_id, team, candidate, candidates);
       
       const matchesSearch = `${candidate?.full_name} ${recruiter?.display_name} ${req.details}`.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesFilter = filterStatus === 'all' || req.status === filterStatus;
@@ -516,7 +517,7 @@ export const ResumeLogBook: React.FC = () => {
 
     const exportData = filtered.map((req, idx) => {
       const candidate = candidates.find(c => c.id === req.candidate_id);
-      const recruiter = team.find(u => String(u.id) === String(req.recruiter_id));
+      const recruiter = resolveRecruiterUser(req.recruiter_id, team, candidate, candidates);
       const csUser = team.find(u => String(u.id) === String(candidate?.assigned_cs));
       const mktLeader = team.find(u => String(u.id) === String(candidate?.assigned_marketing_leader));
       
@@ -657,7 +658,7 @@ export const ResumeLogBook: React.FC = () => {
         <AnimatePresence mode="popLayout">
           {filteredRequests.map((req) => {
             const candidate = candidates.find(c => c.id === req.candidate_id);
-            const recruiter = team.find(u => String(u.id) === String(req.recruiter_id));
+            const recruiter = resolveRecruiterUser(req.recruiter_id, team, candidate, candidates);
 
             return (
               <motion.div

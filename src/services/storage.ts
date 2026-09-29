@@ -122,7 +122,14 @@ export const subscribeToCollection = <T>(collectionName: string, callback: (data
     q = query(q, limit(limitCount));
   }
   return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    let data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    if (
+      collectionName === 'jpc_candidates' ||
+      collectionName === 'jpc_followups' ||
+      collectionName === 'jpc_payments'
+    ) {
+      data = data.filter((item: any) => item?.crm_brand !== 'aurrum');
+    }
     callback(data);
   }, (error) => {
     if (collectionName === 'jpc_interview_offer_requests') {
@@ -140,10 +147,51 @@ export const subscribeToCollection = <T>(collectionName: string, callback: (data
 export const subscribeToCollectionWithLimit = <T>(collectionName: string, limitCount: number, callback: (data: T[]) => void) => {
   const q = query(collection(db, collectionName), limit(limitCount));
   return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    let data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    if (
+      collectionName === 'jpc_candidates' ||
+      collectionName === 'jpc_followups' ||
+      collectionName === 'jpc_payments'
+    ) {
+      data = data.filter((item: any) => item?.crm_brand !== 'aurrum');
+    }
     callback(data);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, collectionName);
+  });
+};
+
+export const subscribeToAurrumCandidates = (callback: (data: Candidate[]) => void) => {
+  const q = query(collection(db, 'jpc_candidates'), where('crm_brand', '==', 'aurrum'));
+  return onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs
+      .map(d => ({ ...d.data(), id: d.id } as Candidate))
+      .filter(c => !c.deleted_at);
+    callback(data);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, 'jpc_candidates (aurrum)');
+  });
+};
+
+export const subscribeToAurrumFollowUps = (callback: (data: FollowUp[]) => void) => {
+  const q = query(collection(db, 'jpc_followups'), where('crm_brand', '==', 'aurrum'));
+  return onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as FollowUp));
+    callback(data);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, 'jpc_followups (aurrum)');
+  });
+};
+
+export const subscribeToAllCandidatesUnfiltered = (callback: (data: Candidate[]) => void) => {
+  const q = query(collection(db, 'jpc_candidates'));
+  return onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs
+      .map(d => ({ ...d.data(), id: d.id } as Candidate))
+      .filter(c => !c.deleted_at);
+    callback(data);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, 'jpc_candidates');
   });
 };
 
@@ -191,15 +239,22 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 // Candidates
-export const checkDuplicateCandidate = async (phone: string, email: string, whatsapp: string = ''): Promise<string | null> => {
+export const checkDuplicateCandidate = async (
+  phone: string,
+  email: string,
+  whatsapp: string = '',
+  brand: 'auriic' | 'aurrum' = 'auriic'
+): Promise<string | null> => {
   try {
     const candidatesRef = collection(db, 'jpc_candidates');
+    const matchesBrand = (docData: any) =>
+      brand === 'aurrum' ? docData.crm_brand === 'aurrum' : docData.crm_brand !== 'aurrum';
     
     // Check Phone
     if (phone && phone.trim() !== '') {
       const pQuery = query(candidatesRef, where('phone', '==', phone.trim()));
       const snap = await getDocs(pQuery);
-      const activeDoc = snap.docs.find(d => !d.data().deleted_at);
+      const activeDoc = snap.docs.find(d => !d.data().deleted_at && matchesBrand(d.data()));
       if (activeDoc) return `A candidate with the phone number ${phone} already exists.`;
     }
 
@@ -207,7 +262,7 @@ export const checkDuplicateCandidate = async (phone: string, email: string, what
     if (email && email.trim() !== '') {
       const eQuery = query(candidatesRef, where('email', '==', email.trim()));
       const snap = await getDocs(eQuery);
-      const activeDoc = snap.docs.find(d => !d.data().deleted_at);
+      const activeDoc = snap.docs.find(d => !d.data().deleted_at && matchesBrand(d.data()));
       if (activeDoc) return `A candidate with the email ${email} already exists.`;
     }
 
@@ -215,7 +270,7 @@ export const checkDuplicateCandidate = async (phone: string, email: string, what
     if (whatsapp && whatsapp.trim() !== '') {
       const wQuery = query(candidatesRef, where('whatsapp', '==', whatsapp.trim()));
       const snap = await getDocs(wQuery);
-      const activeDoc = snap.docs.find(d => !d.data().deleted_at);
+      const activeDoc = snap.docs.find(d => !d.data().deleted_at && matchesBrand(d.data()));
       if (activeDoc) return `A candidate with the WhatsApp number ${whatsapp} already exists.`;
     }
 
@@ -509,6 +564,7 @@ export const autoAssignFaizToCandidates = async () => {
     const snap = await getDocs(collection(db, 'jpc_candidates'));
     for (const d of snap.docs) {
       const candidate = d.data() as Candidate;
+      if (candidate.crm_brand === 'aurrum') continue;
       if (
         (candidate.current_stage === 'marketing_active' || candidate.current_stage === 'interviewing') &&
         !candidate.assigned_cs
@@ -554,6 +610,7 @@ export const saveCandidate = async (candidate: Candidate, userId: string | null)
     }
 
     if (
+      finalCandidate.crm_brand !== 'aurrum' &&
       (finalCandidate.current_stage === 'marketing_active' || finalCandidate.current_stage === 'interviewing') &&
       !finalCandidate.assigned_cs
     ) {
@@ -588,17 +645,20 @@ export const updateCandidate = async (id: string, updates: Partial<Candidate>) =
 
     let currentStage = updates.current_stage;
     let assignedCs = updates.assigned_cs;
+    let crmBrand = updates.crm_brand;
     
-    if (currentStage === undefined || assignedCs === undefined) {
+    if (currentStage === undefined || assignedCs === undefined || crmBrand === undefined) {
       const docSnap = await getDoc(doc(db, 'jpc_candidates', id));
       if (docSnap.exists()) {
         const currentData = docSnap.data() as Candidate;
         if (currentStage === undefined) currentStage = currentData.current_stage;
         if (assignedCs === undefined) assignedCs = currentData.assigned_cs;
+        if (crmBrand === undefined) crmBrand = currentData.crm_brand;
       }
     }
     
     if (
+      crmBrand !== 'aurrum' &&
       (currentStage === 'marketing_active' || currentStage === 'interviewing') &&
       !assignedCs
     ) {
@@ -609,6 +669,83 @@ export const updateCandidate = async (id: string, updates: Partial<Candidate>) =
     }
 
     const data = sanitizeForFirestore({ ...finalUpdates, updated_at: new Date().toISOString() });
+    await updateDoc(doc(db, 'jpc_candidates', id), data);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `jpc_candidates/${id}`);
+  }
+};
+
+export const createAurrumCandidate = async (
+  candidate: Partial<Candidate>,
+  userId: string | null
+): Promise<Candidate> => {
+  const id = candidate.id || generateId('aur_');
+  const nowIso = new Date().toISOString();
+  const fullCandidate: Candidate = {
+    id,
+    full_name: candidate.full_name || '',
+    phone: candidate.phone || '',
+    email: candidate.email || '',
+    whatsapp: candidate.whatsapp || candidate.phone || '',
+    job_interest: candidate.job_interest || '',
+    domain_interested: candidate.domain_interested || '',
+    location: candidate.location || '',
+    education: candidate.education || '',
+    degree: candidate.degree || '',
+    university: candidate.university || '',
+    graduation_year: candidate.graduation_year || '',
+    experience_years: candidate.experience_years || '',
+    current_company: candidate.current_company || '',
+    current_designation: candidate.current_designation || '',
+    skills: candidate.skills || '',
+    linkedin_url: candidate.linkedin_url || '',
+    lead_source: candidate.lead_source || 'LinkedIn',
+    lead_generated_by: candidate.lead_generated_by ?? userId,
+    assigned_sales: candidate.assigned_sales ?? null,
+    assigned_cs: null,
+    assigned_resume: null,
+    assigned_marketing_leader: null,
+    assigned_recruiter: null,
+    assigned_marketing: null,
+    package_name: candidate.package_name || '',
+    package_amount: Number(candidate.package_amount) || 0,
+    domain_suggested: candidate.domain_suggested || '',
+    notes: candidate.notes || '',
+    current_stage: candidate.current_stage || 'lead_generation',
+    aurrum_stage: candidate.aurrum_stage || 'lead',
+    aurrum_sales_status: candidate.aurrum_sales_status || 'New Lead',
+    crm_brand: 'aurrum',
+    flags: candidate.flags || {
+      agreement_sent: false,
+      agreement_signed: false,
+      qc_checklist_done: false,
+      resume_approved: false,
+      candidate_resume_approved: false,
+      marketing_email_created: false,
+      two_step_verification: false,
+      linkedin_optimized: false,
+      marketing_started: false,
+    },
+    resume_url: candidate.resume_url || null,
+    resume_base64: candidate.resume_base64 || null,
+    resume_filename: candidate.resume_filename || null,
+    deleted_at: null,
+    created_at: candidate.created_at || nowIso,
+    updated_at: nowIso,
+  };
+
+  const data = sanitizeForFirestore(fullCandidate);
+  await setDoc(doc(db, 'jpc_candidates', id), data);
+  return fullCandidate;
+};
+
+export const updateAurrumCandidate = async (id: string, updates: Partial<Candidate>): Promise<void> => {
+  try {
+    const data = sanitizeForFirestore({
+      ...updates,
+      crm_brand: 'aurrum',
+      updated_at: new Date().toISOString(),
+    });
     await updateDoc(doc(db, 'jpc_candidates', id), data);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `jpc_candidates/${id}`);
@@ -753,6 +890,7 @@ export const migrateAllChecklists = async () => {
   try {
     const candidatesSnap = await getDocs(collection(db, 'jpc_candidates'));
     for (const candidateDoc of candidatesSnap.docs) {
+      if (candidateDoc.data()?.crm_brand === 'aurrum') continue;
       const candidateId = candidateDoc.id;
       const q = query(collection(db, 'jpc_qc_checklist'), where('candidate_id', '==', candidateId));
       const checklistSnap = await getDocs(q);
@@ -837,6 +975,23 @@ export const addFollowUp = async (followUp: Omit<FollowUp, 'id' | 'created_at'>)
     await setDoc(doc(db, 'jpc_followups', id), data);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `jpc_followups/${id}`);
+  }
+};
+
+export const addAurrumFollowUp = async (followUp: Omit<FollowUp, 'id' | 'created_at'>): Promise<string> => {
+  const id = generateId('af_');
+  const data = sanitizeForFirestore({
+    ...followUp,
+    id,
+    crm_brand: 'aurrum',
+    created_at: new Date().toISOString()
+  });
+  try {
+    await setDoc(doc(db, 'jpc_followups', id), data);
+    return id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `jpc_followups/${id}`);
+    return id;
   }
 };
 

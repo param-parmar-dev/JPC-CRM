@@ -39,7 +39,7 @@ export const Pipeline: React.FC = () => {
 
     const unsub = onSnapshot(cQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
-      setCandidates(data.filter(c => c.current_stage !== 'not_interested' && c.current_stage !== 'not_eligible'));
+      setCandidates(data.filter(c => !c.deleted_at && c.crm_brand !== 'aurrum' && c.current_stage !== 'not_interested' && c.current_stage !== 'not_eligible'));
       setIsLoading(false);
     }, (error) => {
       console.error('Pipeline candidates fetch error:', error);
@@ -60,6 +60,7 @@ export const Pipeline: React.FC = () => {
     const groups: Record<string, Candidate[]> = {};
     
     candidates.forEach(c => {
+      if (c.crm_brand === 'aurrum') return;
       // Role-based visibility check using permissions engine
       if (!canUserAccessCandidate(c, user, allUsers)) return;
 

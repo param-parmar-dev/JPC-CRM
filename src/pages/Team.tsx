@@ -15,6 +15,7 @@ import { db, firebaseConfig } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signOut as secondarySignOut, updateProfile, createUserWithEmailAndPassword } from 'firebase/auth';
 import { RotateCw } from 'lucide-react';
+import { archiveDeletedUser } from '../utils/recruiterResolver';
 
 const ROLES: { value: UserRole; label: string; icon: any; color: string }[] = [
   { value: 'administrator', label: 'Administrator', icon: ShieldCheck, color: 'text-accent-red' },
@@ -319,7 +320,46 @@ export const Team: React.FC = () => {
     if (!deletingUser) return;
     setIsLoading(true);
     try {
-      await deleteDoc(doc(db, 'jpc_users', String(deletingUser.id)));
+      const deletingId = String(deletingUser.id);
+      const deletingName = deletingUser.display_name || deletingUser.username || deletingId;
+
+      // 1. Archive deleted user info in jpc_settings/deleted_users so their name is never lost
+      await archiveDeletedUser(deletingUser);
+
+      // 2. Ensure any candidates assigned to this user preserve their display_name in previous_recruiters
+      const affectedCandidates = candidates.filter(
+        c =>
+          String(c.assigned_recruiter) === deletingId ||
+          (Array.isArray(c.previous_recruiters) && c.previous_recruiters.some(p => String(p.recruiter_id) === deletingId))
+      );
+      if (affectedCandidates.length > 0) {
+        const nowIso = new Date().toISOString();
+        const batch = writeBatch(db);
+        affectedCandidates.forEach(c => {
+          const existingPrev = Array.isArray(c.previous_recruiters) ? [...c.previous_recruiters] : [];
+          const idx = existingPrev.findIndex(p => String(p.recruiter_id) === deletingId);
+          if (idx >= 0) {
+            existingPrev[idx] = {
+              ...existingPrev[idx],
+              recruiter_name: deletingName,
+            };
+          } else {
+            existingPrev.push({
+              recruiter_id: deletingId,
+              recruiter_name: deletingName,
+              assigned_at: c.recruiter_assigned_at || c.created_at || null,
+              unassigned_at: nowIso,
+              changed_by: user?.id ? String(user.id) : null,
+            });
+          }
+          batch.update(doc(db, 'jpc_candidates', String(c.id)), {
+            previous_recruiters: existingPrev,
+          });
+        });
+        await batch.commit();
+      }
+
+      await deleteDoc(doc(db, 'jpc_users', deletingId));
       showToast('User removed', 'success');
       setDeletingUser(null);
     } catch (error) {

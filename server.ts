@@ -170,7 +170,9 @@ cron.schedule('15 18 * * *', async () => {
       .where('deleted_at', '==', null)
       .get();
     
-    const candidates = candidatesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+    const candidates = candidatesSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() as any }))
+      .filter((c: any) => c.crm_brand !== 'aurrum');
 
     // Fetch all users to get recruiter names
     const usersSnapshot = await db.collection('jpc_users').get();
@@ -347,12 +349,17 @@ async function sendMonthlyPerformanceReport(targetMonth?: number, targetYear?: n
     ]);
 
     const usersMap = new Map();
+    Object.entries(KNOWN_DELETED_USERS).forEach(([id, info]) => {
+      usersMap.set(String(id), { id, ...info });
+    });
     usersSnapshot.forEach(doc => {
       const data = doc.data();
       usersMap.set(String(doc.id), { id: doc.id, ...data });
     });
 
-    const candidates = candidatesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const candidates = candidatesSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() as any }))
+      .filter((c: any) => c.crm_brand !== 'aurrum');
     const allApps = appsSnapshot.docs.map(doc => doc.data());
     const allRounds = roundsSnapshot.docs.map(doc => doc.data());
     const reqsMap = new Map();
@@ -563,6 +570,18 @@ async function sendMonthlyPerformanceReport(targetMonth?: number, targetYear?: n
 }
 
 
+const KNOWN_DELETED_USERS: Record<string, { display_name: string; email?: string; role?: string }> = {
+  PWoGAADbB6dVe44h5qUeIPoAFvw1: { display_name: 'Deep Kansara', email: 'deep.kansara@auriic.co', role: 'jpc_recruiter' },
+  cwHGDcjZ2dcBtGv1W6862Vs8Ums2: { display_name: 'Vansh Patel', email: 'vansh.patel@auriic.co', role: 'jpc_recruiter' },
+  MPq2NPNbsse7BhKmqA50WRQywWj1: { display_name: 'Avantika Gidhavani', email: 'avantika.gidhavani@auriic.co', role: 'jpc_recruiter' },
+  ybkmt69oaWSTWomgsPsugyq7hfm1: { display_name: 'Juned Khan', email: 'juned.khan@auriic.co', role: 'jpc_recruiter' },
+  LRmwQVJ9I0el2aaJqtbIHW9f5Ig2: { display_name: 'Manav Nagar', email: 'manav.nagar@auriic.co', role: 'jpc_recruiter' },
+  tEb4PWkuhFQvs3WqBhlUFAYVx5S2: { display_name: 'Siddharth Kamdar', email: 'siddharth.kamdar@auriic.co', role: 'jpc_recruiter' },
+  FD7Zrqu2uTMOiHgvT9wTLXirO1t1: { display_name: 'Snohi Vairagi', email: 'snohi.vairagi@auriic.co', role: 'jpc_recruiter' },
+  E7i4sMzmp4ddhA2BOmDDExmP4wF2: { display_name: 'Snohi Vairagi', email: 'snohi.vairagi@auriic.co', role: 'jpc_recruiter' },
+  m5q7iWgp6ZZ5hhxaFStXarkOUS42: { display_name: 'Mohit Panchal', email: 'mohit.panchal@auriic.co', role: 'jpc_recruiter' },
+};
+
 const app = express();
 app.set('trust proxy', true);
 
@@ -588,7 +607,8 @@ app.use((req, res, next) => {
       '/gemini',
       '/resume',
       '/calendly',
-      '/reports'
+      '/reports',
+      '/users'
     ];
     if (knownApiPrefixes.some(prefix => req.url.startsWith(prefix))) {
       req.url = '/api' + req.url;
@@ -600,6 +620,83 @@ app.use((req, res, next) => {
 // Root API health check
 app.get(['/api', '/api/health', '/health'], (req, res) => {
   res.json({ status: 'ok', service: 'Auriic CRM API' });
+});
+
+// Resolve deleted recruiter/user IDs via known archive, Firestore jpc_settings/deleted_users, and Firebase Auth
+app.post('/api/users/resolve-deleted', async (req, res) => {
+  try {
+    const uids: string[] = Array.isArray(req.body?.uids)
+      ? req.body.uids.map((u: any) => String(u).trim()).filter(Boolean)
+      : [];
+    if (uids.length === 0) {
+      return res.json({ users: {} });
+    }
+
+    const resolved: Record<string, { display_name: string; email?: string; role?: string }> = {};
+    const unresolved: string[] = [];
+
+    let firestoreMap: Record<string, any> = {};
+    try {
+      const snap = await db.collection('jpc_settings').doc('deleted_users').get();
+      if (snap.exists) {
+        const data = snap.data();
+        firestoreMap = (data?.users && typeof data.users === 'object') ? data.users : (data || {});
+      }
+    } catch (e) {
+      // Ignore if unavailable
+    }
+
+    for (const uid of uids) {
+      if (KNOWN_DELETED_USERS[uid]) {
+        resolved[uid] = KNOWN_DELETED_USERS[uid];
+      } else if (firestoreMap[uid]?.display_name) {
+        resolved[uid] = {
+          display_name: firestoreMap[uid].display_name,
+          email: firestoreMap[uid].email,
+          role: firestoreMap[uid].role,
+        };
+      } else {
+        unresolved.push(uid);
+      }
+    }
+
+    if (unresolved.length > 0 && admin.apps.length > 0) {
+      try {
+        const batch = unresolved.slice(0, 100).map(uid => ({ uid }));
+        const authResult = await admin.auth().getUsers(batch);
+        const newlyResolved: Record<string, any> = {};
+        for (const u of authResult.users) {
+          const emailPrefix = u.email ? u.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+          const displayName = u.displayName || emailPrefix || u.uid;
+          resolved[u.uid] = {
+            display_name: displayName,
+            email: u.email || undefined,
+            role: 'jpc_recruiter',
+          };
+          newlyResolved[u.uid] = {
+            id: u.uid,
+            display_name: displayName,
+            email: u.email || '',
+            role: 'jpc_recruiter',
+            deleted_at: new Date().toISOString(),
+          };
+        }
+        if (Object.keys(newlyResolved).length > 0) {
+          try {
+            await db.collection('jpc_settings').doc('deleted_users').set({ users: newlyResolved }, { merge: true });
+          } catch (e) {
+            // Ignore write errors
+          }
+        }
+      } catch (e) {
+        // Ignore Firebase Auth lookup errors if service account is not configured locally
+      }
+    }
+
+    res.json({ users: resolved });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to resolve deleted users' });
+  }
 });
 
 // SMTP API Endpoints
@@ -1914,7 +2011,7 @@ export async function processUnassignedLeadsEngine(
 
       const unassigned = candSnapshot.docs
         .map((d: any) => ({ id: d.id, ...d.data() }))
-        .filter((c: any) => !c.deleted_at && !c.not_interested_at && (c.assigned_sales === null || c.assigned_sales === undefined || c.assigned_sales === ''))
+        .filter((c: any) => c.crm_brand !== 'aurrum' && !c.deleted_at && !c.not_interested_at && (c.assigned_sales === null || c.assigned_sales === undefined || c.assigned_sales === ''))
         .sort((a: any, b: any) => (a.created_at || '').localeCompare(b.created_at || '')); // chronological (oldest first)
 
       if (unassigned.length === 0) {

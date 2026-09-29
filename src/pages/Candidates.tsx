@@ -180,7 +180,7 @@ export const Candidates: React.FC = () => {
 
     const unsub = onSnapshot(cQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
-      setCandidates(data.filter(c => !c.deleted_at));
+      setCandidates(data.filter(c => !c.deleted_at && c.crm_brand !== 'aurrum'));
       setIsLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'jpc_candidates');
@@ -206,6 +206,7 @@ export const Candidates: React.FC = () => {
   const filteredCandidates = useMemo(() => {
     return candidates
       .filter(c => {
+        if (c.crm_brand === 'aurrum') return false;
         // Role-based visibility check using permissions engine
         if (!canUserAccessCandidate(c, user, allUsers)) return false;
 
@@ -258,7 +259,7 @@ export const Candidates: React.FC = () => {
       const apps = appsSnap.docs.map(d => d.data() as Application);
 
       const followUpsSnap = await getDocs(collection(db, 'jpc_followups'));
-      const followUps = followUpsSnap.docs.map(d => d.data() as FollowUp);
+      const followUps = followUpsSnap.docs.map(d => d.data() as FollowUp).filter(f => f.crm_brand !== 'aurrum');
 
       const cleanExcelValue = (val: any): string | number => {
         if (val === undefined || val === null) return '—';

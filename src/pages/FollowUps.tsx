@@ -32,7 +32,7 @@ export const FollowUps: React.FC = () => {
 
     const unsubFollowUps = onSnapshot(fQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as FollowUp));
-      setFollowUps(data);
+      setFollowUps(data.filter(f => f.crm_brand !== 'aurrum'));
       setIsLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'jpc_followups');
@@ -48,7 +48,7 @@ export const FollowUps: React.FC = () => {
 
     const unsubCandidates = onSnapshot(cQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Candidate));
-      setCandidates(data);
+      setCandidates(data.filter(c => !c.deleted_at && c.crm_brand !== 'aurrum'));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'jpc_candidates');
     });

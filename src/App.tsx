@@ -36,6 +36,10 @@ const InterviewSupportDashboard = lazy(() => import('./pages/InterviewSupport/Da
 const ProxyDashboard = lazy(() => import('./pages/InterviewSupport/ProxyDashboard').then(m => ({ default: m.ProxyDashboard })));
 const BookingPage = lazy(() => import('./pages/InterviewSupport/BookingPage').then(m => ({ default: m.BookingPage })));
 const CRMDashboard = lazy(() => import('./pages/CRMDashboard').then(m => ({ default: m.CRMDashboard })));
+const AurrumDashboard = lazy(() => import('./pages/AurrumCareers/AurrumDashboard').then(m => ({ default: m.AurrumDashboard })));
+const AurrumCandidates = lazy(() => import('./pages/AurrumCareers/AurrumCandidates').then(m => ({ default: m.AurrumCandidates })));
+const AurrumSales = lazy(() => import('./pages/AurrumCareers/AurrumSales').then(m => ({ default: m.AurrumSales })));
+const AurrumInterviewSupport = lazy(() => import('./pages/AurrumCareers/AurrumInterviewSupport').then(m => ({ default: m.AurrumInterviewSupport })));
 
 const PageLoader = () => (
   <div className="flex-1 flex items-center justify-center p-20">
@@ -96,6 +100,7 @@ const AppContent: React.FC = () => {
 
 
   const isBookingPage = currentHash.startsWith('#book-interview');
+  const isAurrumRoute = currentHash.startsWith('#aurrum-');
 
   if (!user && !isBookingPage) {
     return (
@@ -170,6 +175,14 @@ const AppContent: React.FC = () => {
       case '#interviews-proxy':
         if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin' && user?.role !== 'jpc_manager' && user?.role !== 'jpc_cs' && user?.role !== 'jpc_compliance_person' && !isProxyUser(user)) return <Dashboard />;
         return <ProxyDashboard />;
+      case '#aurrum-dashboard':
+        return <AurrumDashboard />;
+      case '#aurrum-candidates':
+        return <AurrumCandidates />;
+      case '#aurrum-sales':
+        return <AurrumSales />;
+      case '#aurrum-interviews':
+        return <AurrumInterviewSupport />;
       default:
         if (hash.startsWith('#book-interview')) {
           return <BookingPage />;
@@ -197,6 +210,10 @@ const AppContent: React.FC = () => {
       case '#feature-alerts': return 'Feature Alerts';
       case '#interviews': return 'Interview Support';
       case '#interviews-proxy': return 'Proxy Support';
+      case '#aurrum-dashboard': return 'Aurrum Dashboard';
+      case '#aurrum-candidates': return 'Aurrum Candidates';
+      case '#aurrum-sales': return 'Aurrum Sales';
+      case '#aurrum-interviews': return 'Aurrum Interview Support';
       case '#not-interested': return 'Not Interested';
       case '#not-eligible': return 'Not Eligible';
       case '#team': return 'Team';
@@ -234,14 +251,20 @@ const AppContent: React.FC = () => {
                 </h1>
               </div>
               <div className="hidden md:block">
-                <h2 className="text-xl font-bold font-heading text-text-primary tracking-tight">Welcome back!</h2>
-                <p className="text-xs text-text-secondary font-medium">Ready to place some great candidates?</p>
+                <h2 className="text-xl font-bold font-heading text-text-primary tracking-tight">
+                  {isAurrumRoute ? 'Aurrum Careers' : 'Welcome back!'}
+                </h2>
+                <p className="text-xs text-text-secondary font-medium">
+                  {isAurrumRoute
+                    ? 'Aurrum Dashboard → Candidates → Sales → Interview Support'
+                    : 'Ready to place some great candidates?'}
+                </p>
               </div>
             </div>
             
             <div className="flex items-center gap-2 sm:gap-4 ml-auto shrink-0">
               <NotificationList />
-              {user?.role !== 'candidate' && (
+              {user?.role !== 'candidate' && !isAurrumRoute && (
                 <button 
                   onClick={() => setIsAddModalOpen(true)}
                   className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-accent-blue text-white font-bold rounded-xl hover:bg-accent-blue/90 hover:-translate-y-0.5 transition-all shadow-[0_4px_12px_rgba(0,173,140,0.3)] ring-1 ring-white/10 text-xs sm:text-sm"

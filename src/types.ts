@@ -164,6 +164,9 @@ export interface Candidate {
   latest_interview_offer_request?: InterviewOfferRequest | null;
   previous_recruiters?: RecruiterAssignmentHistory[];
   recruiter_assigned_at?: string | null;
+  crm_brand?: 'auriic' | 'aurrum';
+  aurrum_stage?: 'lead' | 'sales' | 'converted' | 'interview_support' | 'not_interested' | 'not_eligible';
+  aurrum_sales_status?: 'New Lead' | 'Contacted' | 'Follow-Up' | 'Interested' | 'Converted' | 'Not Interested' | 'Not Eligible';
 }
 
 export interface RecruiterAssignmentHistory {
@@ -215,6 +218,7 @@ export interface Payment {
   proof_url?: string | null;
   proof_base64?: string | null;
   proof_filename?: string | null;
+  crm_brand?: 'auriic' | 'aurrum';
 }
 
 export interface FollowUp {
@@ -226,6 +230,7 @@ export interface FollowUp {
   done: boolean;
   created_by: string | number | null;
   created_at: string;
+  crm_brand?: 'auriic' | 'aurrum';
 }
 
 export interface Promise {

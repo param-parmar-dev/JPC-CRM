@@ -31,6 +31,7 @@ import { useToast } from '../contexts/ToastContext';
 import { CandidateSheet } from '../components/CandidateSheet';
 import { TrackJobSheet } from '../components/TrackJobSheet';
 import { BulkLinkImportModal } from '../components/BulkLinkImportModal';
+import { resolveRecruiterName as resolveRecruiterNameFromUtil, isPlaceholderRecruiterName } from '../utils/recruiterResolver';
 
 export const AppTracker: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -71,12 +72,7 @@ export const AppTracker: React.FC = () => {
   const customSelectStyles = sharedSelectStyles;
 
   const resolveRecruiterName = (recId: string | number | null | undefined, candidateObj?: Candidate | null) => {
-    if (!recId) return 'Unassigned';
-    const matchedUser = team.find(u => String(u.id) === String(recId));
-    if (matchedUser) return matchedUser.display_name || matchedUser.username;
-    const matchedPrev = candidateObj?.previous_recruiters?.find(p => String(p.recruiter_id) === String(recId));
-    if (matchedPrev?.recruiter_name) return matchedPrev.recruiter_name;
-    return 'Previous Recruiter';
+    return resolveRecruiterNameFromUtil(recId, team, candidateObj, candidates);
   };
 
   const handleExportXLSX = async () => {
@@ -211,7 +207,7 @@ export const AppTracker: React.FC = () => {
     const unsubCandidates = onSnapshot(cQuery, (snapshot) => {
       const data = snapshot.docs
         .map(doc => ({ ...doc.data(), id: doc.id } as Candidate))
-        .filter(c => !c.deleted_at);
+        .filter(c => !c.deleted_at && c.crm_brand !== 'aurrum');
       setCandidates(data);
       setIsLoading(false);
     }, (error) => {
@@ -297,9 +293,10 @@ export const AppTracker: React.FC = () => {
       candidate.previous_recruiters.forEach(prev => {
         const prevId = String(prev.recruiter_id);
         if (!map.has(prevId)) {
+          const resolved = resolveRecruiterName(prevId, candidate);
           map.set(prevId, {
             recruiterId: prevId,
-            recruiterName: prev.recruiter_name || resolveRecruiterName(prevId, candidate),
+            recruiterName: !isPlaceholderRecruiterName(resolved) ? resolved : (prev.recruiter_name || resolved),
             isCurrent: String(candidate.assigned_recruiter) === prevId,
             totalCount: 0,
             todayCount: 0,

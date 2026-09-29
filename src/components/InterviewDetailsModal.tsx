@@ -16,6 +16,7 @@ import { isProxyUser, getInterviewResumeInfo } from '../services/interviewServic
 import { ResumeSubstitutionModal } from './ResumeSubstitutionModal';
 import { ProxyAssignmentModal } from './ProxyAssignmentModal';
 import { FreeTrialBadge } from './FreeTrialBadge';
+import { resolveRecruiterUser } from '../utils/recruiterResolver';
 
 interface InterviewDetailsModalProps {
   request: InterviewSupportRequest;
@@ -58,7 +59,7 @@ export const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({
 
   const candidate = candidates.find(c => c.id === request.candidate_id);
   const reqRounds = rounds.filter(r => r.request_id === request.id);
-  const recruiter = team.find(u => String(u.id) === String(request.recruiter_id));
+  const recruiter = resolveRecruiterUser(request.recruiter_id, team, candidate, candidates);
   const cs = team.find(u => String(u.id) === String(request.cs_id));
 
   const handleSave = async () => {

@@ -34,6 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn, getEasternDate, isEasternDayOngoing, getCalendarDateInfo, formatDisplayDateWithWeekday } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
 import * as XLSX from 'xlsx';
+import { resolveRecruiterName, resolveRecruiterUser, isPlaceholderRecruiterName, KNOWN_DELETED_USERS } from '../utils/recruiterResolver';
 
 const getLastNDays = (todayStr: string, n: number): string[] => {
   const dates: string[] = [];
@@ -236,10 +237,10 @@ export const TargetDashboard: React.FC = () => {
         c.previous_recruiters.forEach(pr => {
           const prId = String(pr.recruiter_id);
           if (prId && prId !== currentRecId && !prevRecMap.has(prId)) {
-            const u = team.find(t => String(t.id) === prId);
+            const resolved = resolveRecruiterName(prId, team, c, candidates);
             prevRecMap.set(prId, {
               id: prId,
-              name: u?.display_name || pr.recruiter_name || `Recruiter (${prId})`,
+              name: !isPlaceholderRecruiterName(resolved) ? resolved : (pr.recruiter_name || resolved),
               periodCount: 0,
               lifetimeCount: 0
             });
@@ -253,10 +254,9 @@ export const TargetDashboard: React.FC = () => {
           const existing = prevRecMap.get(rId);
           const inPeriod = candidateApps.some(ca => ca.id === app.id) ? 1 : 0;
           if (!existing) {
-            const u = team.find(t => String(t.id) === rId);
             prevRecMap.set(rId, {
               id: rId,
-              name: u?.display_name || `Recruiter (${rId})`,
+              name: resolveRecruiterName(rId, team, c, candidates),
               periodCount: inPeriod,
               lifetimeCount: 1
             });
@@ -297,8 +297,8 @@ export const TargetDashboard: React.FC = () => {
       const candidateRequests = targetRequests.filter(req => req.candidate_id === c.id);
       const activeRequest = candidateRequests[0]; // Most recent first (due to sorting)
 
-      // Recruiter, CS, and Marketing Leader (TL) names
-      const recruiter = team.find(t => String(t.id) === String(c.assigned_recruiter));
+      // Recruiter, CS, and Marketing Leader (TL) names (including recovered deleted recruiters)
+      const recruiter = resolveRecruiterUser(c.assigned_recruiter, team, c, candidates);
       const csUser = team.find(t => String(t.id) === String(c.assigned_cs));
       const marketingLeader = team.find(t => String(t.id) === String(c.assigned_marketing_leader));
 
@@ -555,9 +555,25 @@ export const TargetDashboard: React.FC = () => {
     showToast('Compliance report exported successfully', 'success');
   };
 
-  // List of all recruiters in the team (including Marketing Leaders who also manage candidate profiles)
+  // List of all recruiters in the team (including Marketing Leaders and recovered former recruiters)
   const recruitersList = useMemo(() => {
-    return team.filter(u => u.role === 'jpc_recruiter' || u.role === 'jpc_marketing');
+    const active = team.filter(u => u.role === 'jpc_recruiter' || u.role === 'jpc_marketing');
+    const existingIds = new Set(active.map(u => String(u.id)));
+    const former: User[] = [];
+    Object.values(KNOWN_DELETED_USERS).forEach(del => {
+      if (!existingIds.has(del.id)) {
+        existingIds.add(del.id);
+        former.push({
+          id: del.id,
+          display_name: `${del.display_name} (Former)`,
+          username: del.username,
+          email: del.email,
+          role: del.role,
+          created_at: del.deleted_at || '',
+        });
+      }
+    });
+    return [...active, ...former];
   }, [team]);
 
   // Set default recruiter when lists load
@@ -571,7 +587,7 @@ export const TargetDashboard: React.FC = () => {
   const recruiterKPIData = useMemo(() => {
     if (selectedRecruiterId === 'all') return null;
     
-    const recUser = team.find(u => String(u.id) === String(selectedRecruiterId));
+    const recUser = resolveRecruiterUser(selectedRecruiterId, team, null, candidates);
     if (!recUser) return null;
 
     // Get list of dates of correct range
@@ -747,7 +763,7 @@ export const TargetDashboard: React.FC = () => {
         const profiles = c.profiles_count || 1;
         const targetPerProf = c.custom_daily_target || 40;
         const isCurrentRecruiter = String(c.assigned_recruiter) === String(selectedRecruiterId);
-        const currentRecUser = team.find(u => String(u.id) === String(c.assigned_recruiter));
+        const currentRecUser = resolveRecruiterUser(c.assigned_recruiter, team, c, candidates);
         
         let candExpectedTotal = 0;
         let candActualTotal = 0;

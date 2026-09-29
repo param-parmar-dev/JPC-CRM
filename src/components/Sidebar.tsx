@@ -20,7 +20,8 @@ import {
   User as UserIcon,
   Zap,
   TrendingUp,
-  FolderTree
+  FolderTree,
+  Sparkles
 } from 'lucide-react';
 import { cn, isSalesWorkingHours } from '../lib/utils';
 import { subscribeToCollection, updateSalesAvailability } from '../services/storage';
@@ -219,6 +220,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
     },
   ];
 
+  const isStaffUser = user?.role !== 'candidate' && user?.role !== 'jpc_candidate';
+  const aurrumNavItems = [
+    { label: 'Aurrum Dashboard', hash: '#aurrum-dashboard', icon: LayoutDashboard, visible: isStaffUser },
+    { label: 'Candidates', hash: '#aurrum-candidates', icon: Users, visible: isStaffUser },
+    { label: 'Sales', hash: '#aurrum-sales', icon: TrendingUp, visible: isStaffUser },
+    { label: 'Interview Support', hash: '#aurrum-interviews', icon: Video, visible: isStaffUser },
+  ];
+
   return (
     <>
       {/* Mobile Overlay */}
@@ -255,7 +264,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 sm:py-6 space-y-1.5 overflow-y-auto touch-scroll">
+        <nav className="flex-1 px-3 py-4 sm:py-6 space-y-1.5 overflow-y-auto touch-scroll custom-scrollbar">
           {navItems.filter(item => item.visible).map(item => (
             <a
               key={item.hash}
@@ -289,6 +298,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
               )}
             </a>
           ))}
+
+          {/* Dedicated Aurrum Careers Section */}
+          {aurrumNavItems.some(item => item.visible) && (
+            <div className="pt-4 mt-4 border-t border-border-primary/80 space-y-1.5">
+              <div className="px-4 py-1.5 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                  <Sparkles className="w-3 h-3" />
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
+                  Aurrum Careers
+                </span>
+              </div>
+              {aurrumNavItems.filter(item => item.visible).map(item => (
+                <a
+                  key={item.hash}
+                  href={item.hash}
+                  onClick={() => setIsOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all group relative font-semibold",
+                    currentHash.startsWith(item.hash)
+                      ? "bg-amber-500/15 text-amber-500 shadow-inner"
+                      : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+                  )}
+                >
+                  {currentHash.startsWith(item.hash) && (
+                    <motion.div
+                      layoutId="activeNavIndicator"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-amber-500 rounded-r-full shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                    />
+                  )}
+                  <item.icon className={cn(
+                    "w-5 h-5 transition-transform duration-300",
+                    currentHash.startsWith(item.hash) ? "scale-110 text-amber-500" : "group-hover:scale-110 group-hover:text-text-primary"
+                  )} />
+                  <span className="flex-1">{item.label}</span>
+                </a>
+              ))}
+            </div>
+          )}
         </nav>
 
         {/* Footer */}

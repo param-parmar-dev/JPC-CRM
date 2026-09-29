@@ -80,6 +80,7 @@ import { query, collection, where, onSnapshot, doc, setDoc, getDocs } from 'fire
 import { db, firebaseConfig } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut as secondarySignOut, updateProfile } from 'firebase/auth';
+import { resolveRecruiterName as resolveRecruiterNameFromUtil, resolveRecruiterUser, isPlaceholderRecruiterName } from '../utils/recruiterResolver';
 
 export const CandidateDetail: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -347,7 +348,7 @@ export const CandidateDetail: React.FC = () => {
 
   const combinedLogs = useMemo(() => {
     const logs = activityLogs.map(log => {
-      const actor = allUsers.find(u => String(u.id) === String(log.user_id));
+      const actor = resolveRecruiterUser(log.user_id, allUsers, candidate);
       return {
         id: log.id,
         action: log.action,
@@ -360,7 +361,7 @@ export const CandidateDetail: React.FC = () => {
     });
 
     const resumeLogs = resumeRequests.map(req => {
-      const actor = allUsers.find(u => String(u.id) === String(req.recruiter_id));
+      const actor = resolveRecruiterUser(req.recruiter_id, allUsers, candidate);
       return {
         id: req.id,
         action: 'Resume Change Request',
@@ -373,7 +374,7 @@ export const CandidateDetail: React.FC = () => {
     });
 
     const appLogs = applications.map(app => {
-      const actor = allUsers.find(u => String(u.id) === String(app.recruiter_id));
+      const actor = resolveRecruiterUser(app.recruiter_id, allUsers, candidate);
       return {
         id: app.id,
         action: 'Job Application',
@@ -386,7 +387,7 @@ export const CandidateDetail: React.FC = () => {
     });
 
     const interviewLogs = interviews.map(int => {
-      const actor = allUsers.find(u => String(u.id) === String(int.created_by || int.recruiter_id));
+      const actor = resolveRecruiterUser(int.created_by || int.recruiter_id, allUsers, candidate);
       return {
         id: int.id,
         action: 'Interview Support',
@@ -401,17 +402,10 @@ export const CandidateDetail: React.FC = () => {
     return [...logs, ...resumeLogs, ...appLogs, ...interviewLogs].sort((a, b) => 
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-  }, [activityLogs, resumeRequests, applications, interviews, allUsers]);
+  }, [activityLogs, resumeRequests, applications, interviews, allUsers, candidate]);
 
   const resolveRecruiterName = (recId?: string | number | null) => {
-    if (!recId) return 'Unassigned';
-    const found = allUsers.find(u => String(u.id) === String(recId));
-    if (found) return found.display_name;
-    if (candidate?.previous_recruiters) {
-      const prev = candidate.previous_recruiters.find(p => String(p.recruiter_id) === String(recId));
-      if (prev?.recruiter_name) return prev.recruiter_name;
-    }
-    return `Recruiter (${recId})`;
+    return resolveRecruiterNameFromUtil(recId, allUsers, candidate);
   };
 
   const appStats = useMemo(() => {
@@ -461,9 +455,10 @@ export const CandidateDetail: React.FC = () => {
       candidate.previous_recruiters.forEach(prev => {
         const prevId = String(prev.recruiter_id);
         if (!map.has(prevId)) {
+          const resolved = resolveRecruiterName(prevId);
           map.set(prevId, {
             recruiterId: prevId,
-            recruiterName: prev.recruiter_name || resolveRecruiterName(prevId),
+            recruiterName: !isPlaceholderRecruiterName(resolved) ? resolved : (prev.recruiter_name || resolved),
             isCurrent: Boolean(candidate?.assigned_recruiter && String(candidate.assigned_recruiter) === prevId),
             todayCount: 0,
             weekCount: 0,
@@ -3190,7 +3185,7 @@ export const CandidateDetail: React.FC = () => {
                         <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Assigned Recruiter</p>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-text-primary font-medium">
-                            {allUsers.find(u => String(u.id) === String(candidate.assigned_recruiter))?.display_name || '—'}
+                            {candidate.assigned_recruiter ? resolveRecruiterName(candidate.assigned_recruiter) : '—'}
                           </p>
                           {candidate.assigned_marketing_leader && String(candidate.assigned_recruiter) === String(candidate.assigned_marketing_leader) && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
