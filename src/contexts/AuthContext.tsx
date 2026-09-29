@@ -78,38 +78,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               console.warn('[AuthContext] LocalStorage quota exceeded or disabled', storageErr);
             }
           } else {
-            // Check if this email belongs to a candidate
-            let candidateData: Candidate | undefined;
+            // Check if a jpc_users record already exists for this email (e.g. linked/pre-created profile)
+            let existingEmailUser: User | undefined;
+            let existingEmailDocId: string | undefined;
             if (fUser.email) {
               try {
-                const candidatesSnap = await getDocs(query(collection(db, 'jpc_candidates'), where('email', '==', fUser.email)));
-                candidateData = candidatesSnap.docs[0]?.data() as Candidate | undefined;
-              } catch (candidateErrSkin) {
-                console.warn('[AuthContext] Offline when searching candidates list:', candidateErrSkin);
+                const emailUserSnap = await getDocs(
+                  query(collection(db, 'jpc_users'), where('email', '==', fUser.email))
+                );
+                if (!emailUserSnap.empty) {
+                  existingEmailUser = emailUserSnap.docs[0].data() as User;
+                  existingEmailDocId = emailUserSnap.docs[0].id;
+                }
+              } catch (emailLookupErr) {
+                console.warn('[AuthContext] Could not search jpc_users by email:', emailLookupErr);
               }
             }
 
-            const newUser: User = {
-              id: fUser.uid,
-              username: fUser.email?.split('@')[0] || 'user',
-              display_name: fUser.displayName || candidateData?.full_name || 'User',
-              role: fUser.email === 'paramatwork3076@gmail.com' ? 'jpc_sysadmin' : (candidateData ? 'candidate' : 'jpc_sales'),
-              candidate_id: candidateData?.id || null,
-              email: fUser.email || undefined,
-              created_at: new Date().toISOString()
-            };
+            if (existingEmailUser) {
+              const linkedUser: Record<string, any> = {
+                ...existingEmailUser,
+                id: fUser.uid,
+              };
+              Object.keys(linkedUser).forEach(k => {
+                if (linkedUser[k] === undefined) delete linkedUser[k];
+              });
 
-            if (newUser.username === 'mohit.panchal' || newUser.email === 'mohit.panchal@auriic.co') {
-              newUser.role = 'jpc_recruiter';
-            }
+              try {
+                await setDoc(doc(db, 'jpc_users', fUser.uid), linkedUser);
+                if (existingEmailDocId && existingEmailDocId !== fUser.uid) {
+                  await deleteDoc(doc(db, 'jpc_users', existingEmailDocId));
+                }
+              } catch (linkErr) {
+                console.warn('[AuthContext] Failed to link existing email user doc to uid:', linkErr);
+              }
 
-            try {
-              await setDoc(doc(db, 'jpc_users', fUser.uid), newUser);
-              setUser(newUser);
-              localStorage.setItem(`jpc_user_cache_${fUser.uid}`, JSON.stringify(newUser));
-            } catch (writeError) {
-              console.warn('[AuthContext] Failed to register user document offline, using local profile', writeError);
-              setUser(newUser);
+              setUser(linkedUser as User);
+              try {
+                localStorage.setItem(`jpc_user_cache_${fUser.uid}`, JSON.stringify(linkedUser));
+              } catch {}
+            } else {
+              // Check if this email belongs to a candidate
+              let candidateData: Candidate | undefined;
+              if (fUser.email) {
+                try {
+                  const candidatesSnap = await getDocs(query(collection(db, 'jpc_candidates'), where('email', '==', fUser.email)));
+                  candidateData = candidatesSnap.docs[0]?.data() as Candidate | undefined;
+                } catch (candidateErrSkin) {
+                  console.warn('[AuthContext] Offline when searching candidates list:', candidateErrSkin);
+                }
+              }
+
+              const newUser: User = {
+                id: fUser.uid,
+                username: fUser.email?.split('@')[0] || 'user',
+                display_name: fUser.displayName || candidateData?.full_name || 'User',
+                role: fUser.email === 'paramatwork3076@gmail.com' ? 'jpc_sysadmin' : (candidateData ? 'candidate' : 'jpc_sales'),
+                candidate_id: candidateData?.id || null,
+                ...(fUser.email ? { email: fUser.email } : {}),
+                created_at: new Date().toISOString()
+              };
+
+              if (newUser.username === 'mohit.panchal' || newUser.email === 'mohit.panchal@auriic.co') {
+                newUser.role = 'jpc_recruiter';
+              }
+
+              try {
+                await setDoc(doc(db, 'jpc_users', fUser.uid), newUser);
+                setUser(newUser);
+                localStorage.setItem(`jpc_user_cache_${fUser.uid}`, JSON.stringify(newUser));
+              } catch (writeError) {
+                console.warn('[AuthContext] Failed to register user document offline, using local profile', writeError);
+                setUser(newUser);
+              }
             }
           }
         } catch (error) {

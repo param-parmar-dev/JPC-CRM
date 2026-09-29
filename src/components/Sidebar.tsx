@@ -212,7 +212,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
       label: 'Team', 
       hash: '#team', 
       icon: Shield, 
-      visible: (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_marketing' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'aurrum_admin')
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_marketing' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person')
     },
     { 
       label: 'Feature Alerts', 
@@ -230,11 +230,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
     user?.role === 'jpc_cs' ||
     isProxyUser(user);
 
+  const canManageAurrumTeam =
+    user?.role === 'aurrum_admin' ||
+    user?.role === 'administrator' ||
+    user?.role === 'jpc_sysadmin' ||
+    user?.role === 'jpc_manager';
+
   const aurrumNavItems = [
     { label: 'Aurrum Dashboard', hash: '#aurrum-dashboard', icon: LayoutDashboard, visible: canAccessAurrum },
     { label: 'Candidates', hash: '#aurrum-candidates', icon: Users, visible: canAccessAurrum },
     { label: 'Sales', hash: '#aurrum-sales', icon: TrendingUp, visible: canAccessAurrum },
     { label: 'Interview Support', hash: '#aurrum-interviews', icon: Video, visible: canAccessAurrum },
+    { label: 'Team', hash: '#aurrum-team', icon: Shield, visible: canManageAurrumTeam },
   ];
 
   return (

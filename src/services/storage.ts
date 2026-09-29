@@ -215,7 +215,11 @@ export const subscribeToQuery = <T>(q: any, callback: (data: T[]) => void, colle
 // Users
 export const saveUser = async (user: User) => {
   try {
-    await setDoc(doc(db, 'jpc_users', String(user.id)), user);
+    const cleaned: Record<string, any> = {};
+    Object.entries(user).forEach(([k, v]) => {
+      if (v !== undefined) cleaned[k] = v;
+    });
+    await setDoc(doc(db, 'jpc_users', String(user.id)), cleaned);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `jpc_users/${user.id}`);
   }

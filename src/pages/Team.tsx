@@ -12,80 +12,58 @@ import { LeadRoundRobinDashboard } from '../components/LeadRoundRobinDashboard';
 import { useToast } from '../contexts/ToastContext';
 import { deleteDoc, doc, setDoc, getDocs, collection, writeBatch, query, where, updateDoc } from 'firebase/firestore';
 import { db, firebaseConfig } from '../firebase';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signOut as secondarySignOut, updateProfile, createUserWithEmailAndPassword } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, signOut as secondarySignOut, updateProfile, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { RotateCw } from 'lucide-react';
 import { archiveDeletedUser } from '../utils/recruiterResolver';
+
+const cleanUserForFirestore = (userObj: Record<string, any>): User => {
+  const cleaned: Record<string, any> = {};
+  Object.entries(userObj).forEach(([key, value]) => {
+    if (value !== undefined) {
+      cleaned[key] = value;
+    }
+  });
+  return cleaned as User;
+};
 
 const ROLES: {
   value: UserRole;
   label: string;
   icon: any;
   color: string;
-  brand: 'auriic' | 'aurrum';
   description: string;
   sidebarModules: string[];
 }[] = [
-  {
-    value: 'aurrum_admin',
-    label: 'Aurrum Admin',
-    icon: Sparkles,
-    color: 'text-amber-500',
-    brand: 'aurrum',
-    description: 'Full access to Aurrum Careers section only + Aurrum Team management.',
-    sidebarModules: ['Aurrum Dashboard', 'Candidates', 'Sales', 'Interview Support', 'Team'],
-  },
-  {
-    value: 'aurrum_sales',
-    label: 'Aurrum Sales',
-    icon: Sparkles,
-    color: 'text-amber-500',
-    brand: 'aurrum',
-    description: 'Aurrum Careers sales & lead management — sidebar restricted to Aurrum Careers only.',
-    sidebarModules: ['Aurrum Dashboard', 'Candidates', 'Sales', 'Interview Support'],
-  },
-  {
-    value: 'aurrum_team',
-    label: 'Aurrum Team',
-    icon: Sparkles,
-    color: 'text-amber-500',
-    brand: 'aurrum',
-    description: 'Aurrum Careers operations & interview support — sidebar restricted to Aurrum Careers only.',
-    sidebarModules: ['Aurrum Dashboard', 'Candidates', 'Sales', 'Interview Support'],
-  },
   {
     value: 'administrator',
     label: 'Administrator',
     icon: ShieldCheck,
     color: 'text-accent-red',
-    brand: 'auriic',
-    description: 'Full system access across Auriic CRM and Aurrum Careers.',
-    sidebarModules: ['All Auriic CRM Modules', 'All Aurrum Careers Modules', 'System & Team Admin'],
+    description: 'Full system access across Auriic CRM.',
+    sidebarModules: ['All Auriic CRM Modules', 'System & Team Admin'],
   },
   {
     value: 'jpc_sysadmin',
     label: 'System Admin',
     icon: ShieldCheck,
     color: 'text-accent-red',
-    brand: 'auriic',
-    description: 'Full system administration across Auriic CRM and Aurrum Careers.',
-    sidebarModules: ['All Auriic CRM Modules', 'All Aurrum Careers Modules', 'System & Team Admin'],
+    description: 'Full system administration across Auriic CRM.',
+    sidebarModules: ['All Auriic CRM Modules', 'System & Team Admin'],
   },
   {
     value: 'jpc_manager',
     label: 'Auriic Manager',
     icon: Shield,
     color: 'text-accent-purple',
-    brand: 'auriic',
-    description: 'Management oversight across Auriic CRM and Aurrum Careers.',
-    sidebarModules: ['Dashboard', 'CRM Leads & Sales', 'Pipeline', 'Candidates', 'Aurrum Careers', 'Team'],
+    description: 'Management oversight across Auriic CRM.',
+    sidebarModules: ['Dashboard', 'CRM Leads & Sales', 'Pipeline', 'Candidates', 'Team'],
   },
   {
     value: 'jpc_lead_gen',
     label: 'Lead Generation',
     icon: UserPlus,
     color: 'text-accent-amber',
-    brand: 'auriic',
     description: 'Auriic CRM lead generation, candidate intake, and follow-up tracking.',
     sidebarModules: ['Dashboard', 'Candidates', 'Follow-Ups', 'Not Interested', 'Not Eligible'],
   },
@@ -94,7 +72,6 @@ const ROLES: {
     label: 'Sales Team',
     icon: UserCheck,
     color: 'text-accent-blue',
-    brand: 'auriic',
     description: 'Auriic CRM sales pipeline, candidate conversions, and follow-ups.',
     sidebarModules: ['Dashboard', 'Pipeline Board', 'Candidates', 'Follow-Ups'],
   },
@@ -103,16 +80,14 @@ const ROLES: {
     label: 'Compliance Head',
     icon: ShieldCheck,
     color: 'text-accent-teal',
-    brand: 'auriic',
     description: 'Compliance & QC leadership across Auriic CRM and Interview Support.',
-    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Target Compliance', 'Interview Support', 'Aurrum Careers'],
+    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Target Compliance', 'Interview Support'],
   },
   {
     value: 'jpc_compliance_person',
     label: 'Compliance Person',
     icon: UserCheck,
     color: 'text-accent-teal',
-    brand: 'auriic',
     description: 'Compliance specialist managing candidate QC, applications, and targets.',
     sidebarModules: ['Dashboard', 'Candidates', 'App Tracker', 'Target Compliance', 'Interview Support'],
   },
@@ -121,7 +96,6 @@ const ROLES: {
     label: 'Resume Team',
     icon: UserCheck,
     color: 'text-accent-amber',
-    brand: 'auriic',
     description: 'Resume preparation, CV repository, and resume log management.',
     sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Resume Log', 'Resume Prep', 'CV Repository'],
   },
@@ -130,7 +104,6 @@ const ROLES: {
     label: 'Recruiter',
     icon: UserCheck,
     color: 'text-accent-green',
-    brand: 'auriic',
     description: 'Marketing recruiter handling job applications, RTRs, and interview support.',
     sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'App Tracker', 'RTR Log', 'Interview Support'],
   },
@@ -139,7 +112,6 @@ const ROLES: {
     label: 'Marketing Leader (TL)',
     icon: Shield,
     color: 'text-accent-gray',
-    brand: 'auriic',
     description: 'Marketing Team Lead managing recruiter clusters and application velocity.',
     sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'App Tracker', 'Interview Support', 'Team'],
   },
@@ -148,7 +120,6 @@ const ROLES: {
     label: 'Marketing Support',
     icon: UserCheck,
     color: 'text-accent-gray',
-    brand: 'auriic',
     description: 'Marketing support operations for candidate pipeline and follow-ups.',
     sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Follow-Ups'],
   },
@@ -157,16 +128,14 @@ const ROLES: {
     label: 'Proxy Team',
     icon: UserCheck,
     color: 'text-accent-blue',
-    brand: 'auriic',
     description: 'Interview support proxy specialist for technical interview rounds.',
-    sidebarModules: ['Dashboard', 'Interview Support', 'Proxy Support', 'Aurrum Careers'],
+    sidebarModules: ['Dashboard', 'Interview Support', 'Proxy Support'],
   },
   {
     value: 'jpc_candidate',
     label: 'Candidate User',
     icon: UserCheck,
     color: 'text-accent-teal',
-    brand: 'auriic',
     description: 'External candidate portal login linked to a specific candidate profile.',
     sidebarModules: ['Candidate Portal Dashboard'],
   },
@@ -180,6 +149,7 @@ export const Team: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [generatedEmail, setGeneratedEmail] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [reassigningFrom, setReassigningFrom] = useState<User | null>(null);
@@ -196,7 +166,7 @@ export const Team: React.FC = () => {
   const [formData, setFormData] = useState({
     username: '',
     display_name: '',
-    role: (user?.role === 'aurrum_admin' ? 'aurrum_sales' : 'jpc_sales') as UserRole,
+    role: 'jpc_sales' as UserRole,
     password: '',
     leader_id: '' as string | number | null,
     candidate_id: '',
@@ -210,7 +180,8 @@ export const Team: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady) return;
     const unsub = subscribeToCollection<User>('jpc_users', (data) => {
-      setTeam(data);
+      // Strictly exclude Aurrum users from the Auriic CRM Team page
+      setTeam(data.filter(u => !isAurrumRole(u.role)));
       setIsLoading(false);
     });
     const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', (data) => {
@@ -224,36 +195,33 @@ export const Team: React.FC = () => {
 
   const visibleTeam = useMemo(() => {
     if (!user) return [];
+    const auriicOnlyTeam = team.filter(u => !isAurrumRole(u.role));
     if (user.role === 'administrator' || user.role === 'jpc_sysadmin' || user.role === 'jpc_manager' || user.role === 'jpc_cs') {
-      return team;
-    }
-    if (user.role === 'aurrum_admin') {
-      return team.filter(u => isAurrumRole(u.role));
+      return auriicOnlyTeam;
     }
     
     if (user.role === 'jpc_compliance_person') {
-      return team.filter(u => 
+      return auriicOnlyTeam.filter(u => 
         u.id === user.id || 
         (user.leader_id && (String(u.id) === String(user.leader_id) || String(u.leader_id) === String(user.leader_id)))
       );
     }
     
-    const mohitUser = team.find(u => u.username === 'mohit.panchal' || u.email === 'mohit.panchal@auriic.co');
+    const mohitUser = auriicOnlyTeam.find(u => u.username === 'mohit.panchal' || u.email === 'mohit.panchal@auriic.co');
     const isFaiz = (user.role as string) === 'jpc_cs' && (user.username === 'care' || String(user.display_name).toLowerCase().includes('faiz'));
     if (isFaiz && mohitUser) {
-      return team.filter(u => String(u.leader_id) === String(mohitUser.id) || String(u.leader_id) === String(user.id) || u.id === mohitUser.id || u.id === user.id);
+      return auriicOnlyTeam.filter(u => String(u.leader_id) === String(mohitUser.id) || String(u.leader_id) === String(user.id) || u.id === mohitUser.id || u.id === user.id);
     }
 
     if (user.role === 'jpc_marketing') {
-      return team.filter(u => String(u.leader_id) === String(user.id) || u.id === user.id);
+      return auriicOnlyTeam.filter(u => String(u.leader_id) === String(user.id) || u.id === user.id);
     }
-    return team.filter(u => u.id === user.id);
+    return auriicOnlyTeam.filter(u => u.id === user.id);
   }, [team, user]);
 
   const canManage = (targetRole: UserRole, targetUser?: User) => {
     if (user?.role === 'administrator' || user?.role === 'jpc_sysadmin') return true;
     if (user?.role === 'jpc_manager' && targetRole !== 'administrator' && targetRole !== 'jpc_sysadmin') return true;
-    if (user?.role === 'aurrum_admin' && isAurrumRole(targetRole)) return true;
     
     // Compliance Head (jpc_cs) can manage their junior Compliance Persons
     if (user?.role === 'jpc_cs') {
@@ -283,11 +251,13 @@ export const Team: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const email = formData.username.includes('@') ? formData.username : `${formData.username}@placify-crm.com`;
+      const cleanUsername = formData.username.trim();
+      const email = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@placify-crm.com`;
+      const defaultRole = (user?.role === 'aurrum_admin' ? 'aurrum_sales' : 'jpc_sales') as UserRole;
       
       // Local validation for duplicate username in Firestore
       const isDuplicate = team.some(u => 
-        u.username.toLowerCase() === formData.username.toLowerCase() && 
+        u.username.toLowerCase() === cleanUsername.toLowerCase() && 
         (!editingUser || u.id !== editingUser.id)
       );
 
@@ -302,7 +272,9 @@ export const Team: React.FC = () => {
       if (!editingUser) {
         // Create Firebase Auth user using a secondary app instance
         // This allows creating a user without logging out the current admin
-        const secondaryApp = initializeApp(firebaseConfig, 'SecondaryTeam');
+        const secondaryApp =
+          getApps().find(a => a.name === 'SecondaryTeam') ||
+          initializeApp(firebaseConfig, 'SecondaryTeam');
         const secondaryAuth = getAuth(secondaryApp);
         
         try {
@@ -313,20 +285,20 @@ export const Team: React.FC = () => {
           );
           await updateProfile(fUser, { displayName: formData.display_name });
           
-            userId = fUser.uid;
+          userId = fUser.uid;
           
-          const newUser: User = {
+          const newUser = cleanUserForFirestore({
             id: userId,
-            username: formData.username,
-            display_name: formData.display_name,
+            username: cleanUsername,
+            display_name: formData.display_name.trim(),
             email: email,
             role: formData.role,
-            leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? formData.leader_id : null,
-            candidate_id: formData.role === 'jpc_candidate' ? formData.candidate_id : null,
+            leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? (formData.leader_id || null) : null,
+            candidate_id: formData.role === 'jpc_candidate' ? (formData.candidate_id || null) : null,
             is_on_leave: formData.is_on_leave || false,
-            sales_availability_status: formData.role === 'jpc_sales' ? 'Active' : undefined,
+            ...(formData.role === 'jpc_sales' ? { sales_availability_status: 'Active' as const } : {}),
             created_at: new Date().toISOString(),
-          };
+          });
 
           if (formData.role === 'jpc_candidate' && formData.candidate_id) {
             await setDoc(doc(db, 'jpc_candidates', formData.candidate_id), { 
@@ -337,6 +309,7 @@ export const Team: React.FC = () => {
           await setDoc(doc(db, 'jpc_users', String(newUser.id)), newUser);
           await secondarySignOut(secondaryAuth);
           
+          setGeneratedEmail(email);
           setGeneratedPassword(formData.password);
           showToast('Team member account created successfully!', 'success');
         } catch (authError: any) {
@@ -344,21 +317,24 @@ export const Team: React.FC = () => {
           let message = 'Failed to create team member account';
           
           if (authError.code === 'auth/email-already-in-use') {
-            // Try to find if this user already exists in Firestore
+            // 1. Try to find if this user already exists in Firestore
             const usersSnap = await getDocs(query(collection(db, 'jpc_users'), where('email', '==', email)));
             
             if (!usersSnap.empty) {
               const existingUser = usersSnap.docs[0].data() as User;
               
-              // Update their role and details
-              const updatedUser: User = {
+              const updatedUser = cleanUserForFirestore({
                 ...existingUser,
-                username: formData.username,
-                display_name: formData.display_name,
+                username: cleanUsername,
+                display_name: formData.display_name.trim(),
+                email: email,
                 role: formData.role,
-                leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? formData.leader_id : null,
-                candidate_id: formData.role === 'jpc_candidate' ? formData.candidate_id : null,
-              };
+                leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? (formData.leader_id || null) : null,
+                candidate_id: formData.role === 'jpc_candidate' ? (formData.candidate_id || null) : null,
+                ...(formData.role === 'jpc_sales'
+                  ? { sales_availability_status: existingUser.sales_availability_status || 'Active' }
+                  : {}),
+              });
 
               if (formData.role === 'jpc_candidate' && formData.candidate_id) {
                 await setDoc(doc(db, 'jpc_candidates', formData.candidate_id), { 
@@ -371,10 +347,50 @@ export const Team: React.FC = () => {
               setIsLoading(false);
               setIsModalOpen(false);
               setEditingUser(null);
-              setFormData({ username: '', display_name: '', role: 'jpc_sales', password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
+              setFormData({ username: '', display_name: '', role: defaultRole, password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
               return;
             } else {
-              message = 'This email is already registered. Please use a different email or contact support.';
+              // Auth account exists without a Firestore jpc_users record (e.g. from an interrupted creation).
+              // Recover the Auth UID if password matches, or register the profile in jpc_users so AuthContext links it on login.
+              let recoveredUid: string | null = null;
+              try {
+                const signInResult = await signInWithEmailAndPassword(secondaryAuth, email, formData.password);
+                recoveredUid = signInResult.user.uid;
+                await updateProfile(signInResult.user, { displayName: formData.display_name.trim() });
+                await secondarySignOut(secondaryAuth);
+              } catch (recoverSignInErr) {
+                console.warn('Could not sign in to existing Auth account during recovery, creating Firestore profile:', recoverSignInErr);
+              }
+
+              const targetUid = recoveredUid || generateId('usr_');
+              const recoveredUser = cleanUserForFirestore({
+                id: targetUid,
+                username: cleanUsername,
+                display_name: formData.display_name.trim(),
+                email: email,
+                role: formData.role,
+                leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? (formData.leader_id || null) : null,
+                candidate_id: formData.role === 'jpc_candidate' ? (formData.candidate_id || null) : null,
+                is_on_leave: formData.is_on_leave || false,
+                ...(formData.role === 'jpc_sales' ? { sales_availability_status: 'Active' as const } : {}),
+                created_at: new Date().toISOString(),
+              });
+
+              if (formData.role === 'jpc_candidate' && formData.candidate_id) {
+                await setDoc(doc(db, 'jpc_candidates', formData.candidate_id), {
+                  portal_link: formData.portal_link || null,
+                }, { merge: true });
+              }
+
+              await setDoc(doc(db, 'jpc_users', String(recoveredUser.id)), recoveredUser);
+              setGeneratedEmail(email);
+              setGeneratedPassword(formData.password);
+              showToast('Team member account linked & created successfully!', 'success');
+              setIsLoading(false);
+              setIsModalOpen(false);
+              setEditingUser(null);
+              setFormData({ username: '', display_name: '', role: defaultRole, password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
+              return;
             }
           } else if (authError.code === 'auth/weak-password') {
             message = 'Password should be at least 6 characters.';
@@ -384,17 +400,22 @@ export const Team: React.FC = () => {
           return;
         }
       } else {
-        const updatedUser: User = {
+        const baseEditUser: Record<string, any> = {
           ...editingUser,
-          username: formData.username,
-          display_name: formData.display_name,
+          username: cleanUsername,
+          display_name: formData.display_name.trim(),
           email: email,
           role: formData.role,
-          leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? formData.leader_id : null,
-          candidate_id: formData.role === 'jpc_candidate' ? formData.candidate_id : null,
+          leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? (formData.leader_id || null) : null,
+          candidate_id: formData.role === 'jpc_candidate' ? (formData.candidate_id || null) : null,
           is_on_leave: formData.is_on_leave || false,
-          sales_availability_status: formData.role === 'jpc_sales' ? (editingUser?.sales_availability_status || 'Active') : undefined,
         };
+        if (formData.role === 'jpc_sales') {
+          baseEditUser.sales_availability_status = editingUser?.sales_availability_status || 'Active';
+        } else {
+          delete baseEditUser.sales_availability_status;
+        }
+        const updatedUser = cleanUserForFirestore(baseEditUser);
 
         if (formData.role === 'jpc_candidate' && formData.candidate_id) {
           await setDoc(doc(db, 'jpc_candidates', formData.candidate_id), { 
@@ -408,7 +429,7 @@ export const Team: React.FC = () => {
 
       setIsModalOpen(false);
       setEditingUser(null);
-      setFormData({ username: '', display_name: '', role: 'jpc_sales', password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
+      setFormData({ username: '', display_name: '', role: defaultRole, password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
     } catch (error) {
       console.error('Save user error:', error);
       showToast('Failed to save user', 'error');
@@ -768,7 +789,7 @@ export const Team: React.FC = () => {
                 <div className="space-y-4 mb-8">
                   <div className="p-4 bg-bg-tertiary rounded-2xl border border-border-primary text-left">
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Login Email</p>
-                    <p className="text-sm font-mono text-text-primary">{formData.username.includes('@') ? formData.username : `${formData.username}@placify-crm.com`}</p>
+                    <p className="text-sm font-mono text-text-primary">{generatedEmail || (formData.username.includes('@') ? formData.username : `${formData.username}@placify-crm.com`)}</p>
                   </div>
                   <div className="p-4 bg-bg-tertiary rounded-2xl border border-border-primary text-left relative group">
                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Password</p>
@@ -789,8 +810,8 @@ export const Team: React.FC = () => {
                   <button 
                     onClick={() => {
                       const signupUrl = window.location.origin;
-                      const email = formData.username.includes('@') ? formData.username : `${formData.username}@auriic.co`;
-                      const message = `Hello, your Auriic account is ready!\n\nLogin at: ${signupUrl}\nEmail: ${email}\nPassword: ${generatedPassword}\n\nPlease change your password after logging in.`;
+                      const email = generatedEmail || (formData.username.includes('@') ? formData.username : `${formData.username}@placify-crm.com`);
+                      const message = `Hello, your account is ready!\n\nLogin at: ${signupUrl}\nEmail: ${email}\nPassword: ${generatedPassword}\n\nPlease change your password after logging in.`;
                       navigator.clipboard.writeText(message);
                       showToast('Full message copied to clipboard!', 'success');
                     }}
@@ -800,7 +821,10 @@ export const Team: React.FC = () => {
                     Copy Full Invite
                   </button>
                   <button 
-                    onClick={() => setGeneratedPassword(null)}
+                    onClick={() => {
+                      setGeneratedPassword(null);
+                      setGeneratedEmail(null);
+                    }}
                     className="w-full py-4 bg-bg-tertiary text-text-primary font-bold rounded-2xl hover:bg-bg-tertiary/80 transition-all"
                   >
                     Close
@@ -846,14 +870,14 @@ export const Team: React.FC = () => {
               Reset Database
             </button>
           )}
-          {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'aurrum_admin') && (
+          {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && (
             <button 
               onClick={() => {
                 setEditingUser(null);
                 setFormData({
                   username: '',
                   display_name: '',
-                  role: user?.role === 'aurrum_admin' ? 'aurrum_sales' : 'jpc_sales',
+                  role: 'jpc_sales',
                   password: '',
                   leader_id: null,
                   candidate_id: '',
@@ -890,50 +914,46 @@ export const Team: React.FC = () => {
           className={cn(
             "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
             activeTab === 'roles'
-              ? "border-amber-500 text-amber-500"
+              ? "border-accent-blue text-accent-blue"
               : "border-transparent text-text-secondary hover:text-text-primary"
           )}
         >
           <ShieldCheck className="w-4 h-4" />
           <span>User Roles & Access</span>
-          <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-500 rounded-md text-[10px] font-extrabold uppercase">
-            {user?.role === 'aurrum_admin' ? '3 Roles' : `${ROLES.length} Roles`}
+          <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
+            {ROLES.length} Roles
           </span>
         </button>
-        {!isAurrumRole(user?.role) && (
-          <>
-            <button
-              onClick={() => setActiveTab('round_robin')}
-              className={cn(
-                "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
-                activeTab === 'round_robin'
-                  ? "border-accent-teal text-accent-teal"
-                  : "border-transparent text-text-secondary hover:text-text-primary"
-              )}
-            >
-              <RotateCw className="w-4 h-4" />
-              <span>Lead Round-Robin Rotation</span>
-              <span className="px-1.5 py-0.5 bg-accent-teal/10 text-accent-teal rounded-md text-[10px] font-extrabold uppercase">
-                Auto Sales
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveTab('marketing_profiles')}
-              className={cn(
-                "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
-                activeTab === 'marketing_profiles'
-                  ? "border-accent-blue text-accent-blue"
-                  : "border-transparent text-text-secondary hover:text-text-primary"
-              )}
-            >
-              <TrendingUp className="w-4 h-4" />
-              <span>Marketing Load Distribution</span>
-              <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
-                Live Stats
-              </span>
-            </button>
-          </>
-        )}
+        <button
+          onClick={() => setActiveTab('round_robin')}
+          className={cn(
+            "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+            activeTab === 'round_robin'
+              ? "border-accent-teal text-accent-teal"
+              : "border-transparent text-text-secondary hover:text-text-primary"
+          )}
+        >
+          <RotateCw className="w-4 h-4" />
+          <span>Lead Round-Robin Rotation</span>
+          <span className="px-1.5 py-0.5 bg-accent-teal/10 text-accent-teal rounded-md text-[10px] font-extrabold uppercase">
+            Auto Sales
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('marketing_profiles')}
+          className={cn(
+            "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+            activeTab === 'marketing_profiles'
+              ? "border-accent-blue text-accent-blue"
+              : "border-transparent text-text-secondary hover:text-text-primary"
+          )}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>Marketing Load Distribution</span>
+          <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
+            Live Stats
+          </span>
+        </button>
       </div>
 
       {activeTab === 'members' ? (
@@ -948,11 +968,6 @@ export const Team: React.FC = () => {
                 <div className="flex items-center gap-3 px-2">
                   <role.icon className={cn("w-5 h-5", role.color)} />
                   <h2 className="text-lg font-bold text-text-primary tracking-tight">{role.label}</h2>
-                  {role.brand === 'aurrum' && (
-                    <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] font-extrabold text-amber-500 uppercase tracking-wider">
-                      Aurrum Careers Only
-                    </span>
-                  )}
                   <span className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded-lg text-[10px] font-bold text-text-muted uppercase">
                     {roleMembers.length}
                   </span>
@@ -1089,38 +1104,33 @@ export const Team: React.FC = () => {
         </div>
       ) : activeTab === 'roles' ? (
         <div className="space-y-10">
-          {/* Aurrum Careers Roles Section */}
+          {/* Auriic CRM Roles Section */}
           <section className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-2">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-text-primary tracking-tight">Aurrum Careers Roles</h2>
-                  <p className="text-xs text-text-secondary">
-                    Users with these roles only see the <strong>Aurrum Careers</strong> section in the sidebar (Dashboard → Candidates → Sales → Interview Support).
-                  </p>
-                </div>
+            <div className="flex items-center gap-3 px-2">
+              <div className="w-9 h-9 rounded-xl bg-accent-blue/10 border border-accent-blue/20 flex items-center justify-center text-accent-blue">
+                <Shield className="w-5 h-5" />
               </div>
-              <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] font-bold text-amber-500 uppercase tracking-wider self-start sm:self-auto">
-                Isolated Sidebar View
-              </span>
+              <div>
+                <h2 className="text-lg font-bold text-text-primary tracking-tight">Auriic CRM Roles</h2>
+                <p className="text-xs text-text-secondary">
+                  Standard Auriic CRM roles with role-based sidebar navigation and permissions.
+                </p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {ROLES.filter(r => r.brand === 'aurrum').map((role) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {ROLES.map((role) => {
                 const count = team.filter(u => u.role === role.value).length;
                 return (
                   <div
                     key={role.value}
-                    className="bg-bg-secondary rounded-3xl border border-amber-500/25 p-6 shadow-sm flex flex-col justify-between gap-5"
+                    className="bg-bg-secondary rounded-3xl border border-border-primary p-6 shadow-sm flex flex-col justify-between gap-5"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
-                            <role.icon className="w-5 h-5" />
+                          <div className="w-10 h-10 rounded-2xl bg-bg-tertiary border border-border-primary flex items-center justify-center">
+                            <role.icon className={cn("w-5 h-5", role.color)} />
                           </div>
                           <div>
                             <h3 className="font-bold text-text-primary">{role.label}</h3>
@@ -1140,7 +1150,7 @@ export const Team: React.FC = () => {
                           {role.sidebarModules.map((mod) => (
                             <span
                               key={mod}
-                              className="px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-lg text-[10px] font-bold"
+                              className="px-2 py-0.5 bg-bg-tertiary text-text-secondary border border-border-primary rounded-lg text-[10px] font-bold"
                             >
                               {mod}
                             </span>
@@ -1165,10 +1175,10 @@ export const Team: React.FC = () => {
                           });
                           setIsModalOpen(true);
                         }}
-                        className="w-full py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                        className="w-full py-2.5 px-4 bg-bg-tertiary hover:bg-accent-blue/10 hover:text-accent-blue hover:border-accent-blue/25 text-text-primary border border-border-primary rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
                       >
                         <UserPlus className="w-4 h-4" />
-                        Add {role.label} User
+                        Add {role.label}
                       </button>
                     )}
                   </div>
@@ -1176,91 +1186,6 @@ export const Team: React.FC = () => {
               })}
             </div>
           </section>
-
-          {/* Auriic CRM Roles Section */}
-          {user?.role !== 'aurrum_admin' && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-3 px-2">
-                <div className="w-9 h-9 rounded-xl bg-accent-blue/10 border border-accent-blue/20 flex items-center justify-center text-accent-blue">
-                  <Shield className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-text-primary tracking-tight">Auriic CRM Roles</h2>
-                  <p className="text-xs text-text-secondary">
-                    Standard Auriic CRM roles with role-based sidebar navigation and permissions.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {ROLES.filter(r => r.brand === 'auriic').map((role) => {
-                  const count = team.filter(u => u.role === role.value).length;
-                  return (
-                    <div
-                      key={role.value}
-                      className="bg-bg-secondary rounded-3xl border border-border-primary p-6 shadow-sm flex flex-col justify-between gap-5"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-10 h-10 rounded-2xl bg-bg-tertiary border border-border-primary flex items-center justify-center">
-                              <role.icon className={cn("w-5 h-5", role.color)} />
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-text-primary">{role.label}</h3>
-                              <p className="text-[11px] font-mono text-text-muted">{role.value}</p>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary">
-                            {count} {count === 1 ? 'User' : 'Users'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-text-secondary leading-relaxed mb-4">
-                          {role.description}
-                        </p>
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Sidebar Access</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {role.sidebarModules.map((mod) => (
-                              <span
-                                key={mod}
-                                className="px-2 py-0.5 bg-bg-tertiary text-text-secondary border border-border-primary rounded-lg text-[10px] font-bold"
-                              >
-                                {mod}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {canManage(role.value) && (
-                        <button
-                          onClick={() => {
-                            setEditingUser(null);
-                            setFormData({
-                              username: '',
-                              display_name: '',
-                              role: role.value,
-                              password: '',
-                              leader_id: null,
-                              candidate_id: '',
-                              portal_link: '',
-                              is_on_leave: false,
-                            });
-                            setIsModalOpen(true);
-                          }}
-                          className="w-full py-2.5 px-4 bg-bg-tertiary hover:bg-accent-blue/10 hover:text-accent-blue hover:border-accent-blue/25 text-text-primary border border-border-primary rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                          Add {role.label}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
         </div>
       ) : activeTab === 'round_robin' ? (
         <LeadRoundRobinDashboard
@@ -1328,24 +1253,10 @@ export const Team: React.FC = () => {
                 onChange={e => setFormData({...formData, role: e.target.value as UserRole, leader_id: null})}
                 className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors appearance-none"
               >
-                <optgroup label="Aurrum Careers Roles (Aurrum Sidebar Only)">
-                  {ROLES.filter(r => r.brand === 'aurrum').map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </optgroup>
-                {user?.role !== 'aurrum_admin' && (
-                  <optgroup label="Auriic CRM Roles">
-                    {ROLES.filter(r => r.brand === 'auriic').map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </optgroup>
-                )}
+                {ROLES.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </select>
-              {isAurrumRole(formData.role) && (
-                <p className="text-[11px] text-amber-500 font-medium px-1">
-                  This user will only see the Aurrum Careers section in the sidebar.
-                </p>
-              )}
             </div>
             {formData.role === 'jpc_candidate' && (
               <div className="space-y-4 pt-2 border-t border-border-primary">

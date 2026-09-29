@@ -42,6 +42,7 @@ const AurrumCandidates = lazy(() => import('./pages/AurrumCareers/AurrumCandidat
 const AurrumCandidateDetail = lazy(() => import('./pages/AurrumCareers/AurrumCandidateDetail').then(m => ({ default: m.AurrumCandidateDetail })));
 const AurrumSales = lazy(() => import('./pages/AurrumCareers/AurrumSales').then(m => ({ default: m.AurrumSales })));
 const AurrumInterviewSupport = lazy(() => import('./pages/AurrumCareers/AurrumInterviewSupport').then(m => ({ default: m.AurrumInterviewSupport })));
+const AurrumTeam = lazy(() => import('./pages/AurrumCareers/AurrumTeam').then(m => ({ default: m.AurrumTeam })));
 
 const PageLoader = () => (
   <div className="flex-1 flex items-center justify-center p-20">
@@ -88,7 +89,7 @@ const AppContent: React.FC = () => {
           '#aurrum-sales',
           '#aurrum-interviews',
           '#receipt',
-          ...(user.role === 'aurrum_admin' ? ['#team'] : []),
+          ...(user.role === 'aurrum_admin' ? ['#aurrum-team'] : []),
         ];
         if (!current || (!allowedForAurrum.includes(current) && !current.startsWith('#book-interview'))) {
           window.location.hash = '#aurrum-dashboard';
@@ -145,10 +146,10 @@ const AppContent: React.FC = () => {
         case '#aurrum-candidate': return <AurrumCandidateDetail />;
         case '#aurrum-sales': return <AurrumSales />;
         case '#aurrum-interviews': return <AurrumInterviewSupport />;
-        case '#receipt': return <Receipt />;
-        case '#team':
-          if (user?.role === 'aurrum_admin') return <Team />;
+        case '#aurrum-team':
+          if (user?.role === 'aurrum_admin') return <AurrumTeam />;
           return <AurrumDashboard />;
+        case '#receipt': return <Receipt />;
         default:
           if (hash.startsWith('#book-interview')) {
             return <BookingPage />;
@@ -220,6 +221,9 @@ const AppContent: React.FC = () => {
         return <AurrumSales />;
       case '#aurrum-interviews':
         return <AurrumInterviewSupport />;
+      case '#aurrum-team':
+        if (user?.role !== 'administrator' && user?.role !== 'jpc_sysadmin' && user?.role !== 'jpc_manager' && user?.role !== 'aurrum_admin') return <AurrumDashboard />;
+        return <AurrumTeam />;
       default:
         if (hash.startsWith('#book-interview')) {
           return <BookingPage />;
@@ -252,6 +256,7 @@ const AppContent: React.FC = () => {
       case '#aurrum-candidate': return 'Aurrum Candidate Profile';
       case '#aurrum-sales': return 'Aurrum Sales';
       case '#aurrum-interviews': return 'Aurrum Interview Support';
+      case '#aurrum-team': return 'Aurrum Team';
       case '#not-interested': return 'Not Interested';
       case '#not-eligible': return 'Not Eligible';
       case '#team': return 'Team';
