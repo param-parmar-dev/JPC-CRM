@@ -283,6 +283,7 @@ export interface Application {
   sheet_type?: string;
   applied_at: string;
   created_at: string;
+  crm_brand?: 'auriic' | 'aurrum';
 }
 
 export interface Notification {

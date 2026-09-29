@@ -25,6 +25,7 @@ import {
   QCChecklistItem, 
   FollowUp, 
   ActivityLog, 
+  Application,
   User, 
   Stage, 
   InterviewSupportRequest,
@@ -126,7 +127,8 @@ export const subscribeToCollection = <T>(collectionName: string, callback: (data
     if (
       collectionName === 'jpc_candidates' ||
       collectionName === 'jpc_followups' ||
-      collectionName === 'jpc_payments'
+      collectionName === 'jpc_payments' ||
+      collectionName === 'jpc_applications'
     ) {
       data = data.filter((item: any) => item?.crm_brand !== 'aurrum');
     }
@@ -151,7 +153,8 @@ export const subscribeToCollectionWithLimit = <T>(collectionName: string, limitC
     if (
       collectionName === 'jpc_candidates' ||
       collectionName === 'jpc_followups' ||
-      collectionName === 'jpc_payments'
+      collectionName === 'jpc_payments' ||
+      collectionName === 'jpc_applications'
     ) {
       data = data.filter((item: any) => item?.crm_brand !== 'aurrum');
     }
@@ -759,6 +762,47 @@ export const updateAurrumCandidate = async (id: string, updates: Partial<Candida
     await updateDoc(doc(db, 'jpc_candidates', id), data);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `jpc_candidates/${id}`);
+  }
+};
+
+export const addAurrumApplication = async (
+  application: Omit<Application, 'id' | 'created_at' | 'crm_brand'>
+): Promise<Application> => {
+  const id = generateId('aur_app_');
+  const fullApp: Application = {
+    ...application,
+    id,
+    crm_brand: 'aurrum',
+    created_at: new Date().toISOString(),
+  };
+  try {
+    await setDoc(doc(db, 'jpc_applications', id), sanitizeForFirestore(fullApp));
+    return fullApp;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `jpc_applications/${id}`);
+    throw error;
+  }
+};
+
+export const updateAurrumApplication = async (
+  id: string,
+  updates: Partial<Application>
+): Promise<void> => {
+  try {
+    await updateDoc(
+      doc(db, 'jpc_applications', id),
+      sanitizeForFirestore({ ...updates, crm_brand: 'aurrum' })
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `jpc_applications/${id}`);
+  }
+};
+
+export const deleteAurrumApplication = async (id: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, 'jpc_applications', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `jpc_applications/${id}`);
   }
 };
 

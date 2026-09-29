@@ -256,7 +256,7 @@ export const Candidates: React.FC = () => {
 
       // Fetch Applications and Follow-ups ON DEMAND for export to keep load small
       const appsSnap = await getDocs(collection(db, 'jpc_applications'));
-      const apps = appsSnap.docs.map(d => d.data() as Application);
+      const apps = appsSnap.docs.map(d => d.data() as Application).filter(a => a.crm_brand !== 'aurrum');
 
       const followUpsSnap = await getDocs(collection(db, 'jpc_followups'));
       const followUps = followUpsSnap.docs.map(d => d.data() as FollowUp).filter(f => f.crm_brand !== 'aurrum');

@@ -203,10 +203,11 @@ const AurrumCandidateRow = React.memo(
           <button
             type="button"
             onClick={() => onOpenDetail(candidate)}
-            className="p-2 rounded-xl bg-bg-tertiary hover:bg-accent-blue/10 text-text-secondary hover:text-accent-blue transition-colors cursor-pointer"
-            title="Open Candidate Detail Page"
+            className="px-2.5 py-1.5 rounded-xl bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
+            title="Open Candidate Dashboard"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Dashboard</span>
+            <ExternalLink className="w-3 h-3" />
           </button>
           <button
             type="button"
@@ -542,7 +543,14 @@ export const AurrumCandidates: React.FC = () => {
                   {st?.label.replace(/^\d+\.\s*/, '')}
                 </span>
               </div>
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-primary">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-border-primary">
+                <button
+                  onClick={() => handleOpenDetail(candidate)}
+                  className="px-3 py-1.5 rounded-xl bg-accent-blue text-white text-xs font-bold flex items-center gap-1"
+                >
+                  <span>Dashboard</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
                 <button
                   onClick={() => handleToggleFreeTrial(candidate)}
                   className={cn(
