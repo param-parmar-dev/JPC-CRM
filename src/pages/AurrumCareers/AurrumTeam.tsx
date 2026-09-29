@@ -615,6 +615,170 @@ export const AurrumTeam: React.FC = () => {
       </div>
 
       {/* Delete Confirmation Modal */}
+      {/* Add / Edit Aurrum Team Member Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingUser(null);
+        }}
+        title={editingUser ? 'Edit Aurrum Team Member' : 'Add Aurrum Team Member'}
+      >
+        <form onSubmit={handleSave} className="space-y-5">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">
+              Full Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.display_name}
+              onChange={e => setFormData({ ...formData, display_name: e.target.value })}
+              placeholder="e.g. Rohan Sharma"
+              className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-xl text-sm text-text-primary outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">
+              Email or Username *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.username}
+              onChange={e => setFormData({ ...formData, username: e.target.value })}
+              placeholder="e.g. rohan@aurrumcareers.com or rohan.sharma"
+              className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-xl text-sm text-text-primary outline-none focus:border-amber-500"
+            />
+            <p className="text-[11px] text-text-muted mt-1">
+              Login Email:{' '}
+              <span className="font-mono text-text-primary">
+                {formData.username
+                  ? formData.username.includes('@')
+                    ? formData.username.trim()
+                    : `${formData.username.trim()}@aurrumcareers.com`
+                  : 'username@aurrumcareers.com'}
+              </span>
+            </p>
+          </div>
+
+          {!editingUser && (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">
+                Password *
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={formData.password}
+                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Minimum 6 characters"
+                className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-xl text-sm text-text-primary outline-none focus:border-amber-500"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">
+              Aurrum Careers Role *
+            </label>
+            <div className="grid grid-cols-1 gap-2.5">
+              {AURRUM_ROLES.map(r => {
+                const selected = formData.role === r.value;
+                return (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, role: r.value })}
+                    className={cn(
+                      'p-3.5 rounded-2xl border text-left transition-all cursor-pointer',
+                      selected
+                        ? 'bg-amber-500/10 border-amber-500 text-text-primary'
+                        : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-text-primary">{r.label}</span>
+                      <span className="text-[10px] font-bold text-amber-500 uppercase">
+                        {r.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-secondary mt-1">{r.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border-primary">
+            <button
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingUser(null);
+              }}
+              className="px-5 py-2.5 rounded-xl bg-bg-tertiary text-text-secondary font-bold text-xs cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-lg shadow-amber-500/20 hover:opacity-95 transition-all cursor-pointer"
+            >
+              {editingUser ? 'Save Changes' : 'Create Aurrum Account'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reset Password Modal */}
+      <Modal
+        isOpen={!!userToResetPassword}
+        onClose={() => {
+          setUserToResetPassword(null);
+          setNewPassword('');
+        }}
+        title={`Reset Password — ${userToResetPassword?.display_name || ''}`}
+      >
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">
+              New Password *
+            </label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              placeholder="Enter new password (min 6 chars)"
+              className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-xl text-sm text-text-primary outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setUserToResetPassword(null);
+                setNewPassword('');
+              }}
+              className="px-4 py-2 rounded-xl bg-bg-tertiary text-text-secondary text-xs font-bold cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isResettingPassword}
+              className="px-5 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isResettingPassword ? 'Resetting...' : 'Reset Password'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
 
       <Modal
         isOpen={!!deletingUser}
