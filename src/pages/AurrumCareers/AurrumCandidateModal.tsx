@@ -69,6 +69,15 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
   const [followupDate, setFollowupDate] = useState('');
   const [followupNote, setFollowupNote] = useState('');
 
+  const getDefaultTrialDates = () => {
+    const today = new Date();
+    const startStr = today.toISOString().split('T')[0];
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 15);
+    const endStr = endDate.toISOString().split('T')[0];
+    return { startStr, endStr };
+  };
+
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -85,10 +94,14 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
     package_amount: 0,
     aurrum_stage: 'lead' as NonNullable<Candidate['aurrum_stage']>,
     aurrum_sales_status: 'New Lead' as NonNullable<Candidate['aurrum_sales_status']>,
+    is_free_trial: false,
+    free_trial_start_date: '',
+    free_trial_end_date: '',
     notes: '',
   });
 
   useEffect(() => {
+    const defaults = getDefaultTrialDates();
     if (candidate) {
       setFormData({
         full_name: candidate.full_name || '',
@@ -106,6 +119,9 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
         package_amount: Number(candidate.package_amount) || 0,
         aurrum_stage: resolveAurrumStage(candidate),
         aurrum_sales_status: candidate.aurrum_sales_status || 'New Lead',
+        is_free_trial: Boolean(candidate.is_free_trial),
+        free_trial_start_date: candidate.free_trial_start_date || defaults.startStr,
+        free_trial_end_date: candidate.free_trial_end_date || defaults.endStr,
         notes: candidate.notes || '',
       });
     } else {
@@ -120,11 +136,14 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
         experience_years: '',
         skills: '',
         lead_source: 'LinkedIn',
-        assigned_sales: user?.role === 'jpc_sales' ? String(user.id) : '',
+        assigned_sales: (user?.role === 'jpc_sales' || user?.role === 'aurrum_sales') ? String(user.id) : '',
         package_name: 'Aurrum Interview Support',
         package_amount: 0,
         aurrum_stage: 'lead',
         aurrum_sales_status: 'New Lead',
+        is_free_trial: false,
+        free_trial_start_date: defaults.startStr,
+        free_trial_end_date: defaults.endStr,
         notes: '',
       });
     }
@@ -187,6 +206,7 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
       }
 
       const mappedStage = mapAurrumStageToSystemStage(formData.aurrum_stage);
+      const defaults = getDefaultTrialDates();
 
       if (candidate) {
         const updates: Partial<Candidate> = {
@@ -206,6 +226,11 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
           aurrum_stage: formData.aurrum_stage,
           aurrum_sales_status: formData.aurrum_sales_status,
           current_stage: mappedStage,
+          is_free_trial: formData.is_free_trial,
+          free_trial_start_date: formData.is_free_trial ? (formData.free_trial_start_date || defaults.startStr) : null,
+          free_trial_end_date: formData.is_free_trial ? (formData.free_trial_end_date || defaults.endStr) : null,
+          free_trial_managed_by: user?.id ? String(user.id) : null,
+          free_trial_updated_at: new Date().toISOString(),
           notes: formData.notes.trim(),
           resume_url: uploadedResumeUrl,
           resume_base64: uploadedResumeUrl,
@@ -246,6 +271,11 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
             aurrum_stage: formData.aurrum_stage,
             aurrum_sales_status: formData.aurrum_sales_status,
             current_stage: mappedStage,
+            is_free_trial: formData.is_free_trial,
+            free_trial_start_date: formData.is_free_trial ? (formData.free_trial_start_date || defaults.startStr) : null,
+            free_trial_end_date: formData.is_free_trial ? (formData.free_trial_end_date || defaults.endStr) : null,
+            free_trial_managed_by: user?.id ? String(user.id) : null,
+            free_trial_updated_at: formData.is_free_trial ? new Date().toISOString() : null,
             notes: formData.notes.trim(),
             resume_url: uploadedResumeUrl,
             resume_base64: uploadedResumeUrl,
@@ -465,24 +495,6 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
 
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1.5">
-                Assigned Sales Executive
-              </label>
-              <select
-                value={formData.assigned_sales}
-                onChange={e => setFormData({ ...formData, assigned_sales: e.target.value })}
-                className="w-full px-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-sm text-text-primary focus:border-accent-blue outline-none cursor-pointer"
-              >
-                <option value="">Unassigned</option>
-                {salesUsers.map(u => (
-                  <option key={String(u.id)} value={String(u.id)}>
-                    {u.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1.5">
                 Package / Service Plan
               </label>
               <input
@@ -509,6 +521,87 @@ export const AurrumCandidateModal: React.FC<AurrumCandidateModalProps> = ({
                 />
               </div>
             </div>
+          </div>
+
+          {/* 15-Day Free Trial Enrollment */}
+          <div className="p-4 bg-amber-500/5 border border-amber-500/25 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-text-primary block">
+                    15-Day Free Trial
+                  </span>
+                  <span className="text-[11px] text-text-secondary">
+                    Enroll this Aurrum candidate in a 15-day Free Trial period
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !formData.is_free_trial;
+                  const defaults = getDefaultTrialDates();
+                  setFormData({
+                    ...formData,
+                    is_free_trial: next,
+                    free_trial_start_date: formData.free_trial_start_date || defaults.startStr,
+                    free_trial_end_date: formData.free_trial_end_date || defaults.endStr,
+                  });
+                }}
+                className={cn(
+                  'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5',
+                  formData.is_free_trial
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm'
+                    : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
+                )}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {formData.is_free_trial ? '15-Day Trial Active' : 'Enable 15-Day Free Trial'}
+              </button>
+            </div>
+
+            {formData.is_free_trial && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-500/20">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
+                    Trial Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.free_trial_start_date}
+                    onChange={e => {
+                      const newStart = e.target.value;
+                      let newEnd = formData.free_trial_end_date;
+                      if (newStart) {
+                        const d = new Date(newStart);
+                        d.setDate(d.getDate() + 15);
+                        newEnd = d.toISOString().split('T')[0];
+                      }
+                      setFormData({
+                        ...formData,
+                        free_trial_start_date: newStart,
+                        free_trial_end_date: newEnd,
+                      });
+                    }}
+                    className="w-full px-3.5 py-2 bg-bg-secondary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
+                    Trial End Date (15 Days)
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.free_trial_end_date}
+                    onChange={e => setFormData({ ...formData, free_trial_end_date: e.target.value })}
+                    className="w-full px-3.5 py-2 bg-bg-secondary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Resume Upload */}

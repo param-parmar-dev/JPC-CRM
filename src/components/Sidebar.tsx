@@ -27,7 +27,7 @@ import { cn, isSalesWorkingHours } from '../lib/utils';
 import { subscribeToCollection, updateSalesAvailability } from '../services/storage';
 import { useToast } from '../contexts/ToastContext';
 import { isProxyUser } from '../services/interviewService';
-import { FollowUp, Candidate, User } from '../types';
+import { FollowUp, Candidate, User, isAurrumRole } from '../types';
 import { canUserAccessCandidate } from '../lib/permissions';
 
 interface SidebarProps {
@@ -115,117 +115,126 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
     return allCandidates.filter(c => c.current_stage === 'not_eligible' && canUserAccessCandidate(c, user, allUsers)).length;
   }, [allCandidates, user, allUsers]);
 
+  const isAurrumOnlyUser = isAurrumRole(user?.role);
+
   const navItems = [
-    { label: 'Dashboard', hash: '#dashboard', icon: LayoutDashboard, visible: true },
+    { label: 'Dashboard', hash: '#dashboard', icon: LayoutDashboard, visible: !isAurrumOnlyUser },
     { 
       label: 'CRM Leads & Sales', 
       hash: '#crm-dashboard', 
       icon: TrendingUp, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person')
     },
     { label: 'My Profile', hash: `#candidate?id=${user?.candidate_id}`, icon: UserIcon, visible: (user?.role === 'candidate' || user?.role === 'jpc_candidate') && !!user?.candidate_id },
     { 
       label: 'Pipeline', 
       hash: '#pipeline', 
       icon: Trello, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_marketing' || user?.role === 'jpc_marketing_support' || user?.role === 'jpc_sales' || user?.role === 'jpc_resume'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_marketing' || user?.role === 'jpc_marketing_support' || user?.role === 'jpc_sales' || user?.role === 'jpc_resume')
     },
-    { label: 'Candidates', hash: '#candidates', icon: Users, visible: user?.role !== 'candidate' && user?.role !== 'jpc_candidate' },
+    { label: 'Candidates', hash: '#candidates', icon: Users, visible: !isAurrumOnlyUser && user?.role !== 'candidate' && user?.role !== 'jpc_candidate' },
     { 
       label: 'Follow-Ups', 
       hash: '#followups', 
       icon: Clock, 
-      visible: user?.role !== 'candidate' && user?.role !== 'jpc_candidate' && user?.role !== 'jpc_lead_gen' && user?.role !== 'jpc_resume' && user?.role !== 'jpc_proxy' && user?.role !== 'jpc_marketing' && user?.role !== 'jpc_marketing_support', 
+      visible: !isAurrumOnlyUser && user?.role !== 'candidate' && user?.role !== 'jpc_candidate' && user?.role !== 'jpc_lead_gen' && user?.role !== 'jpc_resume' && user?.role !== 'jpc_proxy' && user?.role !== 'jpc_marketing' && user?.role !== 'jpc_marketing_support', 
       badge: followUpsCount 
     },
     { 
       label: 'App Tracker', 
       hash: '#applications', 
       icon: FileText, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_marketing')
     },
     { 
       label: 'Resume Log', 
       hash: '#resume-log', 
       icon: FileEdit, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing')
     },
     { 
       label: 'Resume Prep Log', 
       hash: '#resume-prep-log', 
       icon: FileText, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing')
     },
     { 
       label: 'RTR Log', 
       hash: '#rtr-log', 
       icon: FileEdit, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing')
     },
     { 
       label: 'Target Compliance', 
       hash: '#target-dashboard', 
       icon: TrendingUp, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person')
     },
     { 
       label: 'CV Repository', 
       hash: '#cv-repository', 
       icon: FileText, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing')
     },
     { 
       label: 'Domain Resumes', 
       hash: '#domain-resumes', 
       icon: FolderTree, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || user?.role === 'jpc_resume' || user?.role === 'jpc_marketing')
     },
     { 
       label: 'Interview Support', 
       hash: '#interviews', 
       icon: Video, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || isProxyUser(user) || user?.role === 'jpc_marketing'
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'jpc_recruiter' || isProxyUser(user) || user?.role === 'jpc_marketing')
     },
     { 
       label: 'Proxy Support', 
       hash: '#interviews-proxy', 
       icon: Clock, 
-      visible: user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || isProxyUser(user)
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || isProxyUser(user))
     },
     { 
       label: 'Not Interested', 
       hash: '#not-interested', 
       icon: UserX, 
-      visible: (user?.role === 'administrator' || user?.role === 'jpc_manager' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_lead_gen' || user?.role === 'jpc_sales'),
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_manager' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_lead_gen' || user?.role === 'jpc_sales'),
       badge: notInterestedCount
     },
     { 
       label: 'Not Eligible', 
       hash: '#not-eligible', 
       icon: UserX, 
-      visible: (user?.role === 'administrator' || user?.role === 'jpc_manager' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_lead_gen' || user?.role === 'jpc_sales'),
+      visible: !isAurrumOnlyUser && (user?.role === 'administrator' || user?.role === 'jpc_manager' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_lead_gen' || user?.role === 'jpc_sales'),
       badge: notEligibleCount
     },
     { 
       label: 'Team', 
       hash: '#team', 
       icon: Shield, 
-      visible: (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_marketing' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person')
+      visible: (user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'jpc_marketing' || user?.role === 'jpc_cs' || user?.role === 'jpc_compliance_person' || user?.role === 'aurrum_admin')
     },
     { 
       label: 'Feature Alerts', 
       hash: '#feature-alerts', 
       icon: Zap, 
-      visible: true 
+      visible: !isAurrumOnlyUser 
     },
   ];
 
-  const isStaffUser = user?.role !== 'candidate' && user?.role !== 'jpc_candidate';
+  const canAccessAurrum =
+    isAurrumOnlyUser ||
+    user?.role === 'administrator' ||
+    user?.role === 'jpc_sysadmin' ||
+    user?.role === 'jpc_manager' ||
+    user?.role === 'jpc_cs' ||
+    isProxyUser(user);
+
   const aurrumNavItems = [
-    { label: 'Aurrum Dashboard', hash: '#aurrum-dashboard', icon: LayoutDashboard, visible: isStaffUser },
-    { label: 'Candidates', hash: '#aurrum-candidates', icon: Users, visible: isStaffUser },
-    { label: 'Sales', hash: '#aurrum-sales', icon: TrendingUp, visible: isStaffUser },
-    { label: 'Interview Support', hash: '#aurrum-interviews', icon: Video, visible: isStaffUser },
+    { label: 'Aurrum Dashboard', hash: '#aurrum-dashboard', icon: LayoutDashboard, visible: canAccessAurrum },
+    { label: 'Candidates', hash: '#aurrum-candidates', icon: Users, visible: canAccessAurrum },
+    { label: 'Sales', hash: '#aurrum-sales', icon: TrendingUp, visible: canAccessAurrum },
+    { label: 'Interview Support', hash: '#aurrum-interviews', icon: Video, visible: canAccessAurrum },
   ];
 
   return (
@@ -265,6 +274,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 sm:py-6 space-y-1.5 overflow-y-auto touch-scroll custom-scrollbar">
+          {/* Dedicated Aurrum Careers Section (shown at top for Aurrum roles, or below main nav for Admins) */}
+          {isAurrumOnlyUser && aurrumNavItems.some(item => item.visible) && (
+            <div className="pb-3 mb-3 border-b border-border-primary/80 space-y-1.5">
+              <div className="px-4 py-1.5 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                  <Sparkles className="w-3 h-3" />
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
+                  Aurrum Careers
+                </span>
+              </div>
+              {aurrumNavItems.filter(item => item.visible).map(item => (
+                <a
+                  key={item.hash}
+                  href={item.hash}
+                  onClick={() => setIsOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all group relative font-semibold",
+                    currentHash.startsWith(item.hash)
+                      ? "bg-amber-500/15 text-amber-500 shadow-inner"
+                      : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+                  )}
+                >
+                  {currentHash.startsWith(item.hash) && (
+                    <motion.div
+                      layoutId="activeNavIndicator"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-amber-500 rounded-r-full shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                    />
+                  )}
+                  <item.icon className={cn(
+                    "w-5 h-5 transition-transform duration-300",
+                    currentHash.startsWith(item.hash) ? "scale-110 text-amber-500" : "group-hover:scale-110 group-hover:text-text-primary"
+                  )} />
+                  <span className="flex-1">{item.label}</span>
+                </a>
+              ))}
+            </div>
+          )}
+
           {navItems.filter(item => item.visible).map(item => (
             <a
               key={item.hash}
@@ -299,8 +347,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
             </a>
           ))}
 
-          {/* Dedicated Aurrum Careers Section */}
-          {aurrumNavItems.some(item => item.visible) && (
+          {/* Dedicated Aurrum Careers Section for Admin / Shared Users */}
+          {!isAurrumOnlyUser && aurrumNavItems.some(item => item.visible) && (
             <div className="pt-4 mt-4 border-t border-border-primary/80 space-y-1.5">
               <div className="px-4 py-1.5 flex items-center gap-2">
                 <span className="w-5 h-5 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
@@ -399,7 +447,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-text-primary truncate">{user?.display_name}</p>
-              <div className="text-[9px] uppercase tracking-wider font-bold text-white bg-accent-blue/80 ring-1 ring-accent-blue shadow-[0_2px_4px_rgba(0,173,140,0.2)] inline-block px-2 py-0.5 rounded-md mt-1 whitespace-normal leading-tight">
+              <div className={cn(
+                "text-[9px] uppercase tracking-wider font-bold inline-block px-2 py-0.5 rounded-md mt-1 whitespace-normal leading-tight",
+                isAurrumOnlyUser
+                  ? "text-black bg-amber-500 ring-1 ring-amber-400 shadow-[0_2px_4px_rgba(245,158,11,0.25)]"
+                  : "text-white bg-accent-blue/80 ring-1 ring-accent-blue shadow-[0_2px_4px_rgba(0,173,140,0.2)]"
+              )}>
                  {user?.role === 'administrator' ? 'Administrator' : 
                   user?.role === 'jpc_sysadmin' ? 'System Admin' :
                   user?.role === 'jpc_manager' ? 'Auriic Manager' :
@@ -411,6 +464,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentHash, isOpen, setIsOpen
                   user?.role === 'jpc_recruiter' ? 'Recruiter' :
                   user?.role === 'jpc_marketing' ? 'Marketing Leader (TL)' :
                   user?.role === 'jpc_marketing_support' ? 'Marketing Support' :
+                  user?.role === 'aurrum_admin' ? 'Aurrum Admin' :
+                  user?.role === 'aurrum_sales' ? 'Aurrum Sales' :
+                  user?.role === 'aurrum_team' ? 'Aurrum Team' :
                   isProxyUser(user) ? 'Proxy Team' :
                   user?.role === 'candidate' || user?.role === 'jpc_candidate' ? 'Candidate' : ''}
               </div>

@@ -14,6 +14,8 @@ import {
   Video,
   Edit2,
   FileText,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import { List } from 'react-window';
 import * as XLSX from 'xlsx';
@@ -27,6 +29,8 @@ import {
 import { handleViewFile } from '../../services/fileService';
 import { Candidate, User } from '../../types';
 import { useDebounce } from '../../lib/hooks';
+import { FreeTrialBadge } from '../../components/FreeTrialBadge';
+import { cn } from '../../lib/utils';
 import { AurrumFlowHeader } from './AurrumFlowHeader';
 import {
   AurrumCandidateModal,
@@ -37,7 +41,9 @@ import {
 type AurrumRowExtraProps = {
   items: Candidate[];
   allUsers: User[];
+  onOpenDetail: (c: Candidate) => void;
   onEdit: (c: Candidate) => void;
+  onToggleFreeTrial: (c: Candidate) => void;
   onMoveToSales: (c: Candidate) => void;
   onSendToInterviews: (c: Candidate) => void;
 };
@@ -48,7 +54,9 @@ const AurrumCandidateRow = React.memo(
     style,
     items,
     allUsers,
+    onOpenDetail,
     onEdit,
+    onToggleFreeTrial,
     onMoveToSales,
     onSendToInterviews,
   }: {
@@ -60,7 +68,6 @@ const AurrumCandidateRow = React.memo(
 
     const stageVal = resolveAurrumStage(candidate);
     const stageObj = AURRUM_STAGES.find(s => s.value === stageVal) || AURRUM_STAGES[0];
-    const salesRep = allUsers.find(u => String(u.id) === String(candidate.assigned_sales));
 
     return (
       <div
@@ -68,7 +75,7 @@ const AurrumCandidateRow = React.memo(
         className="hover:bg-bg-tertiary/30 transition-colors group border-b border-border-primary flex items-center"
       >
         <div
-          onClick={() => onEdit(candidate)}
+          onClick={() => onOpenDetail(candidate)}
           className="flex-1 px-6 py-3 flex items-center gap-3.5 min-w-[240px] cursor-pointer"
         >
           <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold text-xs ring-1 ring-amber-500/30 shrink-0">
@@ -81,9 +88,19 @@ const AurrumCandidateRow = React.memo(
               .toUpperCase()}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">
-              {candidate.full_name || 'Unnamed Candidate'}
-            </p>
+            <div className="flex items-center gap-2 min-w-0">
+              <p className="text-sm font-bold text-text-primary group-hover:text-accent-blue transition-colors truncate">
+                {candidate.full_name || 'Unnamed Candidate'}
+              </p>
+              {candidate.is_free_trial && (
+                <FreeTrialBadge
+                  startDate={candidate.free_trial_start_date}
+                  endDate={candidate.free_trial_end_date}
+                  size="sm"
+                  showDaysRemaining={true}
+                />
+              )}
+            </div>
             <p className="text-[11px] text-text-muted flex items-center gap-1 truncate">
               <MapPin className="w-3 h-3 shrink-0" />
               {candidate.location || candidate.job_interest || 'Aurrum Candidate'}
@@ -116,10 +133,10 @@ const AurrumCandidateRow = React.memo(
 
         <div className="w-40 px-4 py-3 hidden md:block">
           <p className="text-xs font-semibold text-text-primary truncate">
-            {salesRep?.display_name || 'Unassigned'}
+            {candidate.aurrum_sales_status || 'New Lead'}
           </p>
           <p className="text-[10px] text-text-muted truncate">
-            {candidate.aurrum_sales_status || 'New Lead'}
+            {candidate.lead_source || 'Direct Lead'}
           </p>
         </div>
 
@@ -137,7 +154,24 @@ const AurrumCandidateRow = React.memo(
           </div>
         </div>
 
-        <div className="w-56 px-4 py-3 flex items-center justify-end gap-1.5 shrink-0">
+        <div className="w-64 px-4 py-3 flex items-center justify-end gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => onToggleFreeTrial(candidate)}
+            className={cn(
+              'p-2 rounded-xl transition-all cursor-pointer',
+              candidate.is_free_trial
+                ? 'bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30'
+                : 'bg-bg-tertiary text-text-muted hover:text-amber-500'
+            )}
+            title={
+              candidate.is_free_trial
+                ? '15-Day Free Trial Active (Click to disable)'
+                : 'Activate 15-Day Free Trial'
+            }
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+          </button>
           {candidate.resume_url && (
             <button
               type="button"
@@ -168,9 +202,17 @@ const AurrumCandidateRow = React.memo(
           </button>
           <button
             type="button"
+            onClick={() => onOpenDetail(candidate)}
+            className="p-2 rounded-xl bg-bg-tertiary hover:bg-accent-blue/10 text-text-secondary hover:text-accent-blue transition-colors cursor-pointer"
+            title="Open Candidate Detail Page"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
             onClick={() => onEdit(candidate)}
             className="p-2 rounded-xl bg-bg-tertiary hover:bg-bg-primary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-            title="Edit Candidate"
+            title="Quick Edit Candidate"
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
@@ -181,7 +223,7 @@ const AurrumCandidateRow = React.memo(
 );
 
 export const AurrumCandidates: React.FC = () => {
-  const { isAuthReady } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const { showToast } = useToast();
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -190,6 +232,7 @@ export const AurrumCandidates: React.FC = () => {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [stageFilter, setStageFilter] = useState<string>('');
+  const [onlyFreeTrial, setOnlyFreeTrial] = useState<boolean>(false);
   const [visibleLimit, setVisibleLimit] = useState<number>(100);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -214,7 +257,10 @@ export const AurrumCandidates: React.FC = () => {
     return allUsers.filter(
       u =>
         !u.deleted_at &&
-        (u.role === 'jpc_sales' ||
+        (u.role === 'aurrum_sales' ||
+          u.role === 'aurrum_admin' ||
+          u.role === 'aurrum_team' ||
+          u.role === 'jpc_sales' ||
           u.role === 'jpc_lead_gen' ||
           u.role === 'jpc_manager' ||
           u.role === 'administrator' ||
@@ -227,6 +273,7 @@ export const AurrumCandidates: React.FC = () => {
     return candidates
       .filter(c => {
         if (c.crm_brand !== 'aurrum') return false;
+        if (onlyFreeTrial && !c.is_free_trial) return false;
         const st = resolveAurrumStage(c);
         if (stageFilter && st !== stageFilter) return false;
         if (!q) return true;
@@ -239,16 +286,52 @@ export const AurrumCandidates: React.FC = () => {
         );
       })
       .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  }, [candidates, debouncedSearch, stageFilter]);
+  }, [candidates, debouncedSearch, stageFilter, onlyFreeTrial]);
 
   const displayedCandidates = useMemo(() => {
     return filteredCandidates.slice(0, visibleLimit);
   }, [filteredCandidates, visibleLimit]);
 
+  const handleOpenDetail = useCallback((c: Candidate) => {
+    window.location.hash = `#aurrum-candidate?id=${c.id}`;
+  }, []);
+
   const handleEdit = useCallback((c: Candidate) => {
     setEditingCandidate(c);
     setIsModalOpen(true);
   }, []);
+
+  const handleToggleFreeTrial = useCallback(
+    async (c: Candidate) => {
+      try {
+        if (c.is_free_trial) {
+          await updateAurrumCandidate(c.id, {
+            is_free_trial: false,
+            free_trial_managed_by: user?.id ? String(user.id) : null,
+            free_trial_updated_at: new Date().toISOString(),
+          });
+          showToast(`Ended 15-Day Free Trial for ${c.full_name}`, 'info');
+        } else {
+          const today = new Date();
+          const startStr = today.toISOString().split('T')[0];
+          const endDate = new Date(today);
+          endDate.setDate(today.getDate() + 15);
+          const endStr = endDate.toISOString().split('T')[0];
+          await updateAurrumCandidate(c.id, {
+            is_free_trial: true,
+            free_trial_start_date: startStr,
+            free_trial_end_date: endStr,
+            free_trial_managed_by: user?.id ? String(user.id) : null,
+            free_trial_updated_at: new Date().toISOString(),
+          });
+          showToast(`15-Day Free Trial activated for ${c.full_name}!`, 'success');
+        }
+      } catch (err) {
+        showToast('Failed to update Free Trial status', 'error');
+      }
+    },
+    [showToast, user]
+  );
 
   const handleMoveToSales = useCallback(
     async (c: Candidate) => {
@@ -289,11 +372,21 @@ export const AurrumCandidates: React.FC = () => {
     () => ({
       items: displayedCandidates,
       allUsers,
+      onOpenDetail: handleOpenDetail,
       onEdit: handleEdit,
+      onToggleFreeTrial: handleToggleFreeTrial,
       onMoveToSales: handleMoveToSales,
       onSendToInterviews: handleSendToInterviews,
     }),
-    [displayedCandidates, allUsers, handleEdit, handleMoveToSales, handleSendToInterviews]
+    [
+      displayedCandidates,
+      allUsers,
+      handleOpenDetail,
+      handleEdit,
+      handleToggleFreeTrial,
+      handleMoveToSales,
+      handleSendToInterviews,
+    ]
   );
 
   const handleExport = () => {
@@ -302,7 +395,6 @@ export const AurrumCandidates: React.FC = () => {
       return;
     }
     const rows = filteredCandidates.map(c => {
-      const salesRep = allUsers.find(u => String(u.id) === String(c.assigned_sales));
       return {
         ID: c.id,
         'Full Name': c.full_name,
@@ -313,7 +405,6 @@ export const AurrumCandidates: React.FC = () => {
         Location: c.location,
         'Aurrum Stage': resolveAurrumStage(c),
         'Sales Status': c.aurrum_sales_status || 'New Lead',
-        'Assigned Sales': salesRep?.display_name || 'Unassigned',
         Package: c.package_name || '—',
         'Package Amount ($)': Number(c.package_amount) || 0,
         'Lead Source': c.lead_source || '—',
@@ -381,7 +472,21 @@ export const AurrumCandidates: React.FC = () => {
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setOnlyFreeTrial(prev => !prev)}
+            className={cn(
+              'px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer',
+              onlyFreeTrial
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500 shadow-sm'
+                : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>15-Day Free Trial ({candidates.filter(c => c.is_free_trial).length})</span>
+          </button>
+
           <div className="relative w-full sm:w-52">
             <Filter className="w-4 h-4 text-text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
             <select
@@ -410,10 +515,20 @@ export const AurrumCandidates: React.FC = () => {
               className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-3"
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0" onClick={() => handleEdit(candidate)}>
-                  <p className="text-sm font-bold text-text-primary truncate">
-                    {candidate.full_name}
-                  </p>
+                <div className="min-w-0 cursor-pointer" onClick={() => handleOpenDetail(candidate)}>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-text-primary truncate">
+                      {candidate.full_name}
+                    </p>
+                    {candidate.is_free_trial && (
+                      <FreeTrialBadge
+                        startDate={candidate.free_trial_start_date}
+                        endDate={candidate.free_trial_end_date}
+                        size="sm"
+                        showDaysRemaining={true}
+                      />
+                    )}
+                  </div>
                   <p className="text-xs text-text-muted truncate">{candidate.phone}</p>
                 </div>
                 <span
@@ -428,6 +543,18 @@ export const AurrumCandidates: React.FC = () => {
                 </span>
               </div>
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-primary">
+                <button
+                  onClick={() => handleToggleFreeTrial(candidate)}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1',
+                    candidate.is_free_trial
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-bg-tertiary text-text-secondary'
+                  )}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  15d Trial
+                </button>
                 <button
                   onClick={() => handleMoveToSales(candidate)}
                   className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 text-xs font-bold"
@@ -461,12 +588,12 @@ export const AurrumCandidates: React.FC = () => {
                 Flow Stage
               </div>
               <div className="w-40 px-4 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden md:block">
-                Sales Rep & Status
+                Sales Status
               </div>
               <div className="w-36 px-4 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest hidden sm:block">
                 Package
               </div>
-              <div className="w-56 px-4 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest text-right">
+              <div className="w-64 px-4 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest text-right">
                 Flow Actions
               </div>
             </div>

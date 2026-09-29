@@ -133,6 +133,9 @@ export const AurrumInterviewSupport: React.FC = () => {
       user.role === 'jpc_cs' ||
       user.role === 'jpc_recruiter' ||
       user.role === 'jpc_marketing' ||
+      user.role === 'aurrum_admin' ||
+      user.role === 'aurrum_sales' ||
+      user.role === 'aurrum_team' ||
       isProxyUser(user)
     );
   }, [user]);
@@ -144,6 +147,8 @@ export const AurrumInterviewSupport: React.FC = () => {
       user.role === 'jpc_sysadmin' ||
       user.role === 'jpc_manager' ||
       user.role === 'jpc_cs' ||
+      user.role === 'aurrum_admin' ||
+      user.role === 'aurrum_team' ||
       isProxyUser(user)
     );
   }, [user]);

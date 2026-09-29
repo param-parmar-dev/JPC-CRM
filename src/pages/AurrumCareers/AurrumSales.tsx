@@ -13,6 +13,8 @@ import {
   Edit2,
   User as UserIcon,
   Briefcase,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -26,6 +28,7 @@ import {
 } from '../../services/storage';
 import { Candidate, FollowUp, User } from '../../types';
 import { useDebounce } from '../../lib/hooks';
+import { FreeTrialBadge } from '../../components/FreeTrialBadge';
 import { AurrumFlowHeader } from './AurrumFlowHeader';
 import {
   AurrumCandidateModal,
@@ -60,6 +63,7 @@ export const AurrumSales: React.FC = () => {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
+  const [onlyFreeTrial, setOnlyFreeTrial] = useState<boolean>(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<Candidate | null>(null);
@@ -88,7 +92,10 @@ export const AurrumSales: React.FC = () => {
     return allUsers.filter(
       u =>
         !u.deleted_at &&
-        (u.role === 'jpc_sales' ||
+        (u.role === 'aurrum_sales' ||
+          u.role === 'aurrum_admin' ||
+          u.role === 'aurrum_team' ||
+          u.role === 'jpc_sales' ||
           u.role === 'jpc_lead_gen' ||
           u.role === 'jpc_manager' ||
           u.role === 'administrator' ||
@@ -100,9 +107,7 @@ export const AurrumSales: React.FC = () => {
     const q = debouncedSearch.toLowerCase().trim();
     return candidates.filter(c => {
       if (c.crm_brand !== 'aurrum') return false;
-      if (selectedRepFilter !== 'all' && String(c.assigned_sales) !== selectedRepFilter) {
-        return false;
-      }
+      if (onlyFreeTrial && !c.is_free_trial) return false;
       if (!q) return true;
       return (
         (c.full_name || '').toLowerCase().includes(q) ||
@@ -111,7 +116,7 @@ export const AurrumSales: React.FC = () => {
         (c.job_interest || '').toLowerCase().includes(q)
       );
     });
-  }, [candidates, debouncedSearch, selectedRepFilter]);
+  }, [candidates, debouncedSearch, onlyFreeTrial]);
 
   const resolveSalesStatus = (c: Candidate): NonNullable<Candidate['aurrum_sales_status']> => {
     if (c.aurrum_sales_status) return c.aurrum_sales_status;
@@ -297,18 +302,21 @@ export const AurrumSales: React.FC = () => {
           />
         </div>
 
-        <select
-          value={selectedRepFilter}
-          onChange={e => setSelectedRepFilter(e.target.value)}
-          className="px-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs sm:text-sm font-bold text-text-primary outline-none cursor-pointer"
-        >
-          <option value="all">All Sales Executives</option>
-          {salesUsers.map(u => (
-            <option key={String(u.id)} value={String(u.id)}>
-              {u.display_name}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setOnlyFreeTrial(prev => !prev)}
+            className={cn(
+              'px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer',
+              onlyFreeTrial
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500 shadow-sm'
+                : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>15-Day Free Trial ({candidates.filter(c => c.is_free_trial).length})</span>
+          </button>
+        </div>
       </div>
 
       {/* Kanban Pipeline Columns */}
@@ -339,9 +347,6 @@ export const AurrumSales: React.FC = () => {
               {/* Column Cards */}
               <div className="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar">
                 {colCandidates.map(cand => {
-                  const salesRep = allUsers.find(
-                    u => String(u.id) === String(cand.assigned_sales)
-                  );
                   const candFollowUps = followUps.filter(
                     f => f.candidate_id === cand.id && !f.done
                   );
@@ -355,28 +360,48 @@ export const AurrumSales: React.FC = () => {
                         <div className="min-w-0">
                           <h4
                             onClick={() => {
-                              setEditingCandidate(cand);
-                              setIsModalOpen(true);
+                              window.location.hash = `#aurrum-candidate?id=${cand.id}`;
                             }}
                             className="text-sm font-bold text-text-primary hover:text-accent-blue truncate cursor-pointer"
                           >
                             {cand.full_name}
                           </h4>
+                          {cand.is_free_trial && (
+                            <div className="mt-1">
+                              <FreeTrialBadge
+                                startDate={cand.free_trial_start_date}
+                                endDate={cand.free_trial_end_date}
+                                size="sm"
+                                showDaysRemaining={true}
+                              />
+                            </div>
+                          )}
                           <p className="text-[11px] text-text-muted flex items-center gap-1 truncate mt-0.5">
                             <Briefcase className="w-3 h-3 shrink-0" />
                             {cand.job_interest || 'Target Role N/A'}
                           </p>
                         </div>
-                        <button
-                          onClick={() => {
-                            setEditingCandidate(cand);
-                            setIsModalOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg bg-bg-secondary border border-border-primary text-text-muted hover:text-text-primary cursor-pointer"
-                          title="Edit Lead"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => {
+                              window.location.hash = `#aurrum-candidate?id=${cand.id}`;
+                            }}
+                            className="p-1.5 rounded-lg bg-bg-secondary border border-border-primary text-text-muted hover:text-accent-blue cursor-pointer"
+                            title="Open Candidate Detail Page"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingCandidate(cand);
+                              setIsModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-bg-secondary border border-border-primary text-text-muted hover:text-text-primary cursor-pointer"
+                            title="Edit Lead"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="space-y-1 text-[11px] text-text-secondary">
@@ -395,9 +420,8 @@ export const AurrumSales: React.FC = () => {
                       </div>
 
                       <div className="flex items-center justify-between text-[11px] bg-bg-secondary/80 px-2.5 py-1.5 rounded-xl border border-border-primary/60">
-                        <span className="flex items-center gap-1 text-text-secondary truncate">
-                          <UserIcon className="w-3 h-3 text-accent-blue shrink-0" />
-                          <span className="truncate">{salesRep?.display_name || 'Unassigned'}</span>
+                        <span className="text-text-secondary truncate">
+                          {cand.package_name || 'Aurrum Package'}
                         </span>
                         <span className="font-bold text-emerald-500 shrink-0">
                           ${(Number(cand.package_amount) || 0).toLocaleString()}

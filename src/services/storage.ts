@@ -729,6 +729,16 @@ export const createAurrumCandidate = async (
     resume_url: candidate.resume_url || null,
     resume_base64: candidate.resume_base64 || null,
     resume_filename: candidate.resume_filename || null,
+    total_paid: Number(candidate.total_paid) || 0,
+    balance_remaining:
+      candidate.balance_remaining !== undefined
+        ? Number(candidate.balance_remaining)
+        : Math.max(0, (Number(candidate.package_amount) || 0) - (Number(candidate.total_paid) || 0)),
+    is_free_trial: Boolean(candidate.is_free_trial),
+    free_trial_start_date: candidate.free_trial_start_date || null,
+    free_trial_end_date: candidate.free_trial_end_date || null,
+    free_trial_managed_by: candidate.free_trial_managed_by || null,
+    free_trial_updated_at: candidate.free_trial_updated_at || null,
     deleted_at: null,
     created_at: candidate.created_at || nowIso,
     updated_at: nowIso,

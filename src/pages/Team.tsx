@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToCollection, saveUser, generateId } from '../services/storage';
-import { Users, UserPlus, Shield, Mail, Phone, MoreVertical, Edit2, Trash2, X, Save, AlertCircle, ShieldCheck, UserCheck, Lock, Copy, TrendingUp } from 'lucide-react';
+import { Users, UserPlus, Shield, Mail, Phone, MoreVertical, Edit2, Trash2, X, Save, AlertCircle, ShieldCheck, UserCheck, Lock, Copy, TrendingUp, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { User, UserRole, Candidate } from '../types';
+import { User, UserRole, Candidate, isAurrumRole } from '../types';
 import { Modal } from '../components/Modal';
 import { SMTPConfigModal } from '../components/SMTPConfigModal';
 import { MarketingProfileDashboard } from '../components/MarketingProfileDashboard';
@@ -17,20 +17,159 @@ import { getAuth, signOut as secondarySignOut, updateProfile, createUserWithEmai
 import { RotateCw } from 'lucide-react';
 import { archiveDeletedUser } from '../utils/recruiterResolver';
 
-const ROLES: { value: UserRole; label: string; icon: any; color: string }[] = [
-  { value: 'administrator', label: 'Administrator', icon: ShieldCheck, color: 'text-accent-red' },
-  { value: 'jpc_sysadmin', label: 'System Admin', icon: ShieldCheck, color: 'text-accent-red' },
-  { value: 'jpc_manager', label: 'Auriic Manager', icon: Shield, color: 'text-accent-purple' },
-  { value: 'jpc_lead_gen', label: 'Lead Generation', icon: UserPlus, color: 'text-accent-amber' },
-  { value: 'jpc_sales', label: 'Sales Team', icon: UserCheck, color: 'text-accent-blue' },
-  { value: 'jpc_cs', label: 'Compliance Head', icon: ShieldCheck, color: 'text-accent-teal' },
-  { value: 'jpc_compliance_person', label: 'Compliance Person', icon: UserCheck, color: 'text-accent-teal' },
-  { value: 'jpc_resume', label: 'Resume Team', icon: UserCheck, color: 'text-accent-amber' },
-  { value: 'jpc_recruiter', label: 'Recruiter', icon: UserCheck, color: 'text-accent-green' },
-  { value: 'jpc_marketing', label: 'Marketing Leader (TL)', icon: Shield, color: 'text-accent-gray' },
-  { value: 'jpc_marketing_support', label: 'Marketing Support', icon: UserCheck, color: 'text-accent-gray' },
-  { value: 'jpc_proxy', label: 'Proxy Team', icon: UserCheck, color: 'text-accent-blue' },
-  { value: 'jpc_candidate', label: 'Candidate User', icon: UserCheck, color: 'text-accent-teal' },
+const ROLES: {
+  value: UserRole;
+  label: string;
+  icon: any;
+  color: string;
+  brand: 'auriic' | 'aurrum';
+  description: string;
+  sidebarModules: string[];
+}[] = [
+  {
+    value: 'aurrum_admin',
+    label: 'Aurrum Admin',
+    icon: Sparkles,
+    color: 'text-amber-500',
+    brand: 'aurrum',
+    description: 'Full access to Aurrum Careers section only + Aurrum Team management.',
+    sidebarModules: ['Aurrum Dashboard', 'Candidates', 'Sales', 'Interview Support', 'Team'],
+  },
+  {
+    value: 'aurrum_sales',
+    label: 'Aurrum Sales',
+    icon: Sparkles,
+    color: 'text-amber-500',
+    brand: 'aurrum',
+    description: 'Aurrum Careers sales & lead management — sidebar restricted to Aurrum Careers only.',
+    sidebarModules: ['Aurrum Dashboard', 'Candidates', 'Sales', 'Interview Support'],
+  },
+  {
+    value: 'aurrum_team',
+    label: 'Aurrum Team',
+    icon: Sparkles,
+    color: 'text-amber-500',
+    brand: 'aurrum',
+    description: 'Aurrum Careers operations & interview support — sidebar restricted to Aurrum Careers only.',
+    sidebarModules: ['Aurrum Dashboard', 'Candidates', 'Sales', 'Interview Support'],
+  },
+  {
+    value: 'administrator',
+    label: 'Administrator',
+    icon: ShieldCheck,
+    color: 'text-accent-red',
+    brand: 'auriic',
+    description: 'Full system access across Auriic CRM and Aurrum Careers.',
+    sidebarModules: ['All Auriic CRM Modules', 'All Aurrum Careers Modules', 'System & Team Admin'],
+  },
+  {
+    value: 'jpc_sysadmin',
+    label: 'System Admin',
+    icon: ShieldCheck,
+    color: 'text-accent-red',
+    brand: 'auriic',
+    description: 'Full system administration across Auriic CRM and Aurrum Careers.',
+    sidebarModules: ['All Auriic CRM Modules', 'All Aurrum Careers Modules', 'System & Team Admin'],
+  },
+  {
+    value: 'jpc_manager',
+    label: 'Auriic Manager',
+    icon: Shield,
+    color: 'text-accent-purple',
+    brand: 'auriic',
+    description: 'Management oversight across Auriic CRM and Aurrum Careers.',
+    sidebarModules: ['Dashboard', 'CRM Leads & Sales', 'Pipeline', 'Candidates', 'Aurrum Careers', 'Team'],
+  },
+  {
+    value: 'jpc_lead_gen',
+    label: 'Lead Generation',
+    icon: UserPlus,
+    color: 'text-accent-amber',
+    brand: 'auriic',
+    description: 'Auriic CRM lead generation, candidate intake, and follow-up tracking.',
+    sidebarModules: ['Dashboard', 'Candidates', 'Follow-Ups', 'Not Interested', 'Not Eligible'],
+  },
+  {
+    value: 'jpc_sales',
+    label: 'Sales Team',
+    icon: UserCheck,
+    color: 'text-accent-blue',
+    brand: 'auriic',
+    description: 'Auriic CRM sales pipeline, candidate conversions, and follow-ups.',
+    sidebarModules: ['Dashboard', 'Pipeline Board', 'Candidates', 'Follow-Ups'],
+  },
+  {
+    value: 'jpc_cs',
+    label: 'Compliance Head',
+    icon: ShieldCheck,
+    color: 'text-accent-teal',
+    brand: 'auriic',
+    description: 'Compliance & QC leadership across Auriic CRM and Interview Support.',
+    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Target Compliance', 'Interview Support', 'Aurrum Careers'],
+  },
+  {
+    value: 'jpc_compliance_person',
+    label: 'Compliance Person',
+    icon: UserCheck,
+    color: 'text-accent-teal',
+    brand: 'auriic',
+    description: 'Compliance specialist managing candidate QC, applications, and targets.',
+    sidebarModules: ['Dashboard', 'Candidates', 'App Tracker', 'Target Compliance', 'Interview Support'],
+  },
+  {
+    value: 'jpc_resume',
+    label: 'Resume Team',
+    icon: UserCheck,
+    color: 'text-accent-amber',
+    brand: 'auriic',
+    description: 'Resume preparation, CV repository, and resume log management.',
+    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Resume Log', 'Resume Prep', 'CV Repository'],
+  },
+  {
+    value: 'jpc_recruiter',
+    label: 'Recruiter',
+    icon: UserCheck,
+    color: 'text-accent-green',
+    brand: 'auriic',
+    description: 'Marketing recruiter handling job applications, RTRs, and interview support.',
+    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'App Tracker', 'RTR Log', 'Interview Support'],
+  },
+  {
+    value: 'jpc_marketing',
+    label: 'Marketing Leader (TL)',
+    icon: Shield,
+    color: 'text-accent-gray',
+    brand: 'auriic',
+    description: 'Marketing Team Lead managing recruiter clusters and application velocity.',
+    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'App Tracker', 'Interview Support', 'Team'],
+  },
+  {
+    value: 'jpc_marketing_support',
+    label: 'Marketing Support',
+    icon: UserCheck,
+    color: 'text-accent-gray',
+    brand: 'auriic',
+    description: 'Marketing support operations for candidate pipeline and follow-ups.',
+    sidebarModules: ['Dashboard', 'Pipeline', 'Candidates', 'Follow-Ups'],
+  },
+  {
+    value: 'jpc_proxy',
+    label: 'Proxy Team',
+    icon: UserCheck,
+    color: 'text-accent-blue',
+    brand: 'auriic',
+    description: 'Interview support proxy specialist for technical interview rounds.',
+    sidebarModules: ['Dashboard', 'Interview Support', 'Proxy Support', 'Aurrum Careers'],
+  },
+  {
+    value: 'jpc_candidate',
+    label: 'Candidate User',
+    icon: UserCheck,
+    color: 'text-accent-teal',
+    brand: 'auriic',
+    description: 'External candidate portal login linked to a specific candidate profile.',
+    sidebarModules: ['Candidate Portal Dashboard'],
+  },
 ];
 
 export const Team: React.FC = () => {
@@ -57,7 +196,7 @@ export const Team: React.FC = () => {
   const [formData, setFormData] = useState({
     username: '',
     display_name: '',
-    role: 'jpc_sales' as UserRole,
+    role: (user?.role === 'aurrum_admin' ? 'aurrum_sales' : 'jpc_sales') as UserRole,
     password: '',
     leader_id: '' as string | number | null,
     candidate_id: '',
@@ -66,7 +205,7 @@ export const Team: React.FC = () => {
   });
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [activeTab, setActiveTab] = useState<'members' | 'marketing_profiles' | 'round_robin'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'roles' | 'marketing_profiles' | 'round_robin'>('members');
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -87,6 +226,9 @@ export const Team: React.FC = () => {
     if (!user) return [];
     if (user.role === 'administrator' || user.role === 'jpc_sysadmin' || user.role === 'jpc_manager' || user.role === 'jpc_cs') {
       return team;
+    }
+    if (user.role === 'aurrum_admin') {
+      return team.filter(u => isAurrumRole(u.role));
     }
     
     if (user.role === 'jpc_compliance_person') {
@@ -111,6 +253,7 @@ export const Team: React.FC = () => {
   const canManage = (targetRole: UserRole, targetUser?: User) => {
     if (user?.role === 'administrator' || user?.role === 'jpc_sysadmin') return true;
     if (user?.role === 'jpc_manager' && targetRole !== 'administrator' && targetRole !== 'jpc_sysadmin') return true;
+    if (user?.role === 'aurrum_admin' && isAurrumRole(targetRole)) return true;
     
     // Compliance Head (jpc_cs) can manage their junior Compliance Persons
     if (user?.role === 'jpc_cs') {
@@ -672,8 +815,8 @@ export const Team: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Team Management</h1>
-          <p className="text-text-secondary mt-1">Manage your team members and their access levels.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Team & User Roles</h1>
+          <p className="text-text-secondary mt-1">Manage team members, user roles, and sidebar access permissions.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin') && (
@@ -703,11 +846,20 @@ export const Team: React.FC = () => {
               Reset Database
             </button>
           )}
-          {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager') && (
+          {(user?.role === 'administrator' || user?.role === 'jpc_sysadmin' || user?.role === 'jpc_manager' || user?.role === 'aurrum_admin') && (
             <button 
               onClick={() => {
                 setEditingUser(null);
-                setFormData({ username: '', display_name: '', role: 'jpc_sales', password: '', leader_id: null, candidate_id: '', portal_link: '', is_on_leave: false });
+                setFormData({
+                  username: '',
+                  display_name: '',
+                  role: user?.role === 'aurrum_admin' ? 'aurrum_sales' : 'jpc_sales',
+                  password: '',
+                  leader_id: null,
+                  candidate_id: '',
+                  portal_link: '',
+                  is_on_leave: false,
+                });
                 setIsModalOpen(true);
               }}
               className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-accent-blue text-white text-sm sm:text-base font-bold rounded-2xl hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
@@ -731,38 +883,57 @@ export const Team: React.FC = () => {
           )}
         >
           <Users className="w-4 h-4" />
-          <span>Team Members ({team.length})</span>
+          <span>Team Members ({visibleTeam.length})</span>
         </button>
         <button
-          onClick={() => setActiveTab('round_robin')}
+          onClick={() => setActiveTab('roles')}
           className={cn(
             "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'round_robin'
-              ? "border-accent-teal text-accent-teal"
+            activeTab === 'roles'
+              ? "border-amber-500 text-amber-500"
               : "border-transparent text-text-secondary hover:text-text-primary"
           )}
         >
-          <RotateCw className="w-4 h-4" />
-          <span>Lead Round-Robin Rotation</span>
-          <span className="px-1.5 py-0.5 bg-accent-teal/10 text-accent-teal rounded-md text-[10px] font-extrabold uppercase">
-            Auto Sales
+          <ShieldCheck className="w-4 h-4" />
+          <span>User Roles & Access</span>
+          <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-500 rounded-md text-[10px] font-extrabold uppercase">
+            {user?.role === 'aurrum_admin' ? '3 Roles' : `${ROLES.length} Roles`}
           </span>
         </button>
-        <button
-          onClick={() => setActiveTab('marketing_profiles')}
-          className={cn(
-            "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'marketing_profiles'
-              ? "border-accent-blue text-accent-blue"
-              : "border-transparent text-text-secondary hover:text-text-primary"
-          )}
-        >
-          <TrendingUp className="w-4 h-4" />
-          <span>Marketing Load Distribution</span>
-          <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
-            Live Stats
-          </span>
-        </button>
+        {!isAurrumRole(user?.role) && (
+          <>
+            <button
+              onClick={() => setActiveTab('round_robin')}
+              className={cn(
+                "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+                activeTab === 'round_robin'
+                  ? "border-accent-teal text-accent-teal"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <RotateCw className="w-4 h-4" />
+              <span>Lead Round-Robin Rotation</span>
+              <span className="px-1.5 py-0.5 bg-accent-teal/10 text-accent-teal rounded-md text-[10px] font-extrabold uppercase">
+                Auto Sales
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('marketing_profiles')}
+              className={cn(
+                "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+                activeTab === 'marketing_profiles'
+                  ? "border-accent-blue text-accent-blue"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>Marketing Load Distribution</span>
+              <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
+                Live Stats
+              </span>
+            </button>
+          </>
+        )}
       </div>
 
       {activeTab === 'members' ? (
@@ -777,6 +948,11 @@ export const Team: React.FC = () => {
                 <div className="flex items-center gap-3 px-2">
                   <role.icon className={cn("w-5 h-5", role.color)} />
                   <h2 className="text-lg font-bold text-text-primary tracking-tight">{role.label}</h2>
+                  {role.brand === 'aurrum' && (
+                    <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] font-extrabold text-amber-500 uppercase tracking-wider">
+                      Aurrum Careers Only
+                    </span>
+                  )}
                   <span className="px-2 py-0.5 bg-bg-secondary border border-border-primary rounded-lg text-[10px] font-bold text-text-muted uppercase">
                     {roleMembers.length}
                   </span>
@@ -911,6 +1087,181 @@ export const Team: React.FC = () => {
             );
           })}
         </div>
+      ) : activeTab === 'roles' ? (
+        <div className="space-y-10">
+          {/* Aurrum Careers Roles Section */}
+          <section className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-2">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-text-primary tracking-tight">Aurrum Careers Roles</h2>
+                  <p className="text-xs text-text-secondary">
+                    Users with these roles only see the <strong>Aurrum Careers</strong> section in the sidebar (Dashboard → Candidates → Sales → Interview Support).
+                  </p>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] font-bold text-amber-500 uppercase tracking-wider self-start sm:self-auto">
+                Isolated Sidebar View
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {ROLES.filter(r => r.brand === 'aurrum').map((role) => {
+                const count = team.filter(u => u.role === role.value).length;
+                return (
+                  <div
+                    key={role.value}
+                    className="bg-bg-secondary rounded-3xl border border-amber-500/25 p-6 shadow-sm flex flex-col justify-between gap-5"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                            <role.icon className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-text-primary">{role.label}</h3>
+                            <p className="text-[11px] font-mono text-text-muted">{role.value}</p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary">
+                          {count} {count === 1 ? 'User' : 'Users'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary leading-relaxed mb-4">
+                        {role.description}
+                      </p>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Sidebar Access</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {role.sidebarModules.map((mod) => (
+                            <span
+                              key={mod}
+                              className="px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-lg text-[10px] font-bold"
+                            >
+                              {mod}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {canManage(role.value) && (
+                      <button
+                        onClick={() => {
+                          setEditingUser(null);
+                          setFormData({
+                            username: '',
+                            display_name: '',
+                            role: role.value,
+                            password: '',
+                            leader_id: null,
+                            candidate_id: '',
+                            portal_link: '',
+                            is_on_leave: false,
+                          });
+                          setIsModalOpen(true);
+                        }}
+                        className="w-full py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Add {role.label} User
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Auriic CRM Roles Section */}
+          {user?.role !== 'aurrum_admin' && (
+            <section className="space-y-4">
+              <div className="flex items-center gap-3 px-2">
+                <div className="w-9 h-9 rounded-xl bg-accent-blue/10 border border-accent-blue/20 flex items-center justify-center text-accent-blue">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-text-primary tracking-tight">Auriic CRM Roles</h2>
+                  <p className="text-xs text-text-secondary">
+                    Standard Auriic CRM roles with role-based sidebar navigation and permissions.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {ROLES.filter(r => r.brand === 'auriic').map((role) => {
+                  const count = team.filter(u => u.role === role.value).length;
+                  return (
+                    <div
+                      key={role.value}
+                      className="bg-bg-secondary rounded-3xl border border-border-primary p-6 shadow-sm flex flex-col justify-between gap-5"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-10 h-10 rounded-2xl bg-bg-tertiary border border-border-primary flex items-center justify-center">
+                              <role.icon className={cn("w-5 h-5", role.color)} />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-text-primary">{role.label}</h3>
+                              <p className="text-[11px] font-mono text-text-muted">{role.value}</p>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary">
+                            {count} {count === 1 ? 'User' : 'Users'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-text-secondary leading-relaxed mb-4">
+                          {role.description}
+                        </p>
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Sidebar Access</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {role.sidebarModules.map((mod) => (
+                              <span
+                                key={mod}
+                                className="px-2 py-0.5 bg-bg-tertiary text-text-secondary border border-border-primary rounded-lg text-[10px] font-bold"
+                              >
+                                {mod}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {canManage(role.value) && (
+                        <button
+                          onClick={() => {
+                            setEditingUser(null);
+                            setFormData({
+                              username: '',
+                              display_name: '',
+                              role: role.value,
+                              password: '',
+                              leader_id: null,
+                              candidate_id: '',
+                              portal_link: '',
+                              is_on_leave: false,
+                            });
+                            setIsModalOpen(true);
+                          }}
+                          className="w-full py-2.5 px-4 bg-bg-tertiary hover:bg-accent-blue/10 hover:text-accent-blue hover:border-accent-blue/25 text-text-primary border border-border-primary rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                          Add {role.label}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
       ) : activeTab === 'round_robin' ? (
         <LeadRoundRobinDashboard
           allUsers={team}
@@ -977,10 +1328,24 @@ export const Team: React.FC = () => {
                 onChange={e => setFormData({...formData, role: e.target.value as UserRole, leader_id: null})}
                 className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors appearance-none"
               >
-                {ROLES.map(r => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
+                <optgroup label="Aurrum Careers Roles (Aurrum Sidebar Only)">
+                  {ROLES.filter(r => r.brand === 'aurrum').map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </optgroup>
+                {user?.role !== 'aurrum_admin' && (
+                  <optgroup label="Auriic CRM Roles">
+                    {ROLES.filter(r => r.brand === 'auriic').map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
+              {isAurrumRole(formData.role) && (
+                <p className="text-[11px] text-amber-500 font-medium px-1">
+                  This user will only see the Aurrum Careers section in the sidebar.
+                </p>
+              )}
             </div>
             {formData.role === 'jpc_candidate' && (
               <div className="space-y-4 pt-2 border-t border-border-primary">

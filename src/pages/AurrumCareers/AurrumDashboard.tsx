@@ -40,6 +40,7 @@ import {
   InterviewSupportRequest,
   InterviewRound,
 } from '../../types';
+import { FreeTrialBadge } from '../../components/FreeTrialBadge';
 import { AurrumFlowHeader } from './AurrumFlowHeader';
 import {
   AurrumCandidateModal,
@@ -92,7 +93,10 @@ export const AurrumDashboard: React.FC = () => {
     return allUsers.filter(
       u =>
         !u.deleted_at &&
-        (u.role === 'jpc_sales' ||
+        (u.role === 'aurrum_sales' ||
+          u.role === 'aurrum_admin' ||
+          u.role === 'aurrum_team' ||
+          u.role === 'jpc_sales' ||
           u.role === 'jpc_lead_gen' ||
           u.role === 'jpc_manager' ||
           u.role === 'administrator' ||
@@ -484,13 +488,22 @@ export const AurrumDashboard: React.FC = () => {
                   <div
                     key={c.id}
                     onClick={() => {
-                      setEditingCandidate(c);
-                      setIsAddModalOpen(true);
+                      window.location.hash = `#aurrum-candidate?id=${c.id}`;
                     }}
                     className="p-3.5 rounded-2xl bg-bg-tertiary/60 border border-border-primary hover:border-accent-blue/40 transition-all flex items-center justify-between gap-3 cursor-pointer"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-text-primary truncate">{c.full_name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-text-primary truncate">{c.full_name}</p>
+                        {c.is_free_trial && (
+                          <FreeTrialBadge
+                            startDate={c.free_trial_start_date}
+                            endDate={c.free_trial_end_date}
+                            size="sm"
+                            showDaysRemaining={true}
+                          />
+                        )}
+                      </div>
                       <div className="flex items-center gap-3 text-[11px] text-text-muted mt-0.5">
                         {c.phone && (
                           <span className="flex items-center gap-1 truncate">

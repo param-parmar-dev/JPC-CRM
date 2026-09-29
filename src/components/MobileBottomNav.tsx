@@ -7,10 +7,11 @@ import {
   Menu, 
   User as UserIcon, 
   TrendingUp,
-  FileText
+  FileText,
+  Video
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { User } from '../types';
+import { User, isAurrumRole } from '../types';
 import { subscribeToCollection } from '../services/storage';
 
 interface MobileBottomNavProps {
@@ -27,7 +28,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const [followUpsCount, setFollowUpsCount] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isAurrumRole(user.role)) return;
     const unsub = subscribeToCollection<any>('jpc_followups', (data) => {
       const today = new Date().toISOString().split('T')[0];
       const personal = user.role === 'administrator' || user.role === 'jpc_manager'
@@ -42,12 +43,20 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   if (!user) return null;
 
   const isCandidate = user.role === 'candidate' || user.role === 'jpc_candidate';
+  const isAurrum = isAurrumRole(user.role);
 
-  const navItems = isCandidate
+  const navItems: { label: string; hash: string; icon: any; badge?: number }[] = isCandidate
     ? [
         { label: 'Dashboard', hash: '#dashboard', icon: LayoutDashboard },
         { label: 'Profile', hash: `#candidate?id=${user.candidate_id}`, icon: UserIcon },
         { label: 'Receipt', hash: '#receipt', icon: FileText },
+      ]
+    : isAurrum
+    ? [
+        { label: 'Dashboard', hash: '#aurrum-dashboard', icon: LayoutDashboard },
+        { label: 'Candidates', hash: '#aurrum-candidates', icon: Users },
+        { label: 'Sales', hash: '#aurrum-sales', icon: TrendingUp },
+        { label: 'Interviews', hash: '#aurrum-interviews', icon: Video },
       ]
     : [
         { label: 'Home', hash: '#dashboard', icon: LayoutDashboard },

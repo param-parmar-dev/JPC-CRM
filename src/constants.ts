@@ -79,6 +79,9 @@ export const ROLE_PERMISSIONS: Record<Role, { allowedStages: Stage[] | 'ALL'; ad
   jpc_proxy: { allowedStages: 'ALL' },
   jpc_candidate: { allowedStages: [] },
   candidate: { allowedStages: [] },
+  aurrum_admin: { allowedStages: ['lead_generation', 'sales', 'interviewing', 'offer', 'completed'], teamManagement: true },
+  aurrum_sales: { allowedStages: ['lead_generation', 'sales', 'interviewing'] },
+  aurrum_team: { allowedStages: ['lead_generation', 'sales', 'interviewing', 'offer', 'completed'] },
 };
 
 export const LEAD_SOURCES = [

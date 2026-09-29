@@ -12,9 +12,15 @@ export type Role =
   | 'jpc_recruiter'
   | 'jpc_proxy'
   | 'jpc_candidate'
-  | 'candidate';
+  | 'candidate'
+  | 'aurrum_admin'
+  | 'aurrum_sales'
+  | 'aurrum_team';
 
 export type UserRole = Role;
+
+export const isAurrumRole = (role?: string | null): boolean =>
+  role === 'aurrum_admin' || role === 'aurrum_sales' || role === 'aurrum_team';
 
 export interface User {
   id: number | string;
@@ -167,6 +173,8 @@ export interface Candidate {
   crm_brand?: 'auriic' | 'aurrum';
   aurrum_stage?: 'lead' | 'sales' | 'converted' | 'interview_support' | 'not_interested' | 'not_eligible';
   aurrum_sales_status?: 'New Lead' | 'Contacted' | 'Follow-Up' | 'Interested' | 'Converted' | 'Not Interested' | 'Not Eligible';
+  total_paid?: number;
+  balance_remaining?: number;
 }
 
 export interface RecruiterAssignmentHistory {

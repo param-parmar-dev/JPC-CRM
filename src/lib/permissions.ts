@@ -3,8 +3,15 @@ import { Candidate, User } from '../types';
 export function canUserAccessCandidate(candidate: Candidate, user: User | null, teamUsers: User[] = []): boolean {
   if (!user) return true;
 
-  // Administrators, System Admins, and Managers have unrestricted access
-  if (user.role === 'administrator' || user.role === 'jpc_sysadmin' || user.role === 'jpc_manager') {
+  // Administrators, System Admins, Managers, and Aurrum Careers roles have access to Aurrum candidates
+  if (
+    user.role === 'administrator' ||
+    user.role === 'jpc_sysadmin' ||
+    user.role === 'jpc_manager' ||
+    user.role === 'aurrum_admin' ||
+    user.role === 'aurrum_sales' ||
+    user.role === 'aurrum_team'
+  ) {
     return true;
   }
 
@@ -129,7 +136,10 @@ export function canManageFreeTrial(user: User | null): boolean {
     'jpc_manager',
     'jpc_sales',
     'jpc_cs',
-    'jpc_compliance_person'
+    'jpc_compliance_person',
+    'aurrum_admin',
+    'aurrum_sales',
+    'aurrum_team',
   ].includes(user.role);
 }
 

@@ -4,6 +4,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { Sidebar } from './components/Sidebar';
 import { isProxyUser } from './services/interviewService';
+import { isAurrumRole } from './types';
 import { AddCandidateModal } from './components/AddCandidateModal';
 import { NotificationList } from './components/NotificationList';
 import { SLAMonitor } from './components/SLAMonitor';
@@ -38,6 +39,7 @@ const BookingPage = lazy(() => import('./pages/InterviewSupport/BookingPage').th
 const CRMDashboard = lazy(() => import('./pages/CRMDashboard').then(m => ({ default: m.CRMDashboard })));
 const AurrumDashboard = lazy(() => import('./pages/AurrumCareers/AurrumDashboard').then(m => ({ default: m.AurrumDashboard })));
 const AurrumCandidates = lazy(() => import('./pages/AurrumCareers/AurrumCandidates').then(m => ({ default: m.AurrumCandidates })));
+const AurrumCandidateDetail = lazy(() => import('./pages/AurrumCareers/AurrumCandidateDetail').then(m => ({ default: m.AurrumCandidateDetail })));
 const AurrumSales = lazy(() => import('./pages/AurrumCareers/AurrumSales').then(m => ({ default: m.AurrumSales })));
 const AurrumInterviewSupport = lazy(() => import('./pages/AurrumCareers/AurrumInterviewSupport').then(m => ({ default: m.AurrumInterviewSupport })));
 
@@ -77,6 +79,20 @@ const AppContent: React.FC = () => {
         if (window.location.hash !== targetHash) {
           window.location.hash = targetHash;
         }
+      } else if (isAurrumRole(user.role)) {
+        const current = window.location.hash.split('?')[0];
+        const allowedForAurrum = [
+          '#aurrum-dashboard',
+          '#aurrum-candidates',
+          '#aurrum-candidate',
+          '#aurrum-sales',
+          '#aurrum-interviews',
+          '#receipt',
+          ...(user.role === 'aurrum_admin' ? ['#team'] : []),
+        ];
+        if (!current || (!allowedForAurrum.includes(current) && !current.startsWith('#book-interview'))) {
+          window.location.hash = '#aurrum-dashboard';
+        }
       }
       
       // Only run maintenance tasks for administrators
@@ -100,7 +116,7 @@ const AppContent: React.FC = () => {
 
 
   const isBookingPage = currentHash.startsWith('#book-interview');
-  const isAurrumRoute = currentHash.startsWith('#aurrum-');
+  const isAurrumRoute = currentHash.startsWith('#aurrum-') || isAurrumRole(user?.role);
 
   if (!user && !isBookingPage) {
     return (
@@ -119,6 +135,25 @@ const AppContent: React.FC = () => {
         case '#candidate': return <CandidateDetail />;
         case '#receipt': return <Receipt />;
         default: return <CandidateDashboard />;
+      }
+    }
+
+    if (isAurrumRole(user?.role)) {
+      switch (hash) {
+        case '#aurrum-dashboard': return <AurrumDashboard />;
+        case '#aurrum-candidates': return <AurrumCandidates />;
+        case '#aurrum-candidate': return <AurrumCandidateDetail />;
+        case '#aurrum-sales': return <AurrumSales />;
+        case '#aurrum-interviews': return <AurrumInterviewSupport />;
+        case '#receipt': return <Receipt />;
+        case '#team':
+          if (user?.role === 'aurrum_admin') return <Team />;
+          return <AurrumDashboard />;
+        default:
+          if (hash.startsWith('#book-interview')) {
+            return <BookingPage />;
+          }
+          return <AurrumDashboard />;
       }
     }
 
@@ -179,6 +214,8 @@ const AppContent: React.FC = () => {
         return <AurrumDashboard />;
       case '#aurrum-candidates':
         return <AurrumCandidates />;
+      case '#aurrum-candidate':
+        return <AurrumCandidateDetail />;
       case '#aurrum-sales':
         return <AurrumSales />;
       case '#aurrum-interviews':
@@ -212,6 +249,7 @@ const AppContent: React.FC = () => {
       case '#interviews-proxy': return 'Proxy Support';
       case '#aurrum-dashboard': return 'Aurrum Dashboard';
       case '#aurrum-candidates': return 'Aurrum Candidates';
+      case '#aurrum-candidate': return 'Aurrum Candidate Profile';
       case '#aurrum-sales': return 'Aurrum Sales';
       case '#aurrum-interviews': return 'Aurrum Interview Support';
       case '#not-interested': return 'Not Interested';
