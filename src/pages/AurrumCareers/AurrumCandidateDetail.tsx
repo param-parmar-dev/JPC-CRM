@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   Edit2,
-  Phone,
-  Mail,
   MapPin,
   Linkedin,
   GraduationCap,
@@ -28,7 +26,6 @@ import {
   Check,
   Building,
   LayoutDashboard,
-  Link as LinkIcon,
   Send,
   Activity,
   Search,
@@ -43,7 +40,6 @@ import {
   User,
   InterviewSupportRequest,
   InterviewRound,
-  Application,
 } from '../../types';
 import {
   subscribeToCollection,
@@ -53,9 +49,6 @@ import {
   updateFollowUp,
   deleteCandidate,
   logActivity,
-  addAurrumApplication,
-  updateAurrumApplication,
-  deleteAurrumApplication,
 } from '../../services/storage';
 import { uploadFile, handleViewFile } from '../../services/fileService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -69,18 +62,9 @@ import {
   AURRUM_SALES_STATUSES,
   resolveAurrumStage,
 } from './AurrumCandidateModal';
-import { cn, getEasternDate } from '../../lib/utils';
+import { cn } from '../../lib/utils';
 
-type DashboardTab = 'overview' | 'applications' | 'interviews' | 'activities' | 'profile';
-
-const APPLICATION_STATUSES = [
-  'Applied',
-  'Under Review',
-  'Assessment',
-  'Interview Scheduled',
-  'Offer',
-  'Rejected',
-] as const;
+type DashboardTab = 'overview' | 'interviews' | 'activities' | 'profile';
 
 export const AurrumCandidateDetail: React.FC = () => {
   const { user, isAuthReady } = useAuth();
@@ -97,7 +81,6 @@ export const AurrumCandidateDetail: React.FC = () => {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [applications, setApplications] = useState<Application[]>([]);
   const [interviews, setInterviews] = useState<InterviewSupportRequest[]>([]);
   const [interviewRounds, setInterviewRounds] = useState<InterviewRound[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -125,18 +108,6 @@ export const AurrumCandidateDetail: React.FC = () => {
   const [updateDetails, setUpdateDetails] = useState('');
   const [isPostingUpdate, setIsPostingUpdate] = useState(false);
   const [activitySearch, setActivitySearch] = useState('');
-
-  // Job Application Form State
-  const [isAppFormOpen, setIsAppFormOpen] = useState(false);
-  const [appCompany, setAppCompany] = useState('');
-  const [appJobTitle, setAppJobTitle] = useState('');
-  const [appJobLink, setAppJobLink] = useState('');
-  const [appStatus, setAppStatus] = useState<string>('Applied');
-  const [appDate, setAppDate] = useState(getEasternDate());
-  const [appNotes, setAppNotes] = useState('');
-  const [isSavingApp, setIsSavingApp] = useState(false);
-  const [appSearch, setAppSearch] = useState('');
-  const [appStatusFilter, setAppStatusFilter] = useState<string>('all');
 
   // Notes & Package quick edit
   const [notesValue, setNotesValue] = useState('');
@@ -226,19 +197,6 @@ export const AurrumCandidateDetail: React.FC = () => {
       }
     );
 
-    const unsubApps = onSnapshot(
-      query(collection(db, 'jpc_applications'), where('candidate_id', '==', candidateId)),
-      snap => {
-        const items = snap.docs.map(d => ({ ...(d.data() as Application), id: d.id }));
-        items.sort(
-          (a, b) =>
-            new Date(b.applied_at || b.created_at).getTime() -
-            new Date(a.applied_at || a.created_at).getTime()
-        );
-        setApplications(items);
-      }
-    );
-
     const unsubUsers = subscribeToCollection<User>('jpc_users', data => {
       setAllUsers(data);
     });
@@ -258,7 +216,6 @@ export const AurrumCandidateDetail: React.FC = () => {
       unsubCandidate();
       unsubFollowUps();
       unsubActivity();
-      unsubApps();
       unsubUsers();
       unsubInterviews();
       unsubRounds();
@@ -301,22 +258,6 @@ export const AurrumCandidateDetail: React.FC = () => {
     const reqIds = new Set(candidateInterviews.map(r => r.id));
     return interviewRounds.filter(round => reqIds.has(round.request_id));
   }, [candidateInterviews, interviewRounds]);
-
-  const filteredApplications = useMemo(() => {
-    const q = appSearch.toLowerCase().trim();
-    return applications.filter(app => {
-      if (appStatusFilter !== 'all' && (app.status || 'Applied') !== appStatusFilter) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        (app.company_name || '').toLowerCase().includes(q) ||
-        (app.job_title || '').toLowerCase().includes(q) ||
-        (app.job_link || '').toLowerCase().includes(q) ||
-        (app.notes || '').toLowerCase().includes(q)
-      );
-    });
-  }, [applications, appSearch, appStatusFilter]);
 
   const filteredActivityLogs = useMemo(() => {
     const q = activitySearch.toLowerCase().trim();
@@ -471,57 +412,6 @@ export const AurrumCandidateDetail: React.FC = () => {
     }
   };
 
-  const handleAddApplication = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!candidate || !appCompany.trim() || !appJobLink.trim()) {
-      showToast('Company Name and Job Link are required', 'error');
-      return;
-    }
-
-    const duplicate = applications.some(
-      a => a.job_link.trim().toLowerCase() === appJobLink.trim().toLowerCase()
-    );
-    if (duplicate) {
-      showToast('Duplicate Link! This job link has already been logged for this candidate.', 'error');
-      return;
-    }
-
-    setIsSavingApp(true);
-    try {
-      await addAurrumApplication({
-        candidate_id: candidate.id,
-        recruiter_id: String(user?.id || 'aurrum'),
-        company_name: appCompany.trim(),
-        job_title: appJobTitle.trim() || candidate.job_interest || 'Target Role',
-        job_link: appJobLink.trim(),
-        status: appStatus,
-        notes: appNotes.trim(),
-        sheet_type: candidate.job_interest || 'Aurrum',
-        applied_at: appDate || getEasternDate(),
-      });
-
-      await logActivity(
-        candidate.id,
-        'AURRUM_JOB_APPLIED',
-        `Applied to ${appJobTitle.trim() || 'Role'} at ${appCompany.trim()} (${appStatus})`,
-        user?.id ?? null
-      );
-
-      setAppCompany('');
-      setAppJobTitle('');
-      setAppJobLink('');
-      setAppStatus('Applied');
-      setAppNotes('');
-      setIsAppFormOpen(false);
-      showToast('Job application logged to candidate dashboard!', 'success');
-    } catch (err) {
-      console.error('Error adding Aurrum application:', err);
-      showToast('Failed to log application', 'error');
-    } finally {
-      setIsSavingApp(false);
-    }
-  };
-
   const handlePostProgressUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!candidate || !updateDetails.trim()) return;
@@ -573,7 +463,12 @@ export const AurrumCandidateDetail: React.FC = () => {
     setIsSavingNotes(true);
     try {
       await updateAurrumCandidate(candidate.id, { notes: notesValue });
-      await logActivity(candidate.id, 'AURRUM_NOTES_UPDATED', 'Updated candidate notes', user?.id ?? null);
+      await logActivity(
+        candidate.id,
+        'AURRUM_NOTES_UPDATED',
+        'Updated candidate notes',
+        user?.id ?? null
+      );
       showToast('Candidate notes saved!', 'success');
     } catch (err) {
       console.error('Failed to save notes:', err);
@@ -650,7 +545,11 @@ export const AurrumCandidateDetail: React.FC = () => {
 
   const handleDeleteCandidate = async () => {
     if (!candidate) return;
-    if (!window.confirm(`Are you sure you want to delete Aurrum candidate "${candidate.full_name}"?`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete Aurrum candidate "${candidate.full_name}"?`
+      )
+    ) {
       return;
     }
     try {
@@ -715,8 +614,6 @@ export const AurrumCandidateDetail: React.FC = () => {
   const journeyProgressPct =
     stageIdx >= 0 ? Math.round(((stageIdx + 1) / journeyOrder.length) * 100) : 25;
 
-  const todayIso = getEasternDate();
-  const todayAppsCount = applications.filter(a => (a.applied_at || '').startsWith(todayIso)).length;
   const pendingFollowUpsCount = followUps.filter(f => !f.done).length;
 
   return (
@@ -724,7 +621,7 @@ export const AurrumCandidateDetail: React.FC = () => {
       <AurrumFlowHeader
         activeStep={currentStage === 'sales' ? 'sales' : 'candidates'}
         title={`${candidate.full_name} — Candidate Dashboard`}
-        subtitle="Complete candidate journey, applications, status, progress, interviews, and activity log in one place."
+        subtitle="Complete candidate journey, status, progress, interviews, and activity log in one place."
         actions={
           allAurrumCandidates.length > 1 ? (
             <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-xl px-3 py-1.5">
@@ -786,17 +683,6 @@ export const AurrumCandidateDetail: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('applications');
-                setIsAppFormOpen(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Log Job Application
-            </button>
             <button
               type="button"
               onClick={() => setIsEditModalOpen(true)}
@@ -961,25 +847,7 @@ export const AurrumCandidateDetail: React.FC = () => {
       </div>
 
       {/* Candidate KPI Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div
-          onClick={() => setActiveTab('applications')}
-          className="bg-bg-secondary border border-border-primary hover:border-accent-blue/40 rounded-2xl p-4 cursor-pointer transition-all"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">
-              Job Applications
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-accent-blue/10 text-accent-blue flex items-center justify-center">
-              <LinkIcon className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-text-primary mt-2">{applications.length}</p>
-          <p className="text-[11px] text-emerald-500 font-semibold mt-0.5">
-            +{todayAppsCount} applied today
-          </p>
-        </div>
-
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div
           onClick={() => setActiveTab('interviews')}
           className="bg-bg-secondary border border-border-primary hover:border-purple-500/40 rounded-2xl p-4 cursor-pointer transition-all"
@@ -1063,11 +931,6 @@ export const AurrumCandidateDetail: React.FC = () => {
             id: 'overview' as const,
             label: 'Candidate Journey Dashboard',
             icon: LayoutDashboard,
-          },
-          {
-            id: 'applications' as const,
-            label: `Applications (${applications.length})`,
-            icon: LinkIcon,
           },
           {
             id: 'interviews' as const,
@@ -1286,258 +1149,7 @@ export const AurrumCandidateDetail: React.FC = () => {
         </section>
       )}
 
-      {/* TAB 1: APPLICATIONS (JOB TRACKER) */}
-      {activeTab === 'applications' && (
-        <div className="space-y-6">
-          <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-black text-text-primary flex items-center gap-2">
-                  <LinkIcon className="w-5 h-5 text-accent-blue" />
-                  Candidate Job Applications ({applications.length})
-                </h2>
-                <p className="text-xs text-text-secondary mt-0.5">
-                  All job applications, portal links, and application statuses for {candidate.full_name}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAppFormOpen(!isAppFormOpen)}
-                className="px-4 py-2.5 rounded-xl bg-accent-blue text-white text-xs font-bold hover:bg-accent-blue/90 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-              >
-                <Plus className="w-4 h-4" />
-                {isAppFormOpen ? 'Close Application Form' : 'Log New Job Application'}
-              </button>
-            </div>
-
-            {isAppFormOpen && (
-              <form
-                onSubmit={handleAddApplication}
-                className="p-5 bg-bg-tertiary/70 border border-accent-blue/30 rounded-2xl space-y-4"
-              >
-                <h3 className="text-xs font-black uppercase tracking-wider text-accent-blue">
-                  Log New Job Application for {candidate.full_name}
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
-                      Company Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={appCompany}
-                      onChange={e => setAppCompany(e.target.value)}
-                      placeholder="e.g. Stripe, Google, Snowflake"
-                      className="w-full px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
-                      Job Title / Role
-                    </label>
-                    <input
-                      type="text"
-                      value={appJobTitle}
-                      onChange={e => setAppJobTitle(e.target.value)}
-                      placeholder={candidate.job_interest || 'e.g. Senior Software Engineer'}
-                      className="w-full px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
-                      Application Status
-                    </label>
-                    <select
-                      value={appStatus}
-                      onChange={e => setAppStatus(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none cursor-pointer"
-                    >
-                      {APPLICATION_STATUSES.map(st => (
-                        <option key={st} value={st}>
-                          {st}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
-                      Job Link / Portal URL *
-                    </label>
-                    <input
-                      type="url"
-                      required
-                      value={appJobLink}
-                      onChange={e => setAppJobLink(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
-                      Applied Date
-                    </label>
-                    <input
-                      type="date"
-                      value={appDate}
-                      onChange={e => setAppDate(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-text-muted mb-1">
-                    Application Notes / Referral / Credentials
-                  </label>
-                  <input
-                    type="text"
-                    value={appNotes}
-                    onChange={e => setAppNotes(e.target.value)}
-                    placeholder="Optional notes about this job application..."
-                    className="w-full px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAppFormOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-bg-secondary border border-border-primary text-xs font-bold text-text-secondary cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSavingApp}
-                    className="px-5 py-2 rounded-xl bg-accent-blue text-white text-xs font-bold hover:bg-accent-blue/90 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {isSavingApp ? 'Saving...' : 'Save Application'}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Search & Filter Applications */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={appSearch}
-                  onChange={e => setAppSearch(e.target.value)}
-                  placeholder="Search applications by company, role, link, or notes..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                />
-              </div>
-              <select
-                value={appStatusFilter}
-                onChange={e => setAppStatusFilter(e.target.value)}
-                className="px-4 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none cursor-pointer"
-              >
-                <option value="all">All Statuses ({applications.length})</option>
-                {APPLICATION_STATUSES.map(st => (
-                  <option key={st} value={st}>
-                    {st} ({applications.filter(a => (a.status || 'Applied') === st).length})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {filteredApplications.length > 0 ? (
-              <div className="space-y-3">
-                {filteredApplications.map(app => (
-                  <div
-                    key={app.id}
-                    className="p-4 rounded-2xl bg-bg-tertiary/60 border border-border-primary flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-accent-blue/30 transition-all"
-                  >
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-black text-text-primary">
-                          {app.company_name || 'Company'}
-                        </span>
-                        <span className="text-xs font-bold text-accent-blue">
-                          • {app.job_title || 'Role'}
-                        </span>
-                        <span className="text-[10px] font-bold text-text-muted bg-bg-secondary px-2 py-0.5 rounded-md border border-border-primary">
-                          Applied: {app.applied_at ? new Date(app.applied_at).toLocaleDateString() : '—'}
-                        </span>
-                      </div>
-                      {app.notes && (
-                        <p className="text-xs text-text-secondary line-clamp-2">{app.notes}</p>
-                      )}
-                      <a
-                        href={app.job_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] text-accent-blue hover:underline inline-flex items-center gap-1 truncate max-w-md"
-                      >
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{app.job_link}</span>
-                      </a>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <select
-                        value={app.status || 'Applied'}
-                        onChange={async e => {
-                          const nextSt = e.target.value;
-                          await updateAurrumApplication(app.id, { status: nextSt });
-                          await logActivity(
-                            candidate.id,
-                            'AURRUM_APP_STATUS',
-                            `Updated application status for ${app.company_name} to ${nextSt}`,
-                            user?.id ?? null
-                          );
-                          showToast(`Application status updated to ${nextSt}`, 'success');
-                        }}
-                        className="px-3 py-1.5 bg-bg-secondary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none cursor-pointer"
-                      >
-                        {APPLICATION_STATUSES.map(st => (
-                          <option key={st} value={st}>
-                            {st}
-                          </option>
-                        ))}
-                      </select>
-
-                      <a
-                        href={app.job_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 rounded-xl bg-bg-secondary border border-border-primary text-text-secondary hover:text-accent-blue transition-colors"
-                        title="Open Job Portal"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!window.confirm(`Remove application to ${app.company_name}?`)) return;
-                          await deleteAurrumApplication(app.id);
-                          showToast('Application removed', 'info');
-                        }}
-                        className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
-                        title="Delete Application"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-12 text-center bg-bg-tertiary/40 rounded-2xl border border-dashed border-border-primary space-y-2">
-                <LinkIcon className="w-8 h-8 text-text-muted mx-auto opacity-50" />
-                <p className="text-sm font-bold text-text-primary">No job applications logged yet</p>
-                <p className="text-xs text-text-secondary">
-                  Click &quot;Log New Job Application&quot; above to track job links applied for this candidate.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: INTERVIEWS & ROUNDS */}
+      {/* TAB: INTERVIEWS & ROUNDS */}
       {activeTab === 'interviews' && (
         <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1653,7 +1265,7 @@ export const AurrumCandidateDetail: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: ACTIVITIES & UPDATES */}
+      {/* TAB: ACTIVITIES & UPDATES */}
       {activeTab === 'activities' && (
         <div className="space-y-6">
           <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-5">
@@ -1681,7 +1293,6 @@ export const AurrumCandidateDetail: React.FC = () => {
                 >
                   <option value="Progress Update">Progress Update</option>
                   <option value="Candidate Call Note">Candidate Call Note</option>
-                  <option value="Application Milestone">Application Milestone</option>
                   <option value="Interview Update">Interview Update</option>
                   <option value="Status Check-In">Status Check-In</option>
                 </select>
@@ -1748,142 +1359,60 @@ export const AurrumCandidateDetail: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 0 (OVERVIEW DASHBOARD) & TAB 4 (PROFILE, SALES & RESUME) */}
+      {/* TAB: OVERVIEW DASHBOARD & PROFILE, SALES & RESUME */}
       {(activeTab === 'overview' || activeTab === 'profile') && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left 2 Columns */}
           <div className="lg:col-span-2 space-y-6">
-            {/* On Overview Tab: Show Quick Progress Logger + Recent Applications Snapshot */}
+            {/* On Overview Tab: Show Quick Progress Logger */}
             {activeTab === 'overview' && (
-              <>
-                {/* Quick Progress Update Bar */}
-                <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-base font-black text-text-primary flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-amber-500" />
-                      Quick Candidate Progress Update
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('activities')}
-                      className="text-xs font-bold text-accent-blue hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      View All Updates ({activityLogs.length})
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <form
-                    onSubmit={handlePostProgressUpdate}
-                    className="flex flex-col sm:flex-row gap-2.5"
+              <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-black text-text-primary flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-amber-500" />
+                    Quick Candidate Progress Update
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('activities')}
+                    className="text-xs font-bold text-accent-blue hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <select
-                      value={updateTitle}
-                      onChange={e => setUpdateTitle(e.target.value)}
-                      className="px-3 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none cursor-pointer sm:w-44"
-                    >
-                      <option value="Progress Update">Progress Update</option>
-                      <option value="Candidate Call Note">Candidate Call Note</option>
-                      <option value="Application Milestone">Application Milestone</option>
-                      <option value="Interview Update">Interview Update</option>
-                    </select>
-                    <input
-                      type="text"
-                      required
-                      value={updateDetails}
-                      onChange={e => setUpdateDetails(e.target.value)}
-                      placeholder="Log a quick progress update or activity for this candidate..."
-                      className="flex-1 px-3.5 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isPostingUpdate}
-                      className="px-4 py-2.5 bg-accent-blue text-white rounded-xl text-xs font-bold hover:bg-accent-blue/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      Log Update
-                    </button>
-                  </form>
+                    View All Updates ({activityLogs.length})
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-
-                {/* Recent Job Applications Card on Overview */}
-                <div className="bg-bg-secondary border border-border-primary rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-base font-black text-text-primary flex items-center gap-2">
-                        <LinkIcon className="w-4 h-4 text-accent-blue" />
-                        Recent Job Applications ({applications.length})
-                      </h2>
-                      <p className="text-xs text-text-secondary">
-                        Track job links and portal applications submitted for this candidate
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('applications');
-                          setIsAppFormOpen(true);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-accent-blue text-white text-xs font-bold hover:bg-accent-blue/90 transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Add Application
-                      </button>
-                      {applications.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('applications')}
-                          className="px-3 py-1.5 rounded-xl bg-bg-tertiary border border-border-primary text-xs font-bold text-text-secondary hover:text-text-primary cursor-pointer"
-                        >
-                          View All
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {applications.length > 0 ? (
-                    <div className="space-y-2.5">
-                      {applications.slice(0, 5).map(app => (
-                        <div
-                          key={app.id}
-                          className="p-3.5 rounded-2xl bg-bg-tertiary/60 border border-border-primary flex items-center justify-between gap-3"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-xs font-black text-text-primary truncate">
-                              {app.company_name} —{' '}
-                              <span className="text-accent-blue">{app.job_title || 'Role'}</span>
-                            </p>
-                            <p className="text-[10px] text-text-muted mt-0.5">
-                              Applied:{' '}
-                              {app.applied_at ? new Date(app.applied_at).toLocaleDateString() : '—'}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="px-2.5 py-0.5 rounded-lg bg-bg-secondary border border-border-primary text-[10px] font-bold text-text-primary">
-                              {app.status || 'Applied'}
-                            </span>
-                            <a
-                              href={app.job_link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg bg-bg-secondary border border-border-primary text-text-secondary hover:text-accent-blue"
-                              title="Open Job Link"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 bg-bg-tertiary/40 rounded-2xl border border-dashed border-border-primary text-center">
-                      <p className="text-xs text-text-secondary">
-                        No applications logged for this candidate yet.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
+                <form
+                  onSubmit={handlePostProgressUpdate}
+                  className="flex flex-col sm:flex-row gap-2.5"
+                >
+                  <select
+                    value={updateTitle}
+                    onChange={e => setUpdateTitle(e.target.value)}
+                    className="px-3 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs font-bold text-text-primary outline-none cursor-pointer sm:w-44"
+                  >
+                    <option value="Progress Update">Progress Update</option>
+                    <option value="Candidate Call Note">Candidate Call Note</option>
+                    <option value="Interview Update">Interview Update</option>
+                    <option value="Status Check-In">Status Check-In</option>
+                  </select>
+                  <input
+                    type="text"
+                    required
+                    value={updateDetails}
+                    onChange={e => setUpdateDetails(e.target.value)}
+                    placeholder="Log a quick progress update or activity for this candidate..."
+                    className="flex-1 px-3.5 py-2.5 bg-bg-tertiary border border-border-primary rounded-xl text-xs text-text-primary outline-none focus:border-accent-blue"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isPostingUpdate}
+                    className="px-4 py-2.5 bg-accent-blue text-white rounded-xl text-xs font-bold hover:bg-accent-blue/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Log Update
+                  </button>
+                </form>
+              </div>
             )}
 
             {/* Contact & Professional Overview */}
