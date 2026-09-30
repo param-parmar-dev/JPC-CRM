@@ -45,7 +45,7 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
   
   const [date, setDate] = useState(initialDate);
   const [selectedSlot, setSelectedSlot] = useState<string>(round.booked_slot_time || '');
-  const [manualProxyId, setManualProxyId] = useState<string | null>(null);
+  const [explicitProxyId, setExplicitProxyId] = useState<string | null>(null);
 
   const [isManualTime, setIsManualTime] = useState(false);
   const [manualStart, setManualStart] = useState(round.booked_slot_time ? round.booked_slot_time.substring(11, 16) : '');
@@ -75,12 +75,25 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
   }, [assignmentResult.bestProxy]);
 
   const selectedProxyId = useMemo(() => {
-    return resolveEffectiveProxySelection(autoSelectedProxyId, manualProxyId);
-  }, [autoSelectedProxyId, manualProxyId]);
+    if (explicitProxyId !== null && explicitProxyId !== undefined && explicitProxyId !== '') {
+      return String(explicitProxyId);
+    }
+    
+    // Check if time has changed from the round's initial time
+    const currentStartISO = `${date}T${startTime}:00`;
+    const roundInitialStart = round.booked_slot_time || '';
+    
+    // If time hasn't changed and the round already has a proxy, preserve it!
+    if (currentStartISO === roundInitialStart && round.proxy_user_id) {
+      return String(round.proxy_user_id);
+    }
+    
+    return autoSelectedProxyId;
+  }, [explicitProxyId, autoSelectedProxyId, date, startTime, round.booked_slot_time, round.proxy_user_id]);
 
   // Reset manual selection when opening modal for a different round
   useEffect(() => {
-    setManualProxyId(null);
+    setExplicitProxyId(null);
   }, [round.id, isOpen]);
 
   const selectedProxy = useMemo(() => {
@@ -310,7 +323,7 @@ export const ProxyAssignmentModal: React.FC<ProxyAssignmentModalProps> = ({
                   <span className="text-[9px] font-black text-text-muted uppercase tracking-wider block">Choose Proxy Member</span>
                   <select
                     value={selectedProxyId}
-                    onChange={e => setManualProxyId(e.target.value || null)}
+                    onChange={e => setExplicitProxyId(e.target.value || null)}
                     className="w-full bg-bg-secondary border border-border-primary rounded-xl text-xs p-2 font-bold text-text-primary focus:ring-1 focus:ring-accent-blue"
                   >
                     <option value="">-- Select Proxy --</option>
