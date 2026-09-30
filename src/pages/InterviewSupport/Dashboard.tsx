@@ -2473,37 +2473,43 @@ const RequestModal: React.FC<{
                     </div>
                   </div>
                 ))}
-                {formData.proxy_required && assignmentResult.bestProxy && !assignmentResult.errors?.length && (
-                  <div className="space-y-2 mt-4">
-                    <label className="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">Selected Allocation</label>
-                    <div className="p-5 bg-accent-green/5 border border-accent-green/10 rounded-3xl space-y-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-bg-secondary flex items-center justify-center border border-border-primary text-accent-green">
-                          <UserIcon className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <p className="text-base font-black text-text-primary">{assignmentResult.bestProxy.display_name}</p>
-                          <p className="text-[10px] text-accent-green font-black uppercase tracking-wider mt-0.5">Recommended Profile</p>
-                        </div>
-                      </div>
+                {formData.proxy_required && multiRoundAssignment.roundAssignments.some(ra => ra.bestProxy) && !assignmentResult.errors?.length && (
+                  <div className="space-y-4 mt-4">
+                    <label className="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">Selected Allocations</label>
+                    {multiRoundAssignment.roundAssignments.map((ra, idx) => {
+                      if (!ra.bestProxy) return null;
                       
-                      <div className="pt-3 border-t border-border-primary/50 text-[10px] text-text-muted font-bold space-y-1">
-                        <p>🕒 Time: {(() => {
-                           const start = formData.rounds[0].start_time;
-                           const end = formData.rounds[0].end_time;
-                           if (!start || !end) return '';
-                           const format = (t: string) => {
-                             const [h, m] = t.split(':');
-                             const hours = parseInt(h);
-                             return `${hours % 12 || 12}:${m} ${hours >= 12 ? 'PM' : 'AM'}`;
-                           };
-                           return `${format(start)} EST to ${format(end)} EST`;
-                        })()}</p>
-                        <p>⏳ Buffer: 15m Pre/Post</p>
-                        <p>⚡ Workload: Lowest current workload ({allRounds.filter(r => String(r.proxy_user_id) === String(assignmentResult.bestProxy?.id) && ['confirmed','live'].includes(r.status)).length} active interviews)</p>
-                        <p>🛡️ Conflict assessment: Clear of buffers and leaf return parameters</p>
-                      </div>
-                    </div>
+                      return (
+                        <div key={idx} className="p-5 bg-accent-green/5 border border-accent-green/10 rounded-3xl space-y-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-bg-secondary flex items-center justify-center border border-border-primary text-accent-green">
+                              <UserIcon className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="text-base font-black text-text-primary">{ra.bestProxy.display_name}</p>
+                              <p className="text-[10px] text-accent-green font-black uppercase tracking-wider mt-0.5">Round {idx + 1} - Recommended</p>
+                            </div>
+                          </div>
+                          
+                          <div className="pt-3 border-t border-border-primary/50 text-[10px] text-text-muted font-bold space-y-1">
+                            <p>🕒 Time: {(() => {
+                               const start = formData.rounds[idx].start_time;
+                               const end = formData.rounds[idx].end_time;
+                               if (!start || !end) return '';
+                               const format = (t: string) => {
+                                 const [h, m] = t.split(':');
+                                 const hours = parseInt(h);
+                                 return `${hours % 12 || 12}:${m} ${hours >= 12 ? 'PM' : 'AM'}`;
+                               };
+                               return `${format(start)} EST to ${format(end)} EST`;
+                            })()}</p>
+                            <p>⏳ Buffer: 15m Pre/Post</p>
+                            <p>⚡ Workload: Lowest current workload ({multiRoundAssignment.temporaryWorkloadMap[String(ra.bestProxy.id)] || allRounds.filter(r => String(r.proxy_user_id) === String(ra.bestProxy?.id) && ['confirmed','live'].includes(r.status)).length} active interviews during this booking pass)</p>
+                            <p>🛡️ Conflict assessment: Clear of buffers and leaf return parameters</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
