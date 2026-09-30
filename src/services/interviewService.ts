@@ -231,31 +231,6 @@ export interface RoundScheduleInput {
 }
 
 /**
- * Computes a deterministic, neutral 32-bit unsigned hash from the window coordinates and proxy ID.
- * Ensures tie-breaking does NOT depend on proxy display_name (alphabetical order) or array/database order,
- * while remaining stable across renders for the same time window and rotating fairly across different windows.
- */
-export const computeNeutralTieBreaker = (
-  proxyId: string,
-  dateStr: string,
-  startTimeJoint: string,
-  endTimeJoint: string
-): number => {
-  const key = `${dateStr}|${startTimeJoint}|${endTimeJoint}|${String(proxyId)}`;
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x85ebca6b);
-  h ^= h >>> 13;
-  h = Math.imul(h, 0xc2b2ae35);
-  h ^= h >>> 16;
-  return h >>> 0;
-};
-
-/**
  * Finds the best available proxy for a given daily time window, taking into account
  * 15-minute buffers before/after, existing rounds, manual blocks, and leave, with workload balancing.
  */
@@ -284,10 +259,14 @@ export const findBestProxyForWindow = (
   const reservedStart = new Date(jointStart.getTime() - 15 * 60 * 1000);
   const reservedEnd = new Date(jointEnd.getTime() + 15 * 60 * 1000);
 
-  // 2. Filter active proxies (exclude hardcoded leave or deleted proxy members)
+  // 2. Filter active proxies (exclude hardcoded leave, deleted, or calendar-disconnected proxy members)
   const activeProxies = proxies.filter(u => {
     if (!isProxyUser(u)) return false;
-    
+
+    // Hard requirement, not a preference: without a connected calendar we cannot verify
+    // this proxy's real-world conflicts, so they cannot be treated as available.
+    if (!u.google_calendar_connected) return false;
+
     // Check leave
     if (u.is_on_leave) return false;
     if (u.leave_return_date) {
@@ -383,50 +362,39 @@ export const findBestProxyForWindow = (
     };
   }
 
-  // 3. Select best proxy based on workload
-  // Workload = Count of active/confirmed/live interview rounds assigned + any temporary in-memory assignments
+  // 3. Select best proxy based on that day's workload only, with a genuine random pick among ties.
+  // Workload = Count of confirmed/live/booked interview rounds on the SAME interview date + any temporary in-memory assignments.
+  // No proxy_priority and no google_calendar_connected are used here anymore — they no longer bias selection.
   const availableWithWorkload = availableProxies.map(proxy => {
     const proxyIdStr = String(proxy.id);
-    const baseWorkload = allRounds.filter(r => 
+    const baseWorkload = allRounds.filter(r =>
       !r._isTempRound &&
-      String(r.proxy_user_id) === proxyIdStr && 
-      ['confirmed', 'live'].includes(r.status)
+      String(r.proxy_user_id) === proxyIdStr &&
+      ['confirmed', 'live', 'booked'].includes(r.status) &&
+      r.interview_date === dateStr
     ).length;
     const tempWorkload = temporaryWorkloadMap
       ? (temporaryWorkloadMap[proxyIdStr] || 0)
-      : allRounds.filter(r => 
+      : allRounds.filter(r =>
           r._isTempRound &&
-          String(r.proxy_user_id) === proxyIdStr && 
-          ['confirmed', 'live'].includes(r.status)
+          String(r.proxy_user_id) === proxyIdStr &&
+          ['confirmed', 'live', 'booked'].includes(r.status) &&
+          r.interview_date === dateStr
         ).length;
     const workload = baseWorkload + tempWorkload;
-    const tieBreaker = computeNeutralTieBreaker(proxyIdStr, dateStr, startTimeJoint, endTimeJoint);
-    
-    return { proxy, workload, tieBreaker };
+
+    return { proxy, workload };
   });
 
-  // Sort: 1) Lowest workload first, 2) Proxy Priority (1 is highest), 3) Connected Google Calendar second, 4) Neutral/stable tie-breaker
-  availableWithWorkload.sort((a, b) => {
-    if (a.workload !== b.workload) {
-      return a.workload - b.workload;
-    }
+  const minWorkload = Math.min(...availableWithWorkload.map(item => item.workload));
+  const leastLoaded = availableWithWorkload.filter(item => item.workload === minWorkload);
 
-    const prioA = typeof a.proxy.proxy_priority === 'number' ? a.proxy.proxy_priority : 999;
-    const prioB = typeof b.proxy.proxy_priority === 'number' ? b.proxy.proxy_priority : 999;
-    if (prioA !== prioB) {
-      return prioA - prioB; // Lower number (e.g. 1) comes first
-    }
-    const connA = a.proxy.google_calendar_connected ? 1 : 0;
-    const connB = b.proxy.google_calendar_connected ? 1 : 0;
-    if (connA !== connB) {
-      return connB - connA;
-    }
-    return a.tieBreaker - b.tieBreaker;
-  });
+  // Genuine random pick among whoever is tied for the lowest workload that day — unguessable, not a fixed favorite.
+  const winner = leastLoaded[Math.floor(Math.random() * leastLoaded.length)];
 
   return {
-    bestProxy: availableWithWorkload[0].proxy,
-    availableProxies: availableWithWorkload.map(item => item.proxy),
+    bestProxy: winner.proxy,
+    availableProxies: availableProxies,
     errors: []
   };
 };
