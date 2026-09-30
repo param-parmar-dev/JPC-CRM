@@ -405,10 +405,16 @@ export const findBestProxyForWindow = (
     return { proxy, workload, tieBreaker };
   });
 
-  // Sort: 1) Lowest workload first, 2) Connected Google Calendar second, 3) Neutral/stable tie-breaker
+  // Sort: 1) Lowest workload first, 2) Proxy Priority (1 is highest), 3) Connected Google Calendar second, 4) Neutral/stable tie-breaker
   availableWithWorkload.sort((a, b) => {
     if (a.workload !== b.workload) {
       return a.workload - b.workload;
+    }
+
+    const prioA = typeof a.proxy.proxy_priority === 'number' ? a.proxy.proxy_priority : 999;
+    const prioB = typeof b.proxy.proxy_priority === 'number' ? b.proxy.proxy_priority : 999;
+    if (prioA !== prioB) {
+      return prioA - prioB; // Lower number (e.g. 1) comes first
     }
     const connA = a.proxy.google_calendar_connected ? 1 : 0;
     const connB = b.proxy.google_calendar_connected ? 1 : 0;

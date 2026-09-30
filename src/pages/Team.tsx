@@ -172,6 +172,7 @@ export const Team: React.FC = () => {
     candidate_id: '',
     portal_link: '',
     is_on_leave: false,
+    proxy_priority: 0,
   });
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -296,6 +297,7 @@ export const Team: React.FC = () => {
             leader_id: (formData.role === 'jpc_recruiter' || formData.role === 'jpc_compliance_person') ? (formData.leader_id || null) : null,
             candidate_id: formData.role === 'jpc_candidate' ? (formData.candidate_id || null) : null,
             is_on_leave: formData.is_on_leave || false,
+            proxy_priority: formData.role === 'jpc_proxy' ? formData.proxy_priority : undefined,
             ...(formData.role === 'jpc_sales' ? { sales_availability_status: 'Active' as const } : {}),
             created_at: new Date().toISOString(),
           });
@@ -410,6 +412,11 @@ export const Team: React.FC = () => {
           candidate_id: formData.role === 'jpc_candidate' ? (formData.candidate_id || null) : null,
           is_on_leave: formData.is_on_leave || false,
         };
+        if (formData.role === 'jpc_proxy') {
+          baseEditUser.proxy_priority = formData.proxy_priority;
+        } else {
+          delete baseEditUser.proxy_priority;
+        }
         if (formData.role === 'jpc_sales') {
           baseEditUser.sales_availability_status = editingUser?.sales_availability_status || 'Active';
         } else {
@@ -1339,6 +1346,19 @@ export const Team: React.FC = () => {
                     <option key={u.id} value={u.id}>{u.display_name}</option>
                   ))}
                 </select>
+              </div>
+            )}
+            {formData.role === 'jpc_proxy' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-muted uppercase tracking-widest">Proxy Priority (Lower number = higher priority)</label>
+                <input 
+                  type="number" 
+                  value={formData.proxy_priority}
+                  onChange={e => setFormData({...formData, proxy_priority: parseInt(e.target.value) || 0})}
+                  placeholder="e.g. 1"
+                  className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent-blue transition-colors"
+                />
+                <p className="text-[10px] text-text-muted italic px-1">Sets tie-breaker priority for automated proxy selection (1 is highest).</p>
               </div>
             )}
             {formData.role === 'jpc_compliance_person' && (

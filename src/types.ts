@@ -46,6 +46,7 @@ export interface User {
   sales_availability_status?: 'Active' | 'Deactive';
   sales_activated_at?: string | null;
   sales_deactivated_at?: string | null;
+  proxy_priority?: number;
 }
 
 export type Stage = 
