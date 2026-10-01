@@ -76,6 +76,10 @@ export const BookingPage: React.FC = () => {
 
   const [isAcknowledgeSuccess, setIsAcknowledgeSuccess] = useState(false);
 
+  // Only set AFTER a booking is committed — never shown or computed ahead of submission,
+  // so nobody can see or game who the assigned proxy will be beforehand.
+  const [assignedProxyName, setAssignedProxyName] = useState<string | null>(null);
+
   // States for 'interview-support-only' self-service form
   const [formCandidateName, setFormCandidateName] = useState('');
   const [formCandidateEmail, setFormCandidateEmail] = useState('');
@@ -346,11 +350,15 @@ export const BookingPage: React.FC = () => {
     return getCalendarDateInfo(selectedDate);
   }, [selectedDate]);
 
-  const assignmentResult = useMemo(() => {
+  // Availability-only check for the form's live feedback. This intentionally does NOT surface or rely on
+  // WHICH proxy would be picked — the actual proxy is chosen once, randomly, at submit time in handleBook,
+  // so nobody can see or game the assignment ahead of booking.
+  const availabilityCheck = useMemo(() => {
     if (!customDate || !customStartTime || !customEndTime) {
-      return { bestProxy: null, availableProxies: [], errors: ['Please input date, start time, and end time to calculate assignments.'] };
+      return { hasAvailableProxy: false, errors: ['Please input date, start time, and end time to calculate assignments.'] };
     }
-    return findBestProxyForWindow(customDate, customStartTime, customEndTime, proxyTeam, allRounds, allAvailabilities, allCalendarEvents);
+    const result = findBestProxyForWindow(customDate, customStartTime, customEndTime, proxyTeam, allRounds, allAvailabilities, allCalendarEvents);
+    return { hasAvailableProxy: result.availableProxies.length > 0, errors: result.errors };
   }, [customDate, customStartTime, customEndTime, proxyTeam, allRounds, allAvailabilities, allCalendarEvents]);
 
   const handleBook = async () => {
@@ -368,7 +376,9 @@ export const BookingPage: React.FC = () => {
         isSubmittingRef.current = false;
         return;
       }
-      if (!assignmentResult.bestProxy) {
+      // Fresh, single random draw made exactly here at submit time — never precomputed or shown beforehand.
+      const freshAssignment = findBestProxyForWindow(customDate, customStartTime, customEndTime, proxyTeam, allRounds, allAvailabilities, allCalendarEvents);
+      if (!freshAssignment.bestProxy) {
         showToast('No Proxy Specialist is available at this time. Please adjust the slot schedule.', 'error');
         isSubmittingRef.current = false;
         return;
@@ -376,7 +386,7 @@ export const BookingPage: React.FC = () => {
 
       setIsSubmitting(true);
       try {
-        const assignedProxy = assignmentResult.bestProxy;
+        const assignedProxy = freshAssignment.bestProxy;
         const bookedStart = `${customDate}T${customStartTime}:00`;
         const bookedEnd = `${customDate}T${customEndTime}:00`;
 
@@ -555,6 +565,7 @@ export const BookingPage: React.FC = () => {
           console.error('[CalendarSync] Direct booking calendar sync error:', calErr);
         }
 
+        setAssignedProxyName(assignedProxy.display_name || null);
         setIsSuccess(true);
         showToast('Interview support booked and assigned successfully!', 'success');
       } catch (err: any) {
@@ -656,6 +667,8 @@ export const BookingPage: React.FC = () => {
         console.error('[CalendarSync] Existing request calendar sync error:', calErr);
       }
 
+      const bookedProxy = proxyTeam.find(p => String(p.id) === String(slot.proxy_user_id));
+      setAssignedProxyName(bookedProxy?.display_name || null);
       setIsSuccess(true);
       showToast('Interview booked successfully!', 'success');
     } catch (error) {
@@ -692,11 +705,17 @@ export const BookingPage: React.FC = () => {
                 ? "Your Interview Support request has been successfully created and your technical round's proxy slot is reserved. Our expert Proxy Team is automatically assigned!"
                 : "Your interview has been successfully scheduled. You'll receive a confirmation email with all the details shortly."}
           </p>
+          {!isAcknowledgeSuccess && assignedProxyName && (
+            <div className="mt-10 pt-10 border-t border-border-primary">
+              <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Selected Allocation</p>
+              <p className="text-sm font-bold text-text-primary mt-2">{assignedProxyName}</p>
+            </div>
+          )}
           <div className="mt-10 pt-10 border-t border-border-primary">
             <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Next Steps</p>
             <p className="text-sm font-bold text-text-primary mt-2">
-              {isAcknowledgeSuccess 
-                ? 'Wait for further instructions from your recruiter' 
+              {isAcknowledgeSuccess
+                ? 'Wait for further instructions from your recruiter'
                 : isSupportOnly
                   ? 'Keep an eye on WhatsApp and email for coordination'
                   : 'Check your email for the calendar invite'}
@@ -961,7 +980,7 @@ export const BookingPage: React.FC = () => {
                 {/* Assignment & Availability Details Feedback */}
                 {customDate && customStartTime && customEndTime && (
                   <div className="p-6 rounded-[24px] border transition-all animate-fade-in space-y-2 bg-bg-tertiary/60 border-border-primary/50">
-                    {assignmentResult.bestProxy ? (
+                    {availabilityCheck.hasAvailableProxy ? (
                       <div className="flex items-start gap-4">
                         <div className="w-10 h-10 bg-accent-green/10 text-accent-green rounded-xl flex items-center justify-center border border-accent-green/20">
                           <CheckCircle2 className="w-5 h-5 animate-bounce-slow" />
@@ -969,7 +988,7 @@ export const BookingPage: React.FC = () => {
                         <div>
                           <p className="text-sm font-black text-text-primary">Specialist Available</p>
                           <p className="text-xs font-bold text-text-secondary mt-0.5">
-                            Our primary Proxy Specialist ({assignmentResult.bestProxy.display_name}) is active and available. Booking this slot will lock in support instantly.
+                            A Proxy Specialist is active and available for this slot. Booking will automatically assign one instantly — the assigned specialist is confirmed and shown after booking.
                           </p>
                         </div>
                       </div>
@@ -1059,11 +1078,11 @@ export const BookingPage: React.FC = () => {
                   </div>
 
                   <button 
-                    disabled={!formCandidateName || !formCandidateEmail || !formCandidatePhone || !formCandidateWhatsApp || !formCompany || !formJobTitle || !formJobLink || !customDate || !customStartTime || !customEndTime || !resumeFile || !assignmentResult.bestProxy || isSubmitting || isUploading}
+                    disabled={!formCandidateName || !formCandidateEmail || !formCandidatePhone || !formCandidateWhatsApp || !formCompany || !formJobTitle || !formJobLink || !customDate || !customStartTime || !customEndTime || !resumeFile || !availabilityCheck.hasAvailableProxy || isSubmitting || isUploading}
                     onClick={handleBook}
                     className={cn(
                       "w-full py-6 rounded-[30px] font-black text-lg transition-all flex items-center justify-center gap-3 shadow-2xl",
-                      (!formCandidateName || !formCandidateEmail || !formCandidatePhone || !formCandidateWhatsApp || !formCompany || !formJobTitle || !formJobLink || !customDate || !customStartTime || !customEndTime || !resumeFile || !assignmentResult.bestProxy)
+                      (!formCandidateName || !formCandidateEmail || !formCandidatePhone || !formCandidateWhatsApp || !formCompany || !formJobTitle || !formJobLink || !customDate || !customStartTime || !customEndTime || !resumeFile || !availabilityCheck.hasAvailableProxy)
                         ? "bg-bg-tertiary text-text-muted border border-border-primary cursor-not-allowed" 
                         : "bg-accent-blue text-white shadow-accent-blue/30 hover:scale-[1.02] active:scale-[0.98] hover:shadow-accent-blue/40"
                     )}
