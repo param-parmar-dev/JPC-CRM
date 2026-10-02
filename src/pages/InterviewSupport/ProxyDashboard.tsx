@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { 
   subscribeToCollection, 
+  subscribeToAurrumCandidates,
   addProxyAvailability, 
   updateProxyAvailability, 
   deleteProxyAvailability,
@@ -68,7 +69,9 @@ export const ProxyDashboard: React.FC = () => {
   const [availability, setAvailability] = useState<ProxyAvailability[]>([]);
   const [rounds, setRounds] = useState<InterviewRound[]>([]);
   const [requests, setRequests] = useState<InterviewSupportRequest[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [regularCandidates, setRegularCandidates] = useState<Candidate[]>([]);
+  const [aurrumCandidates, setAurrumCandidates] = useState<Candidate[]>([]);
+  const candidates = useMemo(() => [...regularCandidates, ...aurrumCandidates], [regularCandidates, aurrumCandidates]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
@@ -142,7 +145,8 @@ export const ProxyDashboard: React.FC = () => {
     const unsubReqs = subscribeToCollection<InterviewSupportRequest>('jpc_interview_requests', setRequests);
 
     // Subscribe to candidates
-    const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', setCandidates);
+    const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', setRegularCandidates);
+    const unsubAurrumCandidates = subscribeToAurrumCandidates(setAurrumCandidates);
 
     // Subscribe to team users
     const unsubTeam = subscribeToCollection<User>('jpc_users', setTeam);
@@ -158,6 +162,7 @@ export const ProxyDashboard: React.FC = () => {
       unsubFeedback();
       unsubReqs();
       unsubCandidates();
+      unsubAurrumCandidates();
       unsubTeam();
       unsubCalendar();
       clearTimeout(timer);
@@ -830,7 +835,14 @@ export const ProxyDashboard: React.FC = () => {
                     )}
                     <div className="flex items-center gap-3 text-text-secondary">
                       <UserIcon className="w-4 h-4 text-accent-blue/50" />
-                      <span className="text-xs font-bold truncate">Candidate: {candidate?.full_name || 'Loading...'}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold truncate">Candidate: {candidate?.full_name || 'Loading...'}</span>
+                        {candidate?.crm_brand === 'aurrum' && (
+                          <span className="px-1.5 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-widest border bg-amber-500/10 text-amber-500 border-amber-500/20">
+                            Aurrum Careers
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 text-text-secondary">
                       <UserCheck className="w-4 h-4 text-accent-blue/50" />

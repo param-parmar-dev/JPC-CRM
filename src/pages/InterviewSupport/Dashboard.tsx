@@ -3,7 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { 
   subscribeToCollection, 
-  subscribeToQuery, 
+  subscribeToQuery,
+  subscribeToAurrumCandidates,
   addInterviewSupportRequest, 
   updateInterviewSupportRequest,
   updateCandidate,
@@ -108,7 +109,9 @@ export const InterviewSupportDashboard: React.FC = () => {
   const [requests, setRequests] = useState<InterviewSupportRequest[]>([]);
   const [rounds, setRounds] = useState<InterviewRound[]>([]);
   const [feedbacks, setFeedbacks] = useState<InterviewFeedback[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [regularCandidates, setRegularCandidates] = useState<Candidate[]>([]);
+  const [aurrumCandidates, setAurrumCandidates] = useState<Candidate[]>([]);
+  const candidates = useMemo(() => [...regularCandidates, ...aurrumCandidates], [regularCandidates, aurrumCandidates]);
   const [team, setTeam] = useState<User[]>([]);
   const [availabilities, setAvailabilities] = useState<ProxyAvailability[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
@@ -132,7 +135,8 @@ export const InterviewSupportDashboard: React.FC = () => {
     const unsubRequests = subscribeToCollection<InterviewSupportRequest>('jpc_interview_requests', setRequests);
     const unsubRounds = subscribeToCollection<InterviewRound>('jpc_interview_rounds', setRounds);
     const unsubFeedback = subscribeToCollection<InterviewFeedback>('jpc_interview_feedback', setFeedbacks);
-    const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', setCandidates);
+    const unsubCandidates = subscribeToCollection<Candidate>('jpc_candidates', setRegularCandidates);
+    const unsubAurrumCandidates = subscribeToAurrumCandidates(setAurrumCandidates);
     const unsubAvailabilities = subscribeToCollection<ProxyAvailability>('jpc_proxy_availability', setAvailabilities);
     const unsubCalendarEvents = subscribeToCollection<any>('jpc_calendar_events', setCalendarEvents);
     const unsubTeam = subscribeToCollection<User>('jpc_users', (data) => {
@@ -145,6 +149,7 @@ export const InterviewSupportDashboard: React.FC = () => {
       unsubRounds();
       unsubFeedback();
       unsubCandidates();
+      unsubAurrumCandidates();
       unsubAvailabilities();
       unsubCalendarEvents();
       unsubTeam();
@@ -631,6 +636,11 @@ export const InterviewSupportDashboard: React.FC = () => {
                         <h3 className="text-2xl font-black text-text-primary flex items-center gap-2 flex-wrap">
                           <UserIcon className="w-6 h-6 text-accent-blue" />
                           {candidate?.full_name || 'Candidate Name'}
+                          {candidate?.crm_brand === 'aurrum' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-amber-500/10 text-amber-500 border-amber-500/20">
+                              Aurrum Careers
+                            </span>
+                          )}
                           {candidate?.is_free_trial && (
                             <FreeTrialBadge 
                               startDate={candidate.free_trial_start_date}
