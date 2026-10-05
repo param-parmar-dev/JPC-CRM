@@ -916,36 +916,40 @@ export const Team: React.FC = () => {
           <Users className="w-4 h-4" />
           <span>Team Members ({visibleTeam.length})</span>
         </button>
-        <button
-          onClick={() => setActiveTab('roles')}
-          className={cn(
-            "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'roles'
-              ? "border-accent-blue text-accent-blue"
-              : "border-transparent text-text-secondary hover:text-text-primary"
-          )}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>User Roles & Access</span>
-          <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
-            {ROLES.length} Roles
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('round_robin')}
-          className={cn(
-            "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'round_robin'
-              ? "border-accent-teal text-accent-teal"
-              : "border-transparent text-text-secondary hover:text-text-primary"
-          )}
-        >
-          <RotateCw className="w-4 h-4" />
-          <span>Lead Round-Robin Rotation</span>
-          <span className="px-1.5 py-0.5 bg-accent-teal/10 text-accent-teal rounded-md text-[10px] font-extrabold uppercase">
-            Auto Sales
-          </span>
-        </button>
+        {user?.role !== 'jpc_marketing' && (
+          <button
+            onClick={() => setActiveTab('roles')}
+            className={cn(
+              "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'roles'
+                ? "border-accent-blue text-accent-blue"
+                : "border-transparent text-text-secondary hover:text-text-primary"
+            )}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>User Roles & Access</span>
+            <span className="px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded-md text-[10px] font-extrabold uppercase">
+              {ROLES.length} Roles
+            </span>
+          </button>
+        )}
+        {user?.role !== 'jpc_marketing' && (
+          <button
+            onClick={() => setActiveTab('round_robin')}
+            className={cn(
+              "pb-4 px-1 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'round_robin'
+                ? "border-accent-teal text-accent-teal"
+                : "border-transparent text-text-secondary hover:text-text-primary"
+            )}
+          >
+            <RotateCw className="w-4 h-4" />
+            <span>Lead Round-Robin Rotation</span>
+            <span className="px-1.5 py-0.5 bg-accent-teal/10 text-accent-teal rounded-md text-[10px] font-extrabold uppercase">
+              Auto Sales
+            </span>
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('marketing_profiles')}
           className={cn(
